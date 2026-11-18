@@ -16,16 +16,23 @@ export const CODEX_READ_EXCEPTIONS: readonly string[] = ["~/.codex/packages"];
  * `-c` overrides for a workspace-write sandbox with a read deny-list and no network.
  * Do not add `-s workspace-write`: it silently replaces `default_permissions`, dropping the deny-list.
  */
+/**
+ * A TOML basic string. JSON escapes are valid TOML except that TOML also forbids a raw DEL;
+ * lone surrogates cannot occur because every input is a well-formed string (UTF-8 is decoded strictly).
+ */
+export function tomlString(s: string): string {
+  return JSON.stringify(s).replaceAll("\x7f", "\\u007f");
+}
+
 export function codexConfigArgs(extraDenyRead: readonly string[] = []): string[] {
   const denied = effectiveDenyRead(extraDenyRead);
   for (const p of denied) {
     // A duplicate key is a TOML error, and the intent (deny or read) would be ambiguous anyway.
     if (CODEX_READ_EXCEPTIONS.includes(p)) throw new Error(`cannot deny ${p}: Codex needs it readable to run`);
   }
-  // JSON string literals are valid TOML basic strings.
   const filesystem = [
-    ...denied.map((p) => `${JSON.stringify(p)}="none"`),
-    ...CODEX_READ_EXCEPTIONS.map((p) => `${JSON.stringify(p)}="read"`),
+    ...denied.map((p) => `${tomlString(p)}="none"`),
+    ...CODEX_READ_EXCEPTIONS.map((p) => `${tomlString(p)}="read"`),
   ].join(",");
   return [
     "-c", `permissions={${PROFILE}={extends=":workspace", filesystem={${filesystem}}}}`,
@@ -59,6 +66,8 @@ export interface CodexCommandInput {
   effort: string;
   worktreePath: string;
   extraDenyRead?: readonly string[];
+  /** Project instructions, given verbatim as developer instructions; Codex's own AGENTS.md discovery is always off. */
+  instructions?: string | null;
 }
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
@@ -69,8 +78,11 @@ export function codexArgs(input: CodexCommandInput): string[] {
     "--ignore-user-config",
     "--ignore-rules",
     "-m", input.model,
-    "-c", `model_reasoning_effort=${JSON.stringify(input.effort)}`,
+    "-c", `model_reasoning_effort=${tomlString(input.effort)}`,
     ...codexConfigArgs(input.extraDenyRead),
+    // Codex would otherwise load AGENTS.md from the agent-writable worktree on its own, next to the explicit copy.
+    "-c", "project_doc_max_bytes=0",
+    ...(input.instructions ? ["-c", `developer_instructions=${tomlString(input.instructions)}`] : []),
     "-C", input.worktreePath,
     "--",
     input.prompt,

@@ -1,8 +1,9 @@
 import { closeSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { assertPrivateDir, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots } from "./config";
+import { assertPrivateDir, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots, writeRunFile } from "./config";
+import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
 import { agentEnv } from "./policy";
@@ -37,13 +38,26 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     const problems = managedSettingsProblems(config);
     if (problems.length > 0) throw new Error(`refusing Claude dispatch, managed settings would apply:\n${problems.join("\n")}`);
   }
-  const args =
-    spec.harness === "claude"
-      ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, extraDenyRead: spec.extraDenyRead })
-      : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, extraDenyRead: spec.extraDenyRead });
+  const agentWritable = [worktree, ...tempRoots()];
+  const instructions = buildProjectInstructions(spec.instructionFiles, agentWritable);
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
   const env = agentEnv(process.env, spec.harness, home);
-  const logs = createRunLogs(config, spec.logDir, spec.runId, [worktree, ...tempRoots()]);
+  const logs = createRunLogs(config, spec.logDir, spec.runId, agentWritable);
+  let instructionsPath: string | null = null;
+  try {
+    if (instructions !== null) {
+      instructionsPath = join(dirname(logs.stdoutPath), `${spec.runId}.instructions.md`);
+      writeRunFile(instructionsPath, instructions);
+    }
+  } catch (err) {
+    closeSync(logs.stdoutFd);
+    closeSync(logs.stderrFd);
+    throw err;
+  }
+  const args =
+    spec.harness === "claude"
+      ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, extraDenyRead: spec.extraDenyRead, instructionsFile: instructionsPath })
+      : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, extraDenyRead: spec.extraDenyRead, instructions });
 
   let proc: AgentProcess;
   try {
@@ -94,6 +108,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     requestedModel: spec.model,
     stdoutPath: logs.stdoutPath,
     stderrPath: logs.stderrPath,
+    instructionsPath,
     cleanup,
   };
 

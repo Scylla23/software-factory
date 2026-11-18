@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, lstatSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { closeSync, constants, lstatSync, openSync, readdirSync, readFileSync, realpathSync, statSync, writeSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type { Harness } from "./types";
@@ -185,4 +185,14 @@ export function createRunLogs(config: DispatchConfig, logDir: string, runId: str
     throw err;
   }
   return { stdoutPath, stderrPath, stdoutFd, stderrFd };
+}
+
+/** Writes a new private file next to the logs; like the logs, it refuses to replace anything. */
+export function writeRunFile(path: string, content: string): void {
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    writeSync(fd, content);
+  } finally {
+    closeSync(fd);
+  }
 }
