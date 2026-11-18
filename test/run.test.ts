@@ -3,7 +3,7 @@ import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpa
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { expandHome, MANDATORY_DENY_READ } from "../src/dispatch/policy";
-import { type ProcRow, type Snapshot, spawnAgentProcess, terminateTree, Tracker } from "../src/dispatch/process";
+import { type ProcRow, type Snapshot, snapshot, spawnAgentProcess, superviseRun, terminateTree, Tracker } from "../src/dispatch/process";
 import { alive, FIXTURES, fixture, gone, makeSandbox, readPid, type Sandbox, writeLines } from "./helpers";
 
 let sb: Sandbox;
@@ -275,6 +275,51 @@ describe("terminateTree", () => {
     const status = await p.exited;
     expect(status.signal).not.toBeNull();
     expect(report.errors.some((e) => e.includes("process snapshot failed"))).toBe(true);
+  });
+});
+
+describe("bounded waits", () => {
+  const spawnShell = (script: string) => {
+    const o = openSync(join(sb.stateRoot, `${crypto.randomUUID()}.out`), "w");
+    const p = spawnAgentProcess({ executable: "/bin/sh", args: ["-c", script], cwd: sb.worktree, env: { PATH: "/usr/bin:/bin" }, stdoutFd: o, stderrFd: o, psPath: "/bin/ps" });
+    closeSync(o);
+    return p;
+  };
+  const hangingPs = () => {
+    const path = join(sb.bin, "hanging-ps");
+    writeFileSync(path, "#!/bin/sh\nexec /bin/sleep 30\n");
+    chmodSync(path, 0o755);
+    return path;
+  };
+
+  test("a ps that never answers is killed and reported, not waited on", () => {
+    const started = Date.now();
+    expect(() => snapshot(hangingPs(), undefined, 200)).toThrow("no answer within 200ms");
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  test("termination with a hanging ps still kills the root through its handle", async () => {
+    const p = spawnShell("sleep 300");
+    const report = await terminateTree(p, { psPath: hangingPs(), graceMs: 200, killWaitMs: 300, psTimeoutMs: 100 });
+    expect((await p.exited).signal).not.toBeNull();
+    expect(report.errors.some((e) => e.includes("no answer within 100ms"))).toBe(true);
+  });
+
+  test("a root whose exit is never observed cannot hang the run: supervision returns once termination gives up", async () => {
+    const real = spawnShell("sleep 300");
+    const neverExits = { ...real, exited: new Promise<never>(() => {}), exitedAt: () => null };
+    const started = Date.now();
+    const r = await superviseRun(neverExits, { timeoutMs: 50, psPath: "/bin/ps", graceMs: 100, killWaitMs: 200 });
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(r.status).toBeNull();
+    expect(r.stopped).toBe("timed_out");
+    expect(r.cleanup!.errors).toEqual([expect.stringContaining("did not exit")]);
+    expect((await real.exited).signal).not.toBeNull();
+  });
+
+  test("supervision of a root that exits by itself reports its status and no cleanup", async () => {
+    const r = await superviseRun(spawnShell("exit 7"), { timeoutMs: 30_000, psPath: "/bin/ps" });
+    expect(r).toEqual({ status: { code: 7, signal: null, error: null }, stopped: null, cleanup: null });
   });
 });
 
