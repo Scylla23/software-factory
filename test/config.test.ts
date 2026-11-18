@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, copyFileSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { assertTrustedExecutable, createRunLogs, managedSettingsProblems, tempRoots } from "../src/dispatch/config";
+import { assertPrivateDir, assertTrustedExecutable, createRunLogs, managedSettingsProblems, tempRoots } from "../src/dispatch/config";
 import { makeSandbox, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
@@ -12,6 +12,25 @@ beforeEach(() => {
 afterEach(() => sb.cleanup());
 
 const RUN = "11111111-2222-4333-8444-555555555555";
+
+describe("assertPrivateDir (harness homes)", () => {
+  test("accepts a private dir under the root", () => {
+    expect(assertPrivateDir(sb.config.harnessHomes.codex, sb.stateRoot)).toBe(sb.config.harnessHomes.codex);
+  });
+
+  test("rejects group or world access, a symlink, a dir outside the root, and a missing dir", () => {
+    const home = sb.config.harnessHomes.claude;
+    chmodSync(home, 0o750);
+    expect(() => assertPrivateDir(home, sb.stateRoot)).toThrow("accessible to group or others");
+    chmodSync(home, 0o700);
+    const link = join(sb.stateRoot, "linked-home");
+    symlinkSync(sb.worktree, link);
+    expect(() => assertPrivateDir(link, sb.stateRoot)).toThrow("symlink");
+    expect(() => assertPrivateDir(realpathSync(sb.worktree), sb.stateRoot)).toThrow("not under");
+    expect(() => assertPrivateDir(sb.worktree, sb.stateRoot)).toThrow("not canonical");
+    expect(() => assertPrivateDir(join(sb.stateRoot, "missing"), sb.stateRoot)).toThrow("ENOENT");
+  });
+});
 
 describe("assertTrustedExecutable", () => {
   test("accepts a system binary and returns its canonical path", () => {

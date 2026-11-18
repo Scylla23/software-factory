@@ -39,8 +39,10 @@ export interface Sandbox {
   /** Under the repo, because the state root must be outside every agent-writable temp root. */
   stateRoot: string;
   logDir: string;
-  /** HOME seen by the fake agent; holds the fixture Codex sessions. */
+  /** HOME seen by the fake agent. */
   home: string;
+  /** The fake Codex home, which holds the fixture Codex sessions. */
+  codexHome: string;
   config: DispatchConfig;
   cleanup: () => void;
 }
@@ -57,10 +59,13 @@ export function makeSandbox(): Sandbox {
   mkdirSync(logDir);
   const home = join(stateRoot, "home");
   mkdirSync(home);
+  const harnessHomes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
+  for (const dir of Object.values(harnessHomes)) mkdirSync(dir, { mode: 0o700 });
   const config: DispatchConfig = {
     // Fake executables come in explicitly here, never through PATH.
     executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), ps: "/bin/ps" },
     stateRoot,
+    harnessHomes,
     managedSettingsPaths: [join(stateRoot, "managed-settings.json"), join(stateRoot, "managed-settings.d")],
     acceptedManagedSettings: {},
   };
@@ -69,6 +74,7 @@ export function makeSandbox(): Sandbox {
     stateRoot,
     logDir,
     home,
+    codexHome: harnessHomes.codex,
     config,
     cleanup: () => {
       rmSync(worktree, { recursive: true, force: true });

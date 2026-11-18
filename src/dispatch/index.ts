@@ -2,7 +2,7 @@ import { closeSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots } from "./config";
+import { assertPrivateDir, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots } from "./config";
 import { readJsonl } from "./jsonl";
 import { agentEnv } from "./policy";
 import { type AgentProcess, spawnAgentProcess, type TerminationReport, terminateTree } from "./process";
@@ -38,7 +38,8 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     spec.harness === "claude"
       ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, extraDenyRead: spec.extraDenyRead })
       : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, extraDenyRead: spec.extraDenyRead });
-  const env = agentEnv(process.env);
+  const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
+  const env = agentEnv(process.env, spec.harness, home);
   const logs = createRunLogs(config, spec.logDir, spec.runId, [worktree, ...tempRoots()]);
 
   let proc: AgentProcess;
@@ -105,7 +106,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     ...base,
     sessionId: s.threadId,
     outcome: outcome(s.succeeded),
-    observedModel: s.threadId ? await observedCodexModel(join(env.HOME!, ".codex", "sessions"), s.threadId, diagnostics) : null,
+    observedModel: s.threadId ? await observedCodexModel(join(home, "sessions"), s.threadId, diagnostics) : null,
     usage: s.usage,
     resultText: s.resultText,
     diagnostics,

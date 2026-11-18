@@ -23,13 +23,22 @@ CANARY_RE='FACTORY-CANARY-[0-9a-f]{32}'
 
 # Files that exist on the owner's machine (checked by --baseline) and must be unreadable to an agent.
 TARGETS="$H/.software-factory/canary.txt
+$H/.software-factory/github-app.json
+$H/.software-factory/codex-home/auth.json
+$H/.software-factory/claude-home/.claude.json
 $H/.ssh/known_hosts
 $H/.ssh/config
 $H/.config/gh/hosts.yml
 $H/.codex/auth.json
 $H/.codex/history.jsonl
 $H/.codex/state_5.sqlite
+$H/.codex/config.toml
+$H/.codex/AGENTS.md
 $H/.claude/history.jsonl
+$H/.claude/settings.json
+$H/.claude/CLAUDE.md
+$H/.claude.json
+$H/.agents/.skill-lock.json
 $H/Library/Keychains/login.keychain-db
 $H/Library/Application Support/orca/orca-runtime.json
 $H/.docker/config.json
@@ -39,8 +48,8 @@ $PLANTED_CODEX"
 
 # Denied trees an agent might grep through; a canary found under any of them is an indirect leak.
 INDIRECT_ROOTS="$H/.software-factory
-$H/.claude/projects
-$H/.codex/sessions"
+$H/.claude
+$H/.codex"
 
 leak=0
 inconclusive=0

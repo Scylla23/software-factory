@@ -10,8 +10,8 @@ let sb: Sandbox;
 const saved = { HOME: process.env.HOME };
 beforeEach(() => {
   sb = makeSandbox();
-  cpSync(join(FIXTURES, "codex-sessions"), join(sb.home, ".codex", "sessions"), { recursive: true });
-  process.env.HOME = sb.home; // the agent's HOME, and where runAgent looks for Codex rollouts
+  cpSync(join(FIXTURES, "codex-sessions"), join(sb.codexHome, "sessions"), { recursive: true });
+  process.env.HOME = sb.home; // the agent's HOME
 });
 afterEach(() => {
   process.env.HOME = saved.HOME;
@@ -29,7 +29,7 @@ describe("runAgent", () => {
     expect(r.usage?.harness).toBe("claude");
   });
 
-  test("codex: observed model comes from the session file under the agent's HOME", async () => {
+  test("codex: observed model comes from the session file under the dedicated CODEX_HOME", async () => {
     const r = await runAgent(spec("codex", `replay:${fixture("codex-headless.jsonl")}`), sb.config);
     expect(r).toMatchObject({ outcome: "completed", sessionId: "01a1efae-7fd6-7ba1-a645-e89ed21cfbdb", observedModel: "gpt-6-luna", diagnostics: [] });
   });
@@ -49,6 +49,30 @@ describe("runAgent", () => {
     } finally {
       delete process.env.FACTORY_CANARY;
     }
+  });
+
+  test.each([
+    ["claude", "CLAUDE_CONFIG_DIR", "CODEX_HOME"],
+    ["codex", "CODEX_HOME", "CLAUDE_CONFIG_DIR"],
+  ] as const)("%s runs with its dedicated home, whatever the parent's", async (harness, own, other) => {
+    process.env.CODEX_HOME = "/owner/.codex";
+    process.env.CLAUDE_CONFIG_DIR = "/owner/.claude";
+    try {
+      await runAgent(spec(harness, `dump:${sb.worktree}`), sb.config);
+      const env = readFileSync(join(sb.worktree, "env"), "utf8").split("\n");
+      expect(env).toContain(`${own}=${sb.config.harnessHomes[harness]}`);
+      expect(env.some((l) => l.startsWith(`${other}=`))).toBe(false);
+    } finally {
+      delete process.env.CODEX_HOME;
+      delete process.env.CLAUDE_CONFIG_DIR;
+    }
+  });
+
+  test("refuses a harness home that other users can read, before anything starts", async () => {
+    chmodSync(sb.config.harnessHomes.codex, 0o755);
+    const marker = join(sb.worktree, "started");
+    await expect(runAgent(spec("codex", `started:${marker}`), sb.config)).rejects.toThrow("accessible to group or others");
+    expect(await Bun.file(marker).exists()).toBe(false);
   });
 
   test.each(["claude", "codex"] as const)("%s: an extra deny path is added to the mandatory list in the real argv", async (harness) => {
@@ -154,7 +178,7 @@ describe("runAgent", () => {
   });
 
   test("a missing or unreadable rollout keeps the outcome and usage; only the observed model is unknown", async () => {
-    const day = join(sb.home, ".codex", "sessions", "2026", "11", "18");
+    const day = join(sb.codexHome, "sessions", "2026", "11", "18");
     const rollout = join(day, "rollout-2026-11-18T22-52-33-01a1efae-7fd6-7ba1-a645-e89ed21cfbdb.jsonl");
     chmodSync(rollout, 0o000);
     try {
