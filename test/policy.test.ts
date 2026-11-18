@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, realpathSync, symlinkSync } from "node:fs";
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeArgs, claudeSettings } from "../src/dispatch/claude";
 import { codexArgs, codexConfigArgs, codexReadable } from "../src/dispatch/codex";
@@ -132,7 +132,7 @@ describe("deny-list", () => {
     expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.stateRoot, "logs")] }, ctx)).toThrow("overlaps factory state");
     expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.config.harnessHomes.codex, "bin")] }, ctx)).toThrow("overlaps factory state");
     expect(() => assertPolicySound({ denyRead: denied, readable: [denied[0]!] }, ctx)).toThrow("Codex needs it readable");
-    expect(() => assertPolicySound({ denyRead: denied, readable: codexReadable(sb.home) }, ctx)).not.toThrow();
+    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.home, ".codex", "packages", "bin")] }, ctx)).not.toThrow();
   });
 });
 
@@ -168,8 +168,25 @@ describe("codex", () => {
     expect(codexDenied(codexConfigArgs(policyOf(extra)))).toEqual(expect.arrayContaining([...mandatory(), ...extra, realpathSync(sb.stateRoot)]));
   });
 
+  /** A Codex install under the denied ~/.codex, laid out like the standalone package. */
+  const installCodex = () => {
+    const bin = join(sb.home, ".codex", "packages", "standalone", "releases", "0.0.0", "bin");
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(bin, "..", "codex-resources"));
+    writeFileSync(join(bin, "codex"), "#!/bin/sh\n");
+    symlinkSync(join(bin, "codex"), join(sb.home, "codex-link"));
+    return bin;
+  };
+
+  test("reopens only the verified executable's own dir, found through its realpath, and nothing when it is not denied", () => {
+    const bin = installCodex();
+    const denied = effectiveDenyRead(ctx);
+    expect(codexReadable(join(sb.home, "codex-link"), denied)).toEqual([realpathSync(bin)]);
+    expect(codexReadable(sb.config.executables.codex, denied)).toEqual([]);
+  });
+
   test("carries the readable carve-outs as read entries, and refuses one that is also denied", () => {
-    const readable = codexReadable(sb.home);
+    const readable = codexReadable(join(installCodex(), "codex"), effectiveDenyRead(ctx));
     expect(codexEntries(codexConfigArgs(policyOf([], readable)), "read")).toEqual(readable);
     expect(() => codexConfigArgs(policyOf([readable[0]!], readable))).toThrow("Codex needs it readable");
   });

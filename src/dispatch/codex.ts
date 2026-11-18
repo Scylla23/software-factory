@@ -1,18 +1,21 @@
 import { Glob } from "bun";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { dirname } from "node:path";
+import { isUnder } from "./config";
 import type { SandboxPolicy } from "./policy";
 import type { CodexUsage } from "./types";
 
 const PROFILE = "factory";
 
 /**
- * Read access carved back out of the denied ~/.codex, the more specific entry winning in Codex's profile:
- * Codex's sandbox helper re-execs the Codex binary, which is installed under ~/.codex/packages,
- * and the packages dir holds only installed releases, no owner data.
+ * Read access carved back out of a denied tree, the more specific entry winning in Codex's profile.
+ * Codex's sandbox helper re-execs the Codex binary, so the verified executable's own directory must stay readable
+ * when it lies under a denied path (it is installed under the denied ~/.codex); nothing wider is reopened.
  */
-export function codexReadable(accountHome: string): string[] {
-  return [join(accountHome, ".codex", "packages")];
+export function codexReadable(codexExecutable: string, denyRead: readonly string[]): string[] {
+  const dir = dirname(realpathSync(codexExecutable));
+  return denyRead.some((d) => isUnder(dir, d)) ? [dir] : [];
 }
 
 /**

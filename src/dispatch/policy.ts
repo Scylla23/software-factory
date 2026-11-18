@@ -22,7 +22,7 @@ export const MANDATORY_DENY_READ: readonly string[] = [
   "~/.npmrc",
   "~/.git-credentials",
   // The owner's own harness homes: auth, history of other projects, instructions, settings, skills, plugins.
-  // Factory runs use dedicated homes, so neither CLI needs these; Codex gets its own binary's dir back (codex.ts).
+  // Factory runs use dedicated homes, so neither CLI needs these; Codex gets its own binary's dir back (codexReadable).
   "~/.claude",
   "~/.claude.json",
   "~/.codex",
