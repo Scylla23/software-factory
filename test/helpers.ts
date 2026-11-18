@@ -34,8 +34,10 @@ esac
 `;
 
 /**
- * A fake `orca`. It gets a minimal env, so its behavior comes from the `orca-mode` file next to it
- * (ok, fail, hang); every call's argv is appended to `orca-calls`, one argument per line, then `--`.
+ * A fake `orca`. It gets a minimal env, so its behavior comes from the `orca-mode` file next to it:
+ * ok, fail (`ok: false`), hang (every call), hang-create (only `terminal create`), or ok-exit (an ok envelope, exit 3).
+ * `terminal list` prints the `orca-list` file when there is one. Every call's argv is appended to `orca-calls`,
+ * one argument per line, then `--`.
  */
 const fakeOrca = (bin: string) => `#!/bin/sh
 printf '%s\\n' "$@" -- >> "${bin}/orca-calls"
@@ -43,11 +45,15 @@ mode=$(cat "${bin}/orca-mode" 2>/dev/null || echo ok)
 case "$mode" in
   fail) echo '{"ok":false,"error":{"code":"runtime_unavailable"}}'; exit 1 ;;
   hang) sleep 30 ;; # a grandchild that holds the pipes after orca is killed
+  hang-create) [ "$1 $2" = "terminal create" ] && sleep 30 ;;
 esac
 case "$1 $2" in
   "terminal create") echo '{"ok":true,"result":{"terminal":{"handle":"term_fake"}}}' ;;
+  "terminal list") cat "${bin}/orca-list" 2>/dev/null || echo '{"ok":true,"result":{"terminals":[]}}' ;;
   *) echo '{"ok":true,"result":{}}' ;;
 esac
+[ "$mode" = ok-exit ] && exit 3
+exit 0
 `;
 
 export interface Sandbox {

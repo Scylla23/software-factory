@@ -1,11 +1,13 @@
 import { str, isRecord } from "../dispatch/jsonl";
-import { ORCA_TIMEOUT_MS, orcaJson } from "./cli";
+import { ORCA_TIMEOUT_MS, OrcaError, orcaJson } from "./cli";
 
 export interface MonitorInput {
   /** Trusted `orca` executable from DispatchConfig. */
   orcaPath: string;
   worktreePath: string;
+  /** Contains `attemptId`, which identifies the tab when a failed create must be reconciled. */
   title: string;
+  attemptId: string;
   /** The run's stdout log, under the state root. */
   logPath: string;
   timeoutMs?: number;
@@ -23,6 +25,7 @@ export function shellQuote(s: string): string {
 
 /** Plain words joined by single spaces, such as `factory: builder <runId>`; nothing a terminal or shell interprets. */
 const MONITOR_TITLE = /^(?=.{1,128}$)[A-Za-z0-9._:-]+(?: [A-Za-z0-9._:-]+)*$/;
+const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const LOG_PATH = /^\/[^\x00-\x1f\x7f]*$/;
 
 /** Sets the title, then becomes the trusted tail with no terminal input; `$1` is the title and `$2` the log. */
@@ -48,30 +51,52 @@ export function monitorCommand(title: string, logPath: string): string {
 export function openRunMonitor(input: MonitorInput): RunMonitor {
   const timeoutMs = input.timeoutMs ?? ORCA_TIMEOUT_MS;
   const command = monitorCommand(input.title, input.logPath); // throws on a bad title, before anything starts
+  if (!ATTEMPT_ID.test(input.attemptId) || !input.title.includes(input.attemptId)) {
+    throw new Error(`monitor title ${JSON.stringify(input.title)} must contain the attempt id ${JSON.stringify(input.attemptId)}`);
+  }
+  const orca = (args: string[]) => orcaJson(input.orcaPath, args, timeoutMs);
   const problems: string[] = [];
+  let uncertain = false;
   const opened: Promise<string | null> = (async () => {
-    const result = await orcaJson(
-      input.orcaPath,
-      ["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", command],
-      timeoutMs,
-    );
+    const result = await orca(["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", command]);
     const handle = isRecord(result.terminal) ? str(result.terminal.handle) : null;
-    if (!handle) throw new Error(`orca terminal create returned no handle: ${JSON.stringify(result).slice(0, 300)}`);
+    if (!handle) throw new OrcaError(`orca terminal create returned no handle: ${JSON.stringify(result).slice(0, 300)}`, true);
     return handle;
   })().catch((err) => {
+    uncertain = err instanceof OrcaError && err.uncertain; // a spawn failure ran nothing
     problems.push(`open failed: ${(err as Error).message}`);
     return null;
   });
+  const closeTab = async (handle: string) => {
+    try {
+      await orca(["terminal", "close", "--terminal", handle]);
+      return true;
+    } catch (err) {
+      problems.push(`close failed for ${handle}: ${(err as Error).message}`);
+      return false;
+    }
+  };
+  /** A create that timed out or answered oddly may still have opened the tab: close every tab titled with this attempt. */
+  const reconcile = async () => {
+    try {
+      const list = await orca(["terminal", "list", "--worktree", `path:${input.worktreePath}`]);
+      if (!Array.isArray(list.terminals)) throw new Error(`no terminals in ${JSON.stringify(list).slice(0, 300)}`);
+      if (list.truncated === true) problems.push("reconcile: terminal list was truncated; a tab may stay open");
+      for (const t of list.terminals) {
+        if (!isRecord(t) || ![t.title, t.paneTitle].some((v) => typeof v === "string" && v.includes(input.attemptId))) continue;
+        const handle = str(t.handle);
+        if (!handle) problems.push(`reconcile: a tab for this attempt has no handle`);
+        else if (await closeTab(handle)) problems.push(`reconcile: closed ${handle}, opened by the failed create`);
+      }
+    } catch (err) {
+      problems.push(`reconcile failed: ${(err as Error).message}`);
+    }
+  };
   return {
     close: async () => {
       const handle = await opened;
-      if (handle) {
-        try {
-          await orcaJson(input.orcaPath, ["terminal", "close", "--terminal", handle], timeoutMs);
-        } catch (err) {
-          problems.push(`close failed for ${handle}: ${(err as Error).message}`);
-        }
-      }
+      if (handle) await closeTab(handle);
+      else if (uncertain) await reconcile();
       return problems;
     },
   };

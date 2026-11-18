@@ -67,7 +67,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
 
   let monitor: RunMonitor | null = null;
   if (spec.monitor) {
-    monitor = openRunMonitor({ orcaPath: config.executables.orca, worktreePath: worktree, title: `factory: ${spec.monitor.agent} ${spec.runId}`, logPath: logs.stdoutPath });
+    monitor = openRunMonitor({ orcaPath: config.executables.orca, worktreePath: worktree, title: `factory: ${spec.monitor.agent} ${spec.runId}`, attemptId: spec.runId, logPath: logs.stdoutPath });
   }
 
   let stopped: "cancelled" | "timed_out" | null = null;
