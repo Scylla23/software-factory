@@ -42,8 +42,11 @@ No LLM coordinator is used, because coordination must be deterministic and free.
 The factory owns intake identity, task state, gates, approval evidence, deterministic checks, and the audit history.
 Orca owns worktrees and workspace visibility.
 The factory runs agents directly with `claude -p` and `codex exec --json` inside Orca-created worktrees, because only the CLIs expose sandbox mode, read deny-lists, network policy, environment stripping, and result JSON.
-Plan step 1 confirms whether directly launched sessions appear in Orca for watching and intervening.
-If they do not, the factory runs the CLI inside an Orca-created terminal in that worktree.
+Directly launched sessions are not listed as Orca agents (spike 01); `orca search` indexes them afterwards with a resume command.
+The factory keeps direct launch and may open a read-only Orca terminal that tails the run log for watching.
+Intervention is cancel plus resume (`claude --resume`, `codex resume`).
+Factory runs use dedicated harness homes, `CODEX_HOME=~/.software-factory/codex-home` and `CLAUDE_CONFIG_DIR=~/.software-factory/claude-home`, each logged in once by the owner on the same subscriptions.
+No owner instructions, hooks, skills, plugins, or config reach factory runs; only the factory's own skills are installed there.
 
 ### Repository layout
 
@@ -154,7 +157,7 @@ Clarifying questions may also be asked and answered in the source channel.
 
 ## Build, check, review, verify
 
-- The builder works in an Orca worktree under the harness sandbox (Codex `workspace-write`, Claude Code sandbox with a fixed allowlist).
+- The builder works in an Orca worktree under the harness sandbox (a Codex permission profile extending `:workspace` with deny entries, selected by `default_permissions` and never `-s`, which silently overrides it; Claude Code `--restricted` with sandbox, a fixed tool allowlist, and inline settings).
 - Agents get a read deny-list covering `~/.software-factory`, `~/.ssh`, `~/.config/gh`, Keychain, and other credential stores, and their environment is stripped of secrets.
 - Network is allowed only for stages that install dependencies; build stages run without network.
 - Only the publisher process pushes and opens PRs, using short-lived GitHub App installation tokens minted from a private key in Keychain.
@@ -195,6 +198,7 @@ Each skill ships with 2 or 3 eval cases run on pilot tasks before it is trusted.
 
 Each registered project declares repo path, base branch, stack, setup, test, lint, typecheck, and preview commands, port range, fixtures, and security and migration path globs.
 The factory respects each project's own `AGENTS.md` and conventions.
+The factory passes the project's `AGENTS.md` (and `CLAUDE.md` if present) to every run explicitly, for Claude via `--append-system-prompt-file`, so both harnesses see identical project instructions regardless of what each loads on its own.
 
 ## Triggers and notifications
 
