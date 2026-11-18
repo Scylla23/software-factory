@@ -1,0 +1,4 @@
+{"type": "thread.started", "thread_id": "01a1efaf-6464-7c53-81f7-67d1aa470cb8"}
+{"type": "turn.started"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I’ll run the requested shell command and wait for it to finish."}}
+{"type": "item.started", "item": {"id": "item_1", "type": "command_execution", "command": "/bin/zsh -c 'rtk sleep $((135+7))'", "aggregated_output": "", "exit_code": null, "status": "in_progress"}}
