@@ -10,7 +10,7 @@ import type { Harness } from "./types";
  */
 export interface DispatchConfig {
   /** Absolute, canonical paths. */
-  executables: Record<Harness | "ps", string>;
+  executables: Record<Harness | "ps" | "orca", string>;
   /** Canonical factory state dir; run logs must live under it. */
   stateRoot: string;
   /**
@@ -80,7 +80,7 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   const homes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
   for (const home of Object.values(homes)) assertPrivateDir(home, stateRoot);
   return {
-    executables: { claude: find("claude"), codex: find("codex"), ps: assertTrustedExecutable("/bin/ps", untrusted) },
+    executables: { claude: find("claude"), codex: find("codex"), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted) },
     stateRoot,
     harnessHomes: homes,
     managedSettingsPaths: CLAUDE_MANAGED_SETTINGS_PATHS,

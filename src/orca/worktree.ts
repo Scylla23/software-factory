@@ -1,4 +1,5 @@
 import { isRecord, str } from "../dispatch/jsonl";
+import { orcaJson } from "./cli";
 
 export interface OrcaWorktree {
   /** Orca's two-part id, `<repoId>::<path>`. */
@@ -7,23 +8,13 @@ export interface OrcaWorktree {
   branch: string;
 }
 
-function orcaJson(args: string[], cwd?: string): Record<string, unknown> {
-  const proc = Bun.spawnSync(["orca", ...args, "--json"], { cwd, stdout: "pipe", stderr: "pipe" });
-  let out: unknown;
-  try {
-    out = JSON.parse(proc.stdout.toString());
-  } catch {
-    throw new Error(`orca ${args[0]} ${args[1]}: exit ${proc.exitCode}, unparseable output: ${proc.stderr.toString().slice(0, 500)}`);
-  }
-  if (!isRecord(out) || out.ok !== true || !isRecord(out.result)) {
-    throw new Error(`orca ${args[0]} ${args[1]} failed: ${JSON.stringify(isRecord(out) ? out.error : out).slice(0, 500)}`);
-  }
-  return out.result;
-}
-
-/** Creates an independent worktree in the project that contains `repoCwd`, without setup hooks or an agent. */
-export function createWorktree(name: string, repoCwd: string): OrcaWorktree {
-  const result = orcaJson(["worktree", "create", "--name", name, "--no-parent", "--setup", "skip"], repoCwd);
+/**
+ * Creates an independent worktree of the project whose main checkout is `repoPath`, without setup hooks or an agent.
+ * Orca answers `repo_not_found` for a path that is only a worktree of the repo.
+ * `orcaPath` is the trusted executable from DispatchConfig.
+ */
+export async function createWorktree(orcaPath: string, name: string, repoPath: string): Promise<OrcaWorktree> {
+  const result = await orcaJson(orcaPath, ["worktree", "create", "--repo", `path:${repoPath}`, "--name", name, "--no-parent", "--setup", "skip"]);
   const wt = isRecord(result.worktree) ? result.worktree : {};
   const id = str(wt.id);
   const path = str(wt.path);
@@ -33,6 +24,6 @@ export function createWorktree(name: string, repoCwd: string): OrcaWorktree {
 }
 
 /** Removes the worktree and deletes its branch if Orca can prove it is merged. */
-export function removeWorktree(id: string): void {
-  orcaJson(["worktree", "rm", "--worktree", `id:${id}`, "--force", "--delete-branch"]);
+export async function removeWorktree(orcaPath: string, id: string): Promise<void> {
+  await orcaJson(orcaPath, ["worktree", "rm", "--worktree", `id:${id}`, "--force", "--delete-branch"]);
 }
