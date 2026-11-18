@@ -10,7 +10,8 @@ A private GitHub App owned by the owner's personal account, created through the 
 Permissions: contents write, pull requests write, issues write, metadata read; no webhook.
 Installed only on `factory-pilot` at first, then on each registered project.
 Private key, client secret, and webhook secret are stored in macOS Keychain under `software-factory.github-app.*`.
-Non-secret metadata (app id, slug, installation id) lives in `~/.factory/github-app.json`.
+Created on 2026-11-18 as `software-factory-9f09` (app id 5820335, installation 183396381).
+Non-secret metadata (app id, slug, installation id) lives in `~/.software-factory/github-app.json`.
 Done when a script mints an installation token from the Keychain key and lists `factory-pilot`.
 
 ## 1. Spike: dispatch and Orca visibility

@@ -50,7 +50,7 @@ If they do not, the factory runs the CLI inside an Orca-created terminal in that
 - `factory.config.ts` defines agents (name, role, skills, model, effort, timeout, token budget), tier-to-builder and tier-to-reviewer mappings, auditor trigger rules, and registered projects.
 - `skills/<name>/SKILL.md` holds one skill per role in the open Agent Skills format readable by both Claude Code and Codex, plus that skill's curated data and eval cases.
 - `prices.ts` is a dated price table used for cost estimates.
-- Live state lives outside git in `~/.factory/`: the SQLite database, logs, per-run config snapshots, and GitHub App metadata.
+- Live state lives outside git in `~/.software-factory/`: the SQLite database, logs, per-run config snapshots, and GitHub App metadata.
 - Secrets live in macOS Keychain.
 
 ### Task model
@@ -155,7 +155,7 @@ Clarifying questions may also be asked and answered in the source channel.
 ## Build, check, review, verify
 
 - The builder works in an Orca worktree under the harness sandbox (Codex `workspace-write`, Claude Code sandbox with a fixed allowlist).
-- Agents get a read deny-list covering `~/.factory`, `~/.ssh`, `~/.config/gh`, Keychain, and other credential stores, and their environment is stripped of secrets.
+- Agents get a read deny-list covering `~/.software-factory`, `~/.ssh`, `~/.config/gh`, Keychain, and other credential stores, and their environment is stripped of secrets.
 - Network is allowed only for stages that install dependencies; build stages run without network.
 - Only the publisher process pushes and opens PRs, using short-lived GitHub App installation tokens minted from a private key in Keychain.
 - Project setup, test, lint, typecheck, and preview commands, and git hooks, run sandboxed and never in a process that holds publishing credentials.
