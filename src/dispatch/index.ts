@@ -45,7 +45,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   assertPolicySound(policy, ctx);
   assertStateRootIsolated(config.stateRoot, [...agentWritable, ...policy.readable]);
   assertSafeDir(config.stateRoot, config.accountHome);
-  const instructions = buildProjectInstructions(spec.instructionFiles, agentWritable);
+  const instructions = spec.instructions ? buildProjectInstructions(spec.instructions, config.executables.git, agentWritable) : null;
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
   const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: config.agentPath, accountHome: config.accountHome });
   const logs = createRunLogs(config, spec.logDir, spec.runId, agentWritable);

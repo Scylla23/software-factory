@@ -83,7 +83,7 @@ export function makeSandbox(): Sandbox {
   for (const dir of Object.values(harnessHomes)) mkdirSync(dir, { mode: 0o700 });
   const config: DispatchConfig = {
     // Fake executables come in explicitly here, never through PATH.
-    executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps" },
+    executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps", git: "/usr/bin/git" },
     accountHome: home,
     stateRoot,
     harnessHomes,

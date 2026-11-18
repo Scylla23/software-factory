@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function spec(harness: RunSpec["harness"], prompt: string, extra: Partial<RunSpec> = {}): RunSpec {
-  return { harness, worktreePath: sb.worktree, prompt, model: "requested", effort: "low", logDir: sb.logDir, runId: crypto.randomUUID(), timeoutMs: 30_000, instructionFiles: [], ...extra };
+  return { harness, worktreePath: sb.worktree, prompt, model: "requested", effort: "low", logDir: sb.logDir, runId: crypto.randomUUID(), timeoutMs: 30_000, instructions: null, ...extra };
 }
 
 describe("runAgent", () => {

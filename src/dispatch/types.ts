@@ -1,3 +1,4 @@
+import type { InstructionSource } from "./instructions";
 import type { TerminationReport } from "./process";
 
 export type Harness = "claude" | "codex";
@@ -16,11 +17,11 @@ export interface RunSpec {
   timeoutMs: number;
   signal?: AbortSignal;
   /**
-   * The project's instruction files (AGENTS.md, and CLAUDE.md if present), passed to the harness explicitly and
-   * identically; empty when the project has none. Read before spawn from a factory-controlled checkout, never from
-   * the worktree or a temp dir (see `projectInstructionFiles`).
+   * The project's instruction files (usually AGENTS.md and CLAUDE.md), passed to the harness explicitly and
+   * identically, or null for none. Read before spawn as tracked blobs at the approved base commit, never from a
+   * working tree (see `buildProjectInstructions`).
    */
-  instructionFiles: readonly string[];
+  instructions: InstructionSource | null;
   /** Paths denied in addition to MANDATORY_DENY_READ, which always applies. */
   extraDenyRead?: readonly string[];
   /**

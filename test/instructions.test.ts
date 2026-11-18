@@ -1,26 +1,49 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { claudeArgs } from "../src/dispatch/claude";
 import { codexArgs, tomlString } from "../src/dispatch/codex";
-import { buildProjectInstructions, MAX_INSTRUCTIONS_BYTES, projectInstructionFiles } from "../src/dispatch/instructions";
+import { buildProjectInstructions, type InstructionSource, MAX_INSTRUCTIONS_BYTES, PROJECT_INSTRUCTION_PATHS } from "../src/dispatch/instructions";
 import { makeSandbox, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
-/** A factory-controlled checkout of the project, outside every agent-writable root. */
-let checkout: string;
+/** A factory-controlled git checkout of the project, outside every agent-writable root. */
+let repo: string;
+/** A git wrapper that logs each call's argv, so tests can see which reads happened. */
+let gitLog: string;
+let tracingGit: string;
+const GIT_ENV = { PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
+const git = (...args: string[]): string => {
+  const r = Bun.spawnSync(["/usr/bin/git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { env: GIT_ENV });
+  if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+  return r.stdout.toString().trim();
+};
+/** Stages everything in the checkout and returns the new commit id. */
+const commit = (): string => {
+  git("add", "-A");
+  git("commit", "-q", "--allow-empty", "-m", "c");
+  return git("rev-parse", "HEAD");
+};
 beforeEach(() => {
   sb = makeSandbox();
-  checkout = join(sb.stateRoot, "checkout");
-  mkdirSync(checkout);
+  repo = join(sb.stateRoot, "checkout");
+  mkdirSync(repo);
+  git("init", "-q");
+  gitLog = join(sb.bin, "git-calls");
+  tracingGit = join(sb.bin, "tracing-git");
+  writeFileSync(tracingGit, `#!/bin/sh\nprintf '%s ' "$@" >> '${gitLog}'; echo >> '${gitLog}'\nexec /usr/bin/git "$@"\n`);
+  chmodSync(tracingGit, 0o755);
 });
 afterEach(() => sb.cleanup());
+
+const source = (baseSha: string, paths: readonly string[] = PROJECT_INSTRUCTION_PATHS): InstructionSource => ({ repo, baseSha, paths });
+const build = (src: InstructionSource, roots: readonly string[] = [sb.worktree]) => buildProjectInstructions(src, "/usr/bin/git", roots);
 
 function spec(harness: RunSpec["harness"], extra: Partial<RunSpec> = {}): RunSpec {
   return {
     harness, worktreePath: sb.worktree, prompt: `dump:${sb.worktree}`, model: "requested", effort: "low",
-    logDir: sb.logDir, runId: crypto.randomUUID(), timeoutMs: 30_000, instructionFiles: [], ...extra,
+    logDir: sb.logDir, runId: crypto.randomUUID(), timeoutMs: 30_000, instructions: null, ...extra,
   };
 }
 const argv = () => readFileSync(join(sb.worktree, "argv0"), "utf8").split("\0").slice(0, -1);
@@ -42,43 +65,96 @@ const codexConfig = (args: string[], key: string): unknown => {
 };
 
 describe("buildProjectInstructions", () => {
-  test("wraps each file once, in order, and returns null when there are none", () => {
-    writeFileSync(join(checkout, "AGENTS.md"), "Use bun.\n");
-    writeFileSync(join(checkout, "CLAUDE.md"), "No dashes.");
-    const text = buildProjectInstructions(projectInstructionFiles(checkout), [sb.worktree])!;
+  test("wraps each file once, in order, and returns null when the commit has none", () => {
+    const empty = commit();
+    expect(build(source(empty))).toBeNull();
+    writeFileSync(join(repo, "AGENTS.md"), "Use bun.\n");
+    writeFileSync(join(repo, "CLAUDE.md"), "No dashes.");
+    const text = build(source(commit()))!;
     expect(text).toContain('<file name="AGENTS.md">\nUse bun.\n</file>\n\n<file name="CLAUDE.md">\nNo dashes.\n</file>');
     expect(text.indexOf("AGENTS.md")).toBeLessThan(text.indexOf("CLAUDE.md"));
-    expect(buildProjectInstructions([], [sb.worktree])).toBeNull();
   });
 
-  test("projectInstructionFiles lists only the files that exist", () => {
-    expect(projectInstructionFiles(checkout)).toEqual([]);
-    writeFileSync(join(checkout, "AGENTS.md"), "a");
-    expect(projectInstructionFiles(checkout)).toEqual([join(checkout, "AGENTS.md")]);
+  test("a path the commit lacks is skipped", () => {
+    writeFileSync(join(repo, "AGENTS.md"), "only agents");
+    const text = build(source(commit()))!;
+    expect(text).toContain('<file name="AGENTS.md">');
+    expect(text).not.toContain("CLAUDE.md");
   });
 
-  test("a CLAUDE.md symlinked to AGENTS.md is included once", () => {
-    writeFileSync(join(checkout, "AGENTS.md"), "once");
-    symlinkSync("AGENTS.md", join(checkout, "CLAUDE.md"));
-    const text = buildProjectInstructions(projectInstructionFiles(checkout), [])!;
+  test("a CLAUDE.md with the same blob as AGENTS.md is included once", () => {
+    writeFileSync(join(repo, "AGENTS.md"), "once");
+    writeFileSync(join(repo, "CLAUDE.md"), "once");
+    const text = build(source(commit()))!;
     expect(text.split("once")).toHaveLength(2);
   });
 
-  test("refuses files an agent can write, even through a symlink", () => {
-    writeFileSync(join(sb.worktree, "AGENTS.md"), "planted");
-    const roots = [realpathSync(sb.worktree)];
-    expect(() => buildProjectInstructions([join(sb.worktree, "AGENTS.md")], roots)).toThrow("agent-writable");
-    symlinkSync(join(sb.worktree, "AGENTS.md"), join(checkout, "AGENTS.md"));
-    expect(() => buildProjectInstructions([join(checkout, "AGENTS.md")], roots)).toThrow("agent-writable");
+  test("a symlinked AGENTS.md pointing at an outside canary is refused, and the canary is never read", () => {
+    const canary = join(sb.home, "canary");
+    writeFileSync(canary, "CANARY-SECRET");
+    symlinkSync(canary, join(repo, "AGENTS.md"));
+    const sha = commit();
+    expect(() => buildProjectInstructions(source(sha), tracingGit, [])).toThrow("is a symlink");
+    expect(readFileSync(gitLog, "utf8")).not.toContain("cat-file");
   });
 
-  test("refuses relative paths, directories, invalid UTF-8, and oversize instructions", () => {
-    expect(() => buildProjectInstructions(["AGENTS.md"], [])).toThrow("absolute");
-    expect(() => buildProjectInstructions([checkout], [])).toThrow("not a regular file");
-    writeFileSync(join(checkout, "bad.md"), Buffer.from([0xff, 0xfe]));
-    expect(() => buildProjectInstructions([join(checkout, "bad.md")], [])).toThrow("UTF-8");
-    writeFileSync(join(checkout, "big.md"), "x".repeat(MAX_INSTRUCTIONS_BYTES + 1));
-    expect(() => buildProjectInstructions([join(checkout, "big.md")], [])).toThrow("exceed");
+  test("an in-repo symlink alias is refused too: only regular files count", () => {
+    writeFileSync(join(repo, "AGENTS.md"), "once");
+    symlinkSync("AGENTS.md", join(repo, "CLAUDE.md"));
+    expect(() => build(source(commit()))).toThrow("CLAUDE.md is a symlink");
+  });
+
+  test("a directory or submodule-like entry is not a regular file", () => {
+    mkdirSync(join(repo, "AGENTS.md"));
+    writeFileSync(join(repo, "AGENTS.md", "x"), "x");
+    expect(() => build(source(commit()))).toThrow("not a regular file");
+  });
+
+  test("working-tree edits, untracked files, and later commits are not seen", () => {
+    writeFileSync(join(repo, "AGENTS.md"), "approved\n");
+    const base = commit();
+    writeFileSync(join(repo, "AGENTS.md"), "edited after the base\n");
+    writeFileSync(join(repo, "CLAUDE.md"), "untracked\n");
+    expect(build(source(base))).toContain("approved\n");
+    expect(build(source(base))).not.toMatch(/edited|untracked/);
+    commit();
+    expect(build(source(base))).not.toMatch(/edited|untracked/);
+  });
+
+  test("a sibling worktree's files and commits are irrelevant", () => {
+    writeFileSync(join(repo, "AGENTS.md"), "approved\n");
+    const base = commit();
+    const sibling = join(sb.stateRoot, "sibling");
+    git("worktree", "add", "-q", "-b", "agent", sibling, base);
+    writeFileSync(join(sibling, "AGENTS.md"), "sibling edit\n");
+    Bun.spawnSync(["/usr/bin/git", "-C", sibling, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qam", "s"], { env: GIT_ENV });
+    expect(build(source(base))).toContain("approved\n");
+    expect(build(source(base))).not.toContain("sibling");
+  });
+
+  test("oversize instructions are refused before any blob is read", () => {
+    writeFileSync(join(repo, "AGENTS.md"), "x".repeat(MAX_INSTRUCTIONS_BYTES / 2));
+    writeFileSync(join(repo, "CLAUDE.md"), "y".repeat(MAX_INSTRUCTIONS_BYTES / 2 + 1));
+    const sha = commit();
+    expect(() => buildProjectInstructions(source(sha), tracingGit, [])).toThrow("exceed");
+    const calls = readFileSync(gitLog, "utf8");
+    expect(calls).toContain("cat-file -s");
+    expect(calls).not.toContain("cat-file blob");
+  });
+
+  test("refuses bad commits, bad paths, invalid UTF-8, and a repo an agent can write", () => {
+    writeFileSync(join(repo, "bad.md"), Buffer.from([0xff, 0xfe]));
+    const sha = commit();
+    expect(() => build(source("HEAD"))).toThrow("full lowercase commit id");
+    expect(() => build(source(sha.slice(0, 12)))).toThrow("full lowercase commit id");
+    expect(() => build(source("0".repeat(40)))).toThrow("is not a commit");
+    expect(() => build(source(git("rev-parse", "HEAD^{tree}")))).toThrow("is not a commit");
+    for (const p of ["../AGENTS.md", "/AGENTS.md", "a//b", "./AGENTS.md", "-p", ":(top)AGENTS.md", "*.md"]) {
+      expect(() => build(source(sha, [p]))).toThrow("plain segments");
+    }
+    expect(() => build(source(sha, ["bad.md"]))).toThrow("UTF-8");
+    expect(() => build(source(sha), [sb.stateRoot])).toThrow("agent-writable");
+    expect(() => build({ repo: "checkout", baseSha: sha, paths: [] })).toThrow("absolute");
   });
 });
 
@@ -113,31 +189,31 @@ describe("harness args", () => {
 
 describe("runAgent with project instructions", () => {
   test("both harnesses receive byte-identical instructions, and the run keeps the exact copy", async () => {
-    writeFileSync(join(checkout, "AGENTS.md"), "The project codeword is PELICAN.\n");
-    writeFileSync(join(checkout, "CLAUDE.md"), 'Quote "this" \\ and keep\nnewlines.\n');
-    const files = projectInstructionFiles(checkout);
-    const expected = buildProjectInstructions(files, [])!;
+    writeFileSync(join(repo, "AGENTS.md"), "The project codeword is PELICAN.\n");
+    writeFileSync(join(repo, "CLAUDE.md"), 'Quote "this" \\ and keep\nnewlines.\n');
+    const instructions = source(commit());
+    const expected = build(instructions)!;
 
-    const c = await runAgent(spec("claude", { instructionFiles: files }), sb.config);
+    const c = await runAgent(spec("claude", { instructions }), sb.config);
     const claudeFile = after(argv(), "--append-system-prompt-file")!;
     expect(claudeFile).toBe(c.instructionsPath!);
     expect(readFileSync(claudeFile, "utf8")).toBe(expected);
 
-    const x = await runAgent(spec("codex", { instructionFiles: files }), sb.config);
+    const x = await runAgent(spec("codex", { instructions }), sb.config);
     expect(codexConfig(argv(), "developer_instructions")).toBe(expected);
     expect(readFileSync(x.instructionsPath!, "utf8")).toBe(expected);
   });
 
-  test("no instruction files: no instructions passed and no instructions file", async () => {
+  test("no instructions: none passed and no instructions file", async () => {
     const c = await runAgent(spec("claude"), sb.config);
     expect(argv()).not.toContain("--append-system-prompt-file");
     expect(c.instructionsPath).toBeNull();
   });
 
-  test("instruction files from the worktree are refused before anything starts", async () => {
-    writeFileSync(join(sb.worktree, "AGENTS.md"), "planted by an earlier agent");
+  test("a refused instruction source stops the run before anything starts", async () => {
+    symlinkSync(join(sb.home, "canary"), join(repo, "AGENTS.md"));
     const marker = join(sb.worktree, "started");
-    await expect(runAgent(spec("codex", { prompt: `started:${marker}`, instructionFiles: [join(sb.worktree, "AGENTS.md")] }), sb.config)).rejects.toThrow("agent-writable");
+    await expect(runAgent(spec("codex", { prompt: `started:${marker}`, instructions: source(commit()) }), sb.config)).rejects.toThrow("symlink");
     expect(await Bun.file(marker).exists()).toBe(false);
   });
 });
