@@ -13,6 +13,11 @@ export interface DispatchConfig {
   executables: Record<Harness | "ps", string>;
   /** Canonical factory state dir; run logs must live under it. */
   stateRoot: string;
+  /**
+   * Each harness's dedicated home (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`), private dirs under the state root that the owner
+   * logged in to once, so no owner instructions, hooks, skills, plugins, or config reach factory runs.
+   */
+  harnessHomes: Record<Harness, string>;
   /** Claude managed-settings locations checked before every Claude dispatch. */
   managedSettingsPaths: readonly string[];
   /** Managed-settings files the owner accepted, as canonical path to sha256 of contents. */
@@ -72,9 +77,12 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   };
   const stateRoot = canonical(opts.stateRoot ?? join(HOME, ".software-factory"));
   for (const root of untrusted) if (isUnder(stateRoot, root)) throw new Error(`state root ${stateRoot} is under agent-writable ${root}`);
+  const homes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
+  for (const home of Object.values(homes)) assertPrivateDir(home, stateRoot);
   return {
     executables: { claude: find("claude"), codex: find("codex"), ps: assertTrustedExecutable("/bin/ps", untrusted) },
     stateRoot,
+    harnessHomes: homes,
     managedSettingsPaths: CLAUDE_MANAGED_SETTINGS_PATHS,
     acceptedManagedSettings: opts.acceptedManagedSettings ?? {},
   };
@@ -88,6 +96,18 @@ export function assertTrustedExecutable(path: string, untrustedRoots: readonly s
   if (!st.isFile() || (st.mode & 0o111) === 0) throw new Error(`not an executable file: ${real}`);
   if ((st.mode & 0o022) !== 0) throw new Error(`executable is group or world writable: ${real}`);
   if (st.uid !== 0 && st.uid !== process.getuid!()) throw new Error(`executable owned by uid ${st.uid}: ${real}`);
+  return real;
+}
+
+/** An existing directory, canonical at `path`, under `root`, owned by the user, with no group or world access. */
+export function assertPrivateDir(path: string, root: string): string {
+  const st = lstatSync(path);
+  if (!st.isDirectory()) throw new Error(`not a directory (or a symlink): ${path}`);
+  const real = realpathSync(path);
+  if (real !== path) throw new Error(`${path} is not canonical (resolves to ${real})`);
+  if (!isUnder(real, root)) throw new Error(`${real} is not under ${root}`);
+  if (st.uid !== process.getuid!()) throw new Error(`${real} is owned by uid ${st.uid}`);
+  if ((st.mode & 0o077) !== 0) throw new Error(`${real} is accessible to group or others (mode ${(st.mode & 0o777).toString(8)})`);
   return real;
 }
 

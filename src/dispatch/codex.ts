@@ -6,19 +6,52 @@ import type { CodexUsage } from "./types";
 const PROFILE = "factory";
 
 /**
+ * Read access carved back out of a denied tree, the more specific entry winning in Codex's profile.
+ * Codex's sandbox helper re-execs the Codex binary, which is installed under ~/.codex/packages;
+ * the packages dir holds only installed releases, no owner data.
+ */
+export const CODEX_READ_EXCEPTIONS: readonly string[] = ["~/.codex/packages"];
+
+/**
  * `-c` overrides for a workspace-write sandbox with a read deny-list and no network.
  * Do not add `-s workspace-write`: it silently replaces `default_permissions`, dropping the deny-list.
  */
 export function codexConfigArgs(extraDenyRead: readonly string[] = []): string[] {
+  const denied = effectiveDenyRead(extraDenyRead);
+  for (const p of denied) {
+    // A duplicate key is a TOML error, and the intent (deny or read) would be ambiguous anyway.
+    if (CODEX_READ_EXCEPTIONS.includes(p)) throw new Error(`cannot deny ${p}: Codex needs it readable to run`);
+  }
   // JSON string literals are valid TOML basic strings.
-  const filesystem = effectiveDenyRead(extraDenyRead).map((p) => `${JSON.stringify(p)}="none"`).join(",");
+  const filesystem = [
+    ...denied.map((p) => `${JSON.stringify(p)}="none"`),
+    ...CODEX_READ_EXCEPTIONS.map((p) => `${JSON.stringify(p)}="read"`),
+  ].join(",");
   return [
     "-c", `permissions={${PROFILE}={extends=":workspace", filesystem={${filesystem}}}}`,
     "-c", `default_permissions="${PROFILE}"`,
     "-c", `shell_environment_policy.inherit="core"`,
     "-c", "allow_login_shell=false",
+    ...CODEX_HERMETIC_CONFIG.flatMap((kv) => ["-c", kv]),
   ];
 }
+
+/**
+ * What a dedicated CODEX_HOME does not remove on its own, verified per flag against the session rollout.
+ * Without these a run still gets the owner's `~/.agents/skills`, the account's remote plugins and apps,
+ * and the hosted `web__run` tool, which the sandbox's network block does not cover.
+ */
+export const CODEX_HERMETIC_CONFIG: readonly string[] = [
+  `web_search="disabled"`,
+  // No skill listing at all: the owner's ~/.agents/skills, plugin skills, and the bundled system skills.
+  "skills.include_instructions=false",
+  "skills.bundled.enabled=false",
+  "features.plugins=false",
+  "features.remote_plugin=false",
+  "features.apps=false",
+  "features.hooks=false",
+  "features.image_generation=false",
+];
 
 export interface CodexCommandInput {
   prompt: string;

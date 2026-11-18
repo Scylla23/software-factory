@@ -3,14 +3,13 @@
  * Entries are `~/`-relative or absolute, and may use `*` globs; both harnesses expand `~` themselves.
  */
 export const MANDATORY_DENY_READ: readonly string[] = [
-  // Factory state and credential stores.
+  // Factory state, including the harness homes with their auth and the factory's own transcripts.
   "~/.software-factory",
   "~/.factory", // another tool's state dir on this machine
+  // Credential stores.
   "~/.ssh",
   "~/.config/gh",
   "~/Library/Keychains",
-  "~/.codex/auth.json",
-  "~/.claude/.credentials.json",
   "~/.aws",
   "~/.config/gcloud",
   "~/.docker/config.json",
@@ -18,19 +17,12 @@ export const MANDATORY_DENY_READ: readonly string[] = [
   "~/.netrc",
   "~/.npmrc",
   "~/.git-credentials",
-  // The owner's session history and harness state, which hold other projects' conversations.
-  // Never all of ~/.codex: Codex re-execs its own binary from ~/.codex/packages inside the sandbox.
-  "~/.claude/projects",
-  "~/.claude/history.jsonl",
-  "~/.claude/shell-snapshots",
-  "~/.claude/transcripts",
-  "~/.claude/file-history",
-  "~/.claude/paste-cache",
-  "~/.codex/sessions",
-  "~/.codex/archived_sessions",
-  "~/.codex/history.jsonl",
-  "~/.codex/*.sqlite*",
-  "~/.codex/log",
+  // The owner's own harness homes: auth, history of other projects, instructions, settings, skills, plugins.
+  // Factory runs use dedicated homes, so neither CLI needs these; Codex gets ~/.codex/packages back (codex.ts).
+  "~/.claude",
+  "~/.claude.json",
+  "~/.codex",
+  "~/.agents", // the owner's cross-harness skills
   "~/Library/Application Support/orca",
 ];
 
@@ -53,7 +45,15 @@ function assertDenyPath(path: string): void {
  */
 const ENV_ALLOWLIST = ["HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR", "LANG", "TERM"] as const;
 
-export function agentEnv(parent: Record<string, string | undefined>): Record<string, string> {
+/** The variable that points each harness at its dedicated home. */
+export const HARNESS_HOME_VAR = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } as const;
+
+/**
+ * The agent's environment: the allowlisted parent variables plus the harness home, which always comes from the
+ * factory's config and never from the parent.
+ */
+export function agentEnv(parent: Record<string, string | undefined>, harness: keyof typeof HARNESS_HOME_VAR, harnessHome: string): Record<string, string> {
+  if (!harnessHome.startsWith("/")) throw new Error(`agentEnv: harness home must be absolute: ${harnessHome}`);
   const env: Record<string, string> = {};
   for (const name of ENV_ALLOWLIST) {
     const value = parent[name];
@@ -62,5 +62,6 @@ export function agentEnv(parent: Record<string, string | undefined>): Record<str
   if (!env.HOME) throw new Error("agentEnv: HOME is required for CLI auth");
   // A relative or empty PATH entry resolves against the agent's cwd, the agent-writable worktree.
   if (env.PATH !== undefined) env.PATH = env.PATH.split(":").filter((d) => d.startsWith("/")).join(":");
+  env[HARNESS_HOME_VAR[harness]] = harnessHome;
   return env;
 }

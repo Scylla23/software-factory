@@ -54,6 +54,8 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--restricted",
     "--tools", CLAUDE_BUILDER_TOOLS.join(","),
     "--strict-mcp-config",
+    // No skills or slash commands at all; the dedicated CLAUDE_CONFIG_DIR already drops the owner's, this drops the built-ins.
+    "--disable-slash-commands",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
     "--settings", JSON.stringify(claudeSettings(input.extraDenyRead)),
