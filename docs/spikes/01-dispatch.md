@@ -7,12 +7,13 @@ Models: Claude `haiku` (resolved to `claude-haiku-5-5`), Codex `gpt-6-luna`, eff
 Home paths are shown as `~` and spike worktree names are shortened.
 A repair round after review changed the deny-list, process handling, executable resolution, log location, and parsing; [section 7](#7-repair-round) has what changed and its evidence, and sections 1 to 6 are updated where behavior changed.
 A second round implemented the owner's decisions on dedicated harness homes, the monitor tab, and explicit project instructions; [section 8](#8-decisions-implemented) has them and their evidence.
+A third round (repair round 2) hardened instructions, the deny-list, PATH, the monitor, and cleanup; [section 9](#9-repair-round-2) has it, and earlier sections are updated where behavior changed.
 
 ## Verdict
 
 - Dispatch path: the factory spawns `claude -p` and `codex exec --json` directly (`node:child_process` `spawn` as a new process group) inside the Orca-created worktree, implemented in `src/dispatch`.
 - A directly launched session is not visible live in Orca: it is absent from `orca agent list` and from the worktree's agents in `orca worktree ps`, so it cannot be attached.
-- After the fact, `orca search` indexes both harnesses' direct sessions and returns a working resume command, so the owner can inspect and continue a session.
+- After the fact, `orca search` indexed both harnesses' direct sessions with a working resume command while they lived in the owner's homes, but it does not index the dedicated factory homes (section 9), so the owner resumes a factory session with the commands in section 5.
 - The Orca-terminal fallback works (proven below), but it does not make the run an Orca agent either: `orca agent list` still does not list it, and it only adds a raw-output tab.
 - Because the fallback buys no attachability and costs robustness and security, the recommendation is direct spawn plus an optional read-only Orca monitor tab that tails the run log, and intervention by cancel plus resume.
 - This contradicts the design's fallback rule; see [Proposed design changes](#proposed-design-changes).
@@ -99,7 +100,7 @@ Arguments built by `codexArgs` in `src/dispatch/codex.ts`:
 ```
 CODEX_HOME=~/.software-factory/codex-home \
 codex exec --json --ignore-user-config --ignore-rules -m <model> -c model_reasoning_effort="<effort>"
-  -c 'permissions={factory={extends=":workspace", filesystem={"~/.software-factory"="none",...,"~/.codex/packages"="read"}}}'
+  -c 'permissions={factory={extends=":workspace", filesystem={"<home>/.software-factory"="none",...,"<codex bin dir>"="read"}}}'
   -c 'default_permissions="factory"'
   -c 'shell_environment_policy.inherit="core"'
   -c allow_login_shell=false
@@ -177,6 +178,7 @@ A process is tracked as (pid, `ps` start time) and re-verified against a fresh s
 A group member counts as ours only while the root is unreaped or if it started no later than the root's exit, because a pgid is only reused after the group empties.
 Darwin's `killpg` returns EPERM while the group holds a zombie; that is ignored for the group signal, because every member is also signalled individually.
 Residual gap: macOS has no cgroups, so a tool that calls `setsid()` and whose parent exits before the first snapshot ends up in its own session under launchd and is not found.
+Cleanup verification (section 9) has the same limit: "verified" never covers such a detached descendant (issue #3).
 `runAgent` calls it on `AbortSignal` abort (outcome `cancelled`) and on `timeoutMs` (outcome `timed_out`).
 Evidence through the module (spike step 4):
 
@@ -221,6 +223,16 @@ $ claude -p --resume 62e9bcf4-... --model haiku --restricted --tools "" "In one 
 ```
 
 That session was the deliberate unstripped-env control run, which is why it saw a test canary value; the stripped runs in section 6 did not.
+
+Factory sessions now live in the dedicated homes (section 8), so the owner resumes them with the home set explicitly:
+
+```
+CLAUDE_CONFIG_DIR=~/.software-factory/claude-home claude --resume <runId>
+CODEX_HOME=~/.software-factory/codex-home codex resume <threadId>
+```
+
+Both were checked in repair round 2 with their non-interactive forms, from a cwd other than the session's and after its worktree was removed: `claude -p --resume <id> --tools "" --no-session-persistence` and `codex exec resume <id>` each answered from the earlier turn (section 9).
+`orca search` does not find these sessions, so it no longer prints the resume command for factory runs.
 
 Fallback, the same CLI in an Orca terminal (`orca terminal create --worktree path:<spike> --title factory-spike-claude --command "<cmd>"`), where `<cmd>` is:
 
@@ -328,6 +340,7 @@ Inside Claude's sandbox the env gains proxy variables (`HTTP_PROXY`, `ALL_PROXY`
 
 The deny-list is `MANDATORY_DENY_READ` in `src/dispatch/policy.ts`, applied to every run of both harnesses.
 `RunSpec.extraDenyRead` can only add to it; `effectiveDenyRead` merges, validates (absolute or `~/` only), and dedupes.
+Since repair round 2 the factory expands `~` itself from the account home in the user database (`getpwuid`, never `$HOME`), passes absolute paths to both harnesses, adds the canonical path of any entry that is a symlink, and always denies the canonical configured state root and both harness homes, wherever they are.
 
 - Factory state, which now includes both harness homes with their auth and the factory's own transcripts: `~/.software-factory`, and `~/.factory` (another tool's state dir on this machine).
 - Credential stores: `~/.ssh`, `~/.config/gh`, `~/Library/Keychains`, `~/.aws`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.git-credentials`.
@@ -335,7 +348,7 @@ The deny-list is `MANDATORY_DENY_READ` in `src/dispatch/policy.ts`, applied to e
 
 The repair round denied only the history inside `~/.claude` and `~/.codex`, because the CLIs used those homes.
 With dedicated homes neither CLI needs them, so the round in section 8 denies them whole, which also covers the owner's settings, instructions, skills, and plugins; the owner's history there is still denied.
-Codex gets `~/.codex/packages` back as read-only (`CODEX_READ_EXCEPTIONS` in `codex.ts`), because its sandbox helper re-execs the Codex binary installed there; the more specific entry wins, and the dir holds only installed releases.
+Codex gets one directory back as read-only, because its sandbox helper re-execs the Codex binary: since repair round 2 it is only the directory of the verified executable's canonical path (`codexReadable` in `codex.ts`), on this machine `~/.codex/packages/standalone/releases/0.169.0-aarch64-apple-darwin/bin`, and only when a deny entry covers it.
 Without the carve-out, denying `~/.codex` broke Codex in the original spike:
 
 ```
@@ -358,9 +371,10 @@ Fixes after review, with how they were verified.
 `loadDispatchConfig` resolves `claude` and `codex` once at startup from `~/.local/bin`, `/opt/homebrew/bin`, then `/usr/local/bin` (never `$PATH`), and `ps` as `/bin/ps`.
 Each is canonicalized and must be a regular executable file owned by root or the user, not group or world writable, and outside every temp root and agent write root.
 On this machine they resolve to `~/.local/share/claude/versions/2.1.325`, `~/.codex/packages/standalone/releases/0.169.0-aarch64-apple-darwin/bin/codex`, and `/bin/ps`.
+Repair round 2 adds `git` as `/usr/bin/git`, checked the same way, for reading project instructions.
 Because the canonical path names a version, a CLI auto-update that deletes the old version makes the next spawn fail with a diagnostic until the config is reloaded.
 `runAgent` refuses an executable whose canonical path is inside the worktree.
-The agent's `PATH` keeps only absolute entries.
+Since repair round 2 the agent's `PATH` is fixed: the verified harness bin dirs (each canonical, a directory owned by root or the user, not group or world writable, outside the untrusted roots), then `/usr/bin:/bin:/usr/sbin:/sbin`; nothing comes from the inherited `PATH`.
 
 ### Managed settings
 
@@ -372,6 +386,7 @@ On this machine none exist: there is no `/Library/Application Support/ClaudeCode
 
 The log dir is canonicalized and must be under the state root (`~/.software-factory` by default) and outside the worktree, temp roots, and agent write roots.
 Log files are opened with `O_CREAT | O_EXCL | O_NOFOLLOW` and mode 600, so a reused attempt id or a planted symlink fails before anything starts.
+Since repair round 2 every check runs before the attempt's files are created (`planRunFiles`), and creation is all or nothing (`reserveRunFiles`), so a rejected run leaves no descriptor open and its attempt id unused.
 Logs are always kept.
 
 ### Parsing
@@ -447,7 +462,7 @@ The owner's `~/.claude/settings.json` defines 16 hook events; the Claude streams
 Codex no longer prefixes commands with `rtk`: the owner-check run executed `/bin/zsh -c 'echo factory-hi'`, and its rollout has no mention of `rtk`.
 Asked for every skill, plugin, and slash command it knows, Codex answered NONE for all three.
 
-Codex still resolves to `~/.codex/packages/standalone/releases/0.169.0-aarch64-apple-darwin/bin/codex` and runs with the new `CODEX_HOME`; the binary is self-contained, and its sandbox helper re-execs it through the `~/.codex/packages` carve-out.
+Codex still resolves to `~/.codex/packages/standalone/releases/0.169.0-aarch64-apple-darwin/bin/codex` and runs with the new `CODEX_HOME`; the binary is self-contained, and its sandbox helper re-execs it through the read carve-out for its own bin dir.
 `orca` resolves to `/Applications/Orca.app/Contents/Resources/bin/orca` through `/usr/local/bin/orca`.
 
 The canary probe now also targets the factory homes (`codex-home/auth.json`, `claude-home/.claude.json`), `~/.software-factory/github-app.json`, the owner's `~/.codex/config.toml`, `~/.codex/AGENTS.md`, `~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.claude.json`, and `~/.agents/.skill-lock.json`, and its indirect search covers all of `~/.claude` and `~/.codex`.
@@ -456,9 +471,10 @@ Cancelling each during a tool `sleep 313` left no `sleep`, with `survivors: []` 
 
 ### Monitor tab
 
-`RunSpec.monitor: { agent }` opens an Orca terminal in the run's worktree, titled `factory: <agent> <runId>`, that runs `tail -n +1 -f <stdout log>`, and closes it when the run ends.
+`RunSpec.monitor: { agent }` opens an Orca terminal in the run's worktree, titled `factory: <agent> <runId>`, that tails the stdout log, and closes it when the run ends.
+Since repair round 2 the typed command is `exec /bin/sh -c '<viewer>' factory-monitor <title> <log>`, where the viewer sets the title and runs `exec /usr/bin/tail -n +1 -f -- "$2" </dev/null`, so the owner's shell is replaced and Ctrl-C ends the tab instead of leaving a prompt in the worktree.
 It opens in the background after spawn, every `orca` call is bounded (15 seconds), and any failure only adds a `monitor:` diagnostic; a failing, missing, or hung `orca` leaves the outcome, usage, and result unchanged (tests).
-The agent label must match `[A-Za-z0-9._-]{1,64}`, and paths are single-quoted, because Orca types the command into the owner's interactive login shell.
+The agent label must match `[A-Za-z0-9._-]{1,64}`, the title must be plain words (checked again by `monitorCommand` and `openRunMonitor`), and the title and path are single-quoted, because Orca types the command into the owner's interactive login shell.
 `orca` runs by its trusted path with a fixed minimal env (`HOME`, `USER`, `LOGNAME`, `PATH=/usr/bin:/bin`, `LANG`), which is enough for it to reach the runtime.
 
 `--title` only sets Orca's `paneTitle`; the tab's live `title` follows the shell, and the owner's zsh set it to `tail`.
@@ -472,9 +488,9 @@ after:  [["..1795027397212", null]]
 
 ### Project instructions
 
-`RunSpec.instructionFiles` takes the project's `AGENTS.md`, and `CLAUDE.md` if present (`projectInstructionFiles(checkout)` lists them).
-`runAgent` reads them before spawn and refuses any that resolve into the worktree or a temp root, because a later run in the same worktree would otherwise take its instructions from what an earlier agent wrote.
-They are combined, once per real file, into one `<project_instructions>` text of at most 256 KiB, which is kept as `<logDir>/<runId>.instructions.md`.
+Since repair round 2, `RunSpec.instructions` is `{ repo, baseSha, paths }`: a factory-controlled checkout outside every agent-writable root, the full id of the approved base commit, and repo-relative paths (`PROJECT_INSTRUCTION_PATHS`, `AGENTS.md` then `CLAUDE.md`), or null for none.
+`runAgent` reads only tracked blobs at that commit, never a working tree, so nothing an agent wrote to disk in this worktree or a sibling can reach the instructions (section 9 has the details).
+They are combined, once per blob, into one `<project_instructions>` text of at most 256 KiB, which is kept as `<logDir>/<runId>.instructions.md`.
 
 - Claude gets that file with `--append-system-prompt-file`; `--restricted` already keeps Claude from loading the worktree's `CLAUDE.md` or `AGENTS.md` on its own.
 - Codex gets the same text as `-c developer_instructions="<text>"`, encoded as a TOML basic string, and `-c project_doc_max_bytes=0` always turns off its own `AGENTS.md` discovery, so the worktree copy can never load next to the explicit one or diverge from it.
@@ -490,6 +506,65 @@ CORMORANT
 
 Claude made no tool calls, and the Codex rollout contains PELICAN and CORMORANT but not OSPREY.
 Bun 1.2.10's `Bun.TOML.parse` decodes `\t` as a form feed, so tests check the TOML encoding against the basic-string grammar instead.
+
+## 9. Repair round 2
+
+The owner-approved fixed scope, one commit per item, each with a test that fails when its fix is reverted.
+
+### Instructions from git blobs (A)
+
+`buildProjectInstructions(source, gitPath, agentWritableRoots)` reads nothing from disk except the repo's object database:
+
+1. The repo is canonicalized and refused if it is under an agent-writable root.
+2. `baseSha` must be a full lowercase commit id, and `git rev-parse --verify <sha>^{commit}` must return it unchanged.
+3. Each path must have plain segments only (no `..`, leading `/` or `-`, or pathspec magic), and `git ls-tree -z --full-tree <sha> -- <path>` gives its entry; a path the commit lacks is skipped.
+4. A symlink entry (mode 120000) or anything other than a regular blob (100644 or 100755) refuses the run.
+5. Entries with the same blob id are included once.
+6. `git cat-file -s <blob>` sizes are summed against the 256 KiB cap before any blob is read, then `git cat-file blob <blob>` reads each, and its length must match.
+
+git runs from `/usr/bin/git` with `--no-replace-objects`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_LITERAL_PATHSPECS=1`, no prompts, and a 10 second bound.
+Tests: a symlinked `AGENTS.md` pointing at an outside canary is refused, and a git wrapper shows no `cat-file` ran; a working-tree edit, an untracked file, and a later commit are not seen; a sibling worktree's edit and commit are not seen; oversize instructions are refused after `cat-file -s` with no `cat-file blob`.
+An in-repo symlink alias (`CLAUDE.md -> AGENTS.md`) is refused too, as the scope says; a project that uses one must commit a copy, which the blob-id dedupe then includes once.
+
+### Deny-list and state root (B)
+
+Both harness policies deny the canonical configured state root and both harness homes, wherever the state root is, besides the `~` spellings, and the canonical path of any deny entry that is a symlink.
+Owner paths expand `~` from the account home in the user database, never `$HOME`, and the agent's `HOME` is that account home.
+`loadDispatchConfig` and `runAgent` require the state root and log dir to be owned by the user with no group or world writable directory from them up to the home, and refuse a state root that overlaps any agent write root or a Codex read carve-out.
+Tests use an alternate state root and an alternate `HOME` with harmless files.
+
+### The rest
+
+- C: `planRunFiles` checks everything, including that no file for the attempt exists, before `reserveRunFiles` creates the files all or nothing; a test plants a directory at the instructions path and sees no descriptor leak, no log files, and a successful retry with the same id.
+- D: the agent's `PATH` is fixed (section 7); a test puts an absolute worktree dir in the parent `PATH` and checks it never reaches the agent.
+- E: the monitor command (section 8); tests type it into an interactive `/bin/sh`, see `/usr/bin/tail` with stdin `/dev/null`, and see that Ctrl-C never reaches a queued owner-shell command.
+- F: the Codex carve-out is the verified binary's own directory (section 6).
+- G: `orcaJson` rejects a nonzero exit even with an ok envelope, and its errors say whether the command may have taken effect; after a create that timed out or answered oddly, closing the monitor lists the worktree's terminals and closes every tab whose title or pane title carries the attempt id, and only those.
+- H: every `ps` call is bounded (5 seconds, then SIGKILL), and `superviseRun` races the root's exit against termination finishing, so a root that never exits returns with null exit status instead of hanging dispatch.
+- I: parser diagnostics keep the first 20 plus a count of the rest.
+- J: any Claude managed-settings source refuses dispatch (section 7).
+- K: `RunResult.cleanupVerified` is true only when the root exited and termination left no survivor and hit no error, or a root that exited by itself left no live member of its group; otherwise `quarantineWorktree` is set and a `cleanup unverified:` diagnostic says why.
+  A descendant that detached with `setsid()` before it was seen is outside what can be verified.
+
+### Verification
+
+Real runs through `runAgent`, `haiku` and `gpt-6-luna` at effort `low`, each in a fresh Orca worktree removed afterwards, with the monitor tab on for the probe:
+
+```
+claude  probe: 23 DENIED, INDIRECT-HIDDEN, ENV-HIDDEN, NET-BLOCKED, RESULT PASS   cleanupVerified true, diagnostics []
+codex   probe: 23 DENIED, INDIRECT-HIDDEN, ENV-HIDDEN, NET-BLOCKED, RESULT PASS   cleanupVerified true, diagnostics []
+```
+
+Codeword test with instructions from a scratch repo: the base commit had PELICAN in `AGENTS.md` and CORMORANT in `CLAUDE.md`, the working tree was then edited to ALBATROSS, and the worktree had OSPREY and HERON.
+Both harnesses answered exactly PELICAN and CORMORANT; the Codex rollout has neither OSPREY nor ALBATROSS.
+
+The monitor tab was listed during each run with the factory title as both `title` and `paneTitle`.
+`orca terminal close` returns before Orca drops the tab: right after close the tab was still listed with `paneTitle` null, and 3 seconds later it was gone.
+
+`orca search` does not index the dedicated homes.
+`orca search --index-status` lists indexed sessions per agent but no setting for extra roots, and searches for this round's codeword prompt returned only older sessions under `~/.claude/projects` and `~/.codex/sessions`, never the factory sessions under `~/.software-factory/claude-home` or `codex-home`.
+The resume commands in section 5 do work: `claude -p --resume <runId> --tools "" --no-session-persistence` with `CLAUDE_CONFIG_DIR` set, and `codex exec resume <threadId>` with `CODEX_HOME` set, both run from a different cwd after the worktree was removed, answered PELICAN and CORMORANT from the earlier turn.
+The Codex resume appended that turn to its test session.
 
 ## Proposed design changes
 
@@ -527,8 +602,8 @@ These contradict or refine [design.md](../design.md); 1, 3, and 4 are now decide
 - `src/dispatch/claude.ts` and `src/dispatch/codex.ts`: the proven flags and the parsers.
 - `src/dispatch/jsonl.ts`: the bounded streaming JSONL reader.
 - `src/dispatch/policy.ts`: deny-list, env allowlist, and the harness home variable.
-- `src/dispatch/instructions.ts`: reading and combining the project's instruction files.
-- `src/dispatch/process.ts`: process-group spawn and termination.
+- `src/dispatch/instructions.ts`: reading the project's instruction files from git blobs at the base commit and combining them.
+- `src/dispatch/process.ts`: process-group spawn, supervision, termination, and cleanup verification.
 - `src/orca/cli.ts`: bounded `orca` calls with a fixed minimal env.
 - `src/orca/worktree.ts`: worktree create and remove.
 - `src/orca/monitor.ts`: the optional read-only monitor tab.
@@ -537,12 +612,12 @@ These contradict or refine [design.md](../design.md); 1, 3, and 4 are now decide
 
 ## Tests
 
-`bun test` runs 99 tests in `test/`.
+`bun test` runs 135 tests in `test/`.
 Parser tests use fixtures captured from the spike runs in `test/fixtures` (Claude stream, Codex JSONL, and a Codex session file trimmed to its metadata, turn context, and token records), with home paths and personal skill and plugin lists scrubbed and account ids replaced.
 `test/run.test.ts` drives `runAgent` and `terminateTree` against a fake CLI (`test/helpers.ts`) whose behavior is chosen by its last argument; the fake is passed through `DispatchConfig.executables`, never `PATH`.
 `test/config.test.ts` covers executable trust, harness home checks, managed settings, and log creation; `test/policy.test.ts` covers the deny-list merge for both harnesses, the Codex carve-out and hermetic flags, and the env allowlist.
 `test/monitor.test.ts` drives the monitor against a fake `orca`, including a failing, missing, and hung one; `test/instructions.test.ts` covers reading, refusing, and passing project instructions identically to both harnesses.
-Each repair-round fix, and the main fixes of section 8, was checked by reverting it and seeing its test fail.
+Each repair-round fix, the main fixes of section 8, and every repair round 2 fix was checked by reverting it and seeing its test fail.
 Test state lives under `test/.state` (ignored), because log dirs must not be under a temp root.
 
 ## Tooling note
