@@ -1,4 +1,4 @@
-import { isRecord, str } from "../dispatch/json";
+import { isRecord, str } from "../dispatch/jsonl";
 
 export interface OrcaWorktree {
   /** Orca's two-part id, `<repoId>::<path>`. */

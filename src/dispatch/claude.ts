@@ -1,5 +1,5 @@
-import { isRecord, jsonLines, str } from "./json";
-import { assertDenyPath } from "./policy";
+import { describeInvalid, isRecord, type JsonlItem, str } from "./jsonl";
+import { effectiveDenyRead } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
 
 /** Built-in tools a builder may use; nothing that reaches the network. */
@@ -7,10 +7,11 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
 
 /**
  * Settings passed with `--settings`.
- * `--restricted` ignores user, project, and local settings, so this is the whole policy.
+ * `--restricted` ignores user, project, and local settings, so this plus managed settings is the whole policy;
+ * runAgent refuses to dispatch when unaccepted managed settings exist (see config.ts).
  */
-export function claudeSettings(denyRead: readonly string[]): object {
-  for (const p of denyRead) assertDenyPath(p);
+export function claudeSettings(extraDenyRead: readonly string[] = []): object {
+  const denyRead = effectiveDenyRead(extraDenyRead);
   return {
     permissions: {
       allow: [...CLAUDE_BUILDER_TOOLS],
@@ -23,7 +24,7 @@ export function claudeSettings(denyRead: readonly string[]): object {
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
       network: { allowedDomains: [] },
-      filesystem: { denyRead: [...denyRead] },
+      filesystem: { denyRead },
     },
   };
 }
@@ -38,12 +39,12 @@ export interface ClaudeCommandInput {
   model: string;
   effort: string;
   sessionId: string;
-  denyRead: readonly string[];
+  extraDenyRead?: readonly string[];
 }
 
-export function claudeCommand(input: ClaudeCommandInput): string[] {
+/** Arguments after the executable, which the caller resolves (config.ts). */
+export function claudeArgs(input: ClaudeCommandInput): string[] {
   return [
-    "claude",
     "-p",
     "--output-format", "stream-json",
     "--verbose",
@@ -55,7 +56,7 @@ export function claudeCommand(input: ClaudeCommandInput): string[] {
     "--strict-mcp-config",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
-    "--settings", JSON.stringify(claudeSettings(input.denyRead)),
+    "--settings", JSON.stringify(claudeSettings(input.extraDenyRead)),
     "--",
     input.prompt,
   ];
@@ -65,27 +66,46 @@ export interface ClaudeStreamSummary {
   sessionId: string | null;
   /** Main-loop model from the `system/init` event. */
   observedModel: string | null;
-  /** True only when a `result` event reports success. */
+  /** True only when exactly one `result` event reports success. */
   succeeded: boolean;
   resultText: string | null;
+  /** Null when absent, malformed, or ambiguous; never zero-filled. */
   usage: ClaudeUsage | null;
+  diagnostics: string[];
 }
 
-/** Parses `--output-format stream-json` output; tolerates a truncated stream from a killed run. */
-export function parseClaudeStream(stdout: string): ClaudeStreamSummary {
-  const summary: ClaudeStreamSummary = { sessionId: null, observedModel: null, succeeded: false, resultText: null, usage: null };
-  for (const event of jsonLines(stdout)) {
+/**
+ * Parses `--output-format stream-json` output.
+ * The `result` event carries the run's whole accounting, so a lost interior line does not make usage incomplete,
+ * but a second `result` event does, because it is unclear whether its totals are cumulative.
+ */
+export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promise<ClaudeStreamSummary> {
+  const s: ClaudeStreamSummary = { sessionId: null, observedModel: null, succeeded: false, resultText: null, usage: null, diagnostics: [] };
+  let results = 0;
+  for await (const item of items) {
+    if (item.kind === "invalid") {
+      s.diagnostics.push(describeInvalid(item));
+      continue;
+    }
+    const event = item.value;
     if (event.type === "system" && event.subtype === "init") {
-      summary.sessionId = str(event.session_id) ?? summary.sessionId;
-      summary.observedModel = str(event.model);
+      s.sessionId = str(event.session_id) ?? s.sessionId;
+      s.observedModel = str(event.model);
     } else if (event.type === "result") {
-      summary.sessionId = str(event.session_id) ?? summary.sessionId;
-      summary.succeeded = event.subtype === "success" && event.is_error === false;
-      summary.resultText = str(event.result);
-      summary.usage = claudeUsage(event);
+      results++;
+      s.sessionId = str(event.session_id) ?? s.sessionId;
+      s.succeeded = event.subtype === "success" && event.is_error === false;
+      s.resultText = str(event.result);
+      s.usage = claudeUsage(event);
+      if (!s.usage) s.diagnostics.push(`line ${item.line}: result event has malformed usage`);
     }
   }
-  return summary;
+  if (results > 1) {
+    s.diagnostics.push(`${results} result events; accounting is ambiguous`);
+    s.succeeded = false;
+    s.usage = null;
+  }
+  return s;
 }
 
 function claudeUsage(result: Record<string, unknown>): ClaudeUsage | null {

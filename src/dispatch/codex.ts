@@ -1,6 +1,6 @@
 import { Glob } from "bun";
-import { isRecord, jsonLines, str } from "./json";
-import { assertDenyPath } from "./policy";
+import { describeInvalid, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
+import { effectiveDenyRead } from "./policy";
 import type { CodexUsage } from "./types";
 
 const PROFILE = "factory";
@@ -9,10 +9,9 @@ const PROFILE = "factory";
  * `-c` overrides for a workspace-write sandbox with a read deny-list and no network.
  * Do not add `-s workspace-write`: it silently replaces `default_permissions`, dropping the deny-list.
  */
-export function codexConfigArgs(denyRead: readonly string[]): string[] {
-  for (const p of denyRead) assertDenyPath(p);
+export function codexConfigArgs(extraDenyRead: readonly string[] = []): string[] {
   // JSON string literals are valid TOML basic strings.
-  const filesystem = denyRead.map((p) => `${JSON.stringify(p)}="none"`).join(",");
+  const filesystem = effectiveDenyRead(extraDenyRead).map((p) => `${JSON.stringify(p)}="none"`).join(",");
   return [
     "-c", `permissions={${PROFILE}={extends=":workspace", filesystem={${filesystem}}}}`,
     "-c", `default_permissions="${PROFILE}"`,
@@ -26,18 +25,19 @@ export interface CodexCommandInput {
   model: string;
   effort: string;
   worktreePath: string;
-  denyRead: readonly string[];
+  extraDenyRead?: readonly string[];
 }
 
-export function codexCommand(input: CodexCommandInput): string[] {
+/** Arguments after the executable, which the caller resolves (config.ts). */
+export function codexArgs(input: CodexCommandInput): string[] {
   return [
-    "codex", "exec",
+    "exec",
     "--json",
     "--ignore-user-config",
     "--ignore-rules",
     "-m", input.model,
     "-c", `model_reasoning_effort=${JSON.stringify(input.effort)}`,
-    ...codexConfigArgs(input.denyRead),
+    ...codexConfigArgs(input.extraDenyRead),
     "-C", input.worktreePath,
     "--",
     input.prompt,
@@ -46,20 +46,34 @@ export function codexCommand(input: CodexCommandInput): string[] {
 
 export interface CodexStreamSummary {
   threadId: string | null;
-  /** True when a turn completed and no turn or stream error was reported. */
+  /** True when a turn completed and the stream is intact with no turn or stream error. */
   succeeded: boolean;
   resultText: string | null;
+  /** Null when any turn's accounting is missing, malformed, or may have been lost; never partial. */
   usage: CodexUsage | null;
+  diagnostics: string[];
 }
 
-/** Parses `codex exec --json` JSONL; tolerates a truncated stream from a killed run. */
-export function parseCodexEvents(stdout: string): CodexStreamSummary {
+/**
+ * Parses `codex exec --json` JSONL.
+ * Usage is the sum over `turn.completed` events, so it is only trusted when every line parsed:
+ * a corrupt or truncated line may have been a `turn.completed` or a `turn.failed`.
+ */
+export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise<CodexStreamSummary> {
+  const diagnostics: string[] = [];
   let threadId: string | null = null;
   let resultText: string | null = null;
   let usage: CodexUsage | null = null;
+  let accountingComplete = true;
   let completed = false;
   let failed = false;
-  for (const event of jsonLines(stdout)) {
+  for await (const item of items) {
+    if (item.kind === "invalid") {
+      diagnostics.push(describeInvalid(item));
+      accountingComplete = false;
+      continue;
+    }
+    const event = item.value;
     if (event.type === "thread.started") {
       threadId = str(event.thread_id);
     } else if (event.type === "item.completed" && isRecord(event.item) && event.item.type === "agent_message") {
@@ -67,12 +81,18 @@ export function parseCodexEvents(stdout: string): CodexStreamSummary {
     } else if (event.type === "turn.completed") {
       completed = true;
       const turn = codexTurnUsage(event.usage);
-      usage = turn && (usage ? addUsage(usage, turn) : turn);
+      if (!turn) {
+        diagnostics.push(`line ${item.line}: turn.completed has malformed usage`);
+        accountingComplete = false;
+      } else {
+        usage = usage ? addUsage(usage, turn) : turn;
+      }
     } else if (event.type === "turn.failed" || event.type === "error") {
       failed = true;
     }
   }
-  return { threadId, succeeded: completed && !failed, resultText, usage };
+  if (!accountingComplete) usage = null;
+  return { threadId, succeeded: completed && !failed && accountingComplete, resultText, usage, diagnostics };
 }
 
 function codexTurnUsage(raw: unknown): CodexUsage | null {
@@ -103,17 +123,20 @@ const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 
 /** Finds `<sessionsRoot>/YYYY/MM/DD/rollout-<timestamp>-<threadId>.jsonl`. */
 export async function findCodexSessionFile(sessionsRoot: string, threadId: string): Promise<string | null> {
-  if (!THREAD_ID.test(threadId)) throw new Error(`not a Codex thread id: ${threadId}`);
+  if (!THREAD_ID.test(threadId)) throw new Error(`not a Codex thread id: ${JSON.stringify(threadId.slice(0, 80))}`);
   const glob = new Glob(`*/*/*/rollout-*-${threadId}.jsonl`);
   for await (const rel of glob.scan({ cwd: sessionsRoot, onlyFiles: true })) return `${sessionsRoot}/${rel}`;
   return null;
 }
 
 /** The model of the last `turn_context` record, which is what Codex actually ran. */
-export function codexSessionModel(sessionJsonl: string): string | null {
+export async function codexSessionModel(sessionFile: string): Promise<string | null> {
   let model: string | null = null;
-  for (const record of jsonLines(sessionJsonl)) {
-    if (record.type === "turn_context" && isRecord(record.payload)) model = str(record.payload.model) ?? model;
+  // Rollouts hold large records (instructions, tool output); only turn_context matters and it is small.
+  for await (const item of readJsonl(sessionFile)) {
+    if (item.kind === "record" && item.value.type === "turn_context" && isRecord(item.value.payload)) {
+      model = str(item.value.payload.model) ?? model;
+    }
   }
   return model;
 }
