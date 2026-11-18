@@ -1,78 +1,130 @@
+import { closeSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { claudeCommand, parseClaudeStream } from "./claude";
-import { codexCommand, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { agentEnv, DEFAULT_DENY_READ } from "./policy";
-import { terminateTree } from "./process";
+import { claudeArgs, parseClaudeStream } from "./claude";
+import { codexArgs, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
+import { createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots } from "./config";
+import { readJsonl } from "./jsonl";
+import { agentEnv } from "./policy";
+import { type AgentProcess, spawnAgentProcess, type TerminationReport, terminateTree } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
 
+export { loadDispatchConfig, type DispatchConfig } from "./config";
 export type { RunResult, RunSpec } from "./types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * Runs one headless agent turn in a worktree and waits for it.
- * stdout is written straight to a log file so the raw stream survives a factory crash.
+ * stdout goes straight to a log file so the raw stream survives a factory crash; logs are kept.
+ * Throws only before anything starts (bad spec, aborted signal, unsafe config or log location).
  */
-export async function runAgent(spec: RunSpec): Promise<RunResult> {
+export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<RunResult> {
   if (!UUID.test(spec.runId)) throw new Error(`runId must be a lowercase UUID: ${spec.runId}`);
-  const denyRead = spec.denyRead ?? DEFAULT_DENY_READ;
-  const cmd =
+  spec.signal?.throwIfAborted();
+  const worktree = realpathSync(spec.worktreePath);
+  const executable = config.executables[spec.harness];
+  let realExecutable: string | null = null;
+  try {
+    realExecutable = realpathSync(executable);
+  } catch {
+    // a missing executable surfaces as a failed spawn below
+  }
+  if (realExecutable && isUnder(realExecutable, worktree)) throw new Error(`executable ${realExecutable} is inside the worktree`);
+  if (spec.harness === "claude") {
+    const problems = managedSettingsProblems(config);
+    if (problems.length > 0) throw new Error(`refusing Claude dispatch, managed settings would apply:\n${problems.join("\n")}`);
+  }
+  const args =
     spec.harness === "claude"
-      ? claudeCommand({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, denyRead })
-      : codexCommand({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: spec.worktreePath, denyRead });
-  const stdoutPath = join(spec.logDir, `${spec.runId}.stdout.jsonl`);
-  const stderrPath = join(spec.logDir, `${spec.runId}.stderr.log`);
-
+      ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, extraDenyRead: spec.extraDenyRead })
+      : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, extraDenyRead: spec.extraDenyRead });
   const env = agentEnv(process.env);
-  const proc = Bun.spawn(cmd, {
-    cwd: spec.worktreePath,
-    env,
-    stdin: "ignore",
-    stdout: Bun.file(stdoutPath),
-    stderr: Bun.file(stderrPath),
-  });
+  const logs = createRunLogs(config, spec.logDir, spec.runId, [worktree, ...tempRoots()]);
+
+  let proc: AgentProcess;
+  try {
+    proc = spawnAgentProcess({ executable, args, cwd: worktree, env, stdoutFd: logs.stdoutFd, stderrFd: logs.stderrFd, psPath: config.executables.ps });
+  } finally {
+    closeSync(logs.stdoutFd);
+    closeSync(logs.stderrFd);
+  }
 
   let stopped: "cancelled" | "timed_out" | null = null;
-  let termination: Promise<void> | null = null;
+  let termination: Promise<TerminationReport> | null = null;
   const stop = (why: "cancelled" | "timed_out") => {
     if (stopped) return;
     stopped = why;
-    termination = terminateTree(proc);
+    termination = terminateTree(proc, { psPath: config.executables.ps });
   };
   const timer = setTimeout(() => stop("timed_out"), spec.timeoutMs);
   const onAbort = () => stop("cancelled");
-  if (spec.signal?.aborted) onAbort();
   spec.signal?.addEventListener("abort", onAbort, { once: true });
+  let status;
   try {
-    await proc.exited;
+    status = await proc.exited;
   } finally {
     clearTimeout(timer);
     spec.signal?.removeEventListener("abort", onAbort);
   }
   // The root can exit before its orphaned children are swept.
-  await termination;
+  const cleanup: TerminationReport | null = termination ? await (termination as Promise<TerminationReport>) : null;
 
-  const stdout = await Bun.file(stdoutPath).text();
-  const exitCode = proc.exitCode;
-  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (exitCode === 0 && succeeded ? "completed" : "failed");
-  const base = { harness: spec.harness, runId: spec.runId, exitCode, signalCode: proc.signalCode ?? null, requestedModel: spec.model, stdoutPath, stderrPath };
+  const diagnostics: string[] = [];
+  if (status.error) diagnostics.push(`spawn failed: ${status.error}`);
+  if (cleanup) {
+    diagnostics.push(...cleanup.errors.map((e) => `cleanup: ${e}`));
+    if (cleanup.survivors.length > 0) diagnostics.push(`cleanup: ${cleanup.survivors.length} owned processes survived`);
+  }
+  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status.code === 0 && succeeded ? "completed" : "failed");
+  const base = {
+    harness: spec.harness,
+    runId: spec.runId,
+    exitCode: status.code,
+    signalCode: status.signal,
+    requestedModel: spec.model,
+    stdoutPath: logs.stdoutPath,
+    stderrPath: logs.stderrPath,
+    cleanup,
+  };
 
   if (spec.harness === "claude") {
-    const s = parseClaudeStream(stdout);
-    return { ...base, sessionId: s.sessionId, outcome: outcome(s.succeeded), observedModel: s.observedModel, usage: s.usage, resultText: s.resultText };
+    const s = await parseClaudeStream(readJsonl(logs.stdoutPath));
+    return {
+      ...base,
+      sessionId: s.sessionId,
+      outcome: outcome(s.succeeded),
+      observedModel: s.observedModel,
+      usage: s.usage,
+      resultText: s.resultText,
+      diagnostics: [...diagnostics, ...s.diagnostics],
+    };
   }
-  const s = parseCodexEvents(stdout);
+  const s = await parseCodexEvents(readJsonl(logs.stdoutPath));
+  diagnostics.push(...s.diagnostics);
   return {
     ...base,
     sessionId: s.threadId,
     outcome: outcome(s.succeeded),
-    observedModel: s.threadId ? await observedCodexModel(join(env.HOME!, ".codex", "sessions"), s.threadId) : null,
+    observedModel: s.threadId ? await observedCodexModel(join(env.HOME!, ".codex", "sessions"), s.threadId, diagnostics) : null,
     usage: s.usage,
     resultText: s.resultText,
+    diagnostics,
   };
 }
 
-async function observedCodexModel(root: string, threadId: string): Promise<string | null> {
-  const file = await findCodexSessionFile(root, threadId);
-  return file ? codexSessionModel(await Bun.file(file).text()) : null;
+/** The observed model is evidence, not the outcome: failures here only make it unknown. */
+async function observedCodexModel(root: string, threadId: string, diagnostics: string[]): Promise<string | null> {
+  try {
+    const file = await findCodexSessionFile(root, threadId);
+    if (!file) {
+      diagnostics.push(`observed model unknown: no rollout for thread ${threadId}`);
+      return null;
+    }
+    const model = await codexSessionModel(file);
+    if (!model) diagnostics.push(`observed model unknown: no turn_context model in ${file}`);
+    return model;
+  } catch (err) {
+    diagnostics.push(`observed model unknown: ${(err as Error).message}`);
+    return null;
+  }
 }

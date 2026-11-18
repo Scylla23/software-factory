@@ -1,3 +1,5 @@
+import type { TerminationReport } from "./process";
+
 export type Harness = "claude" | "codex";
 
 export interface RunSpec {
@@ -7,14 +9,14 @@ export interface RunSpec {
   prompt: string;
   model: string;
   effort: string;
-  /** Existing directory that receives `<runId>.stdout.jsonl` and `<runId>.stderr.log`. */
+  /** Existing directory under the state root that receives `<runId>.stdout.jsonl` and `<runId>.stderr.log`. */
   logDir: string;
-  /** Unique per attempt; also the Claude session id, so it must be a UUID. */
+  /** Unique per attempt and single-use; also the Claude session id, so it must be a lowercase UUID. */
   runId: string;
   timeoutMs: number;
   signal?: AbortSignal;
-  /** Paths the agent must never read. Defaults to DEFAULT_DENY_READ. */
-  denyRead?: readonly string[];
+  /** Paths denied in addition to MANDATORY_DENY_READ, which always applies. */
+  extraDenyRead?: readonly string[];
 }
 
 export type RunOutcome = "completed" | "failed" | "cancelled" | "timed_out";
@@ -62,4 +64,8 @@ export interface RunResult {
   resultText: string | null;
   stdoutPath: string;
   stderrPath: string;
+  /** Why a field is unknown or the stream was imperfect: corrupt lines, a missing rollout, a spawn error. */
+  diagnostics: string[];
+  /** Set when the run was cancelled or timed out; survivors are owned processes that could not be killed. */
+  cleanup: TerminationReport | null;
 }
