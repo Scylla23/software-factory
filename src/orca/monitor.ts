@@ -22,6 +22,14 @@ export function shellQuote(s: string): string {
 }
 
 /**
+ * `--title` only sets the pane title; the tab's live title follows the shell, which the owner's zsh sets to the running
+ * command, so the command also sets it with an OSC 0 escape.
+ */
+export function monitorCommand(title: string, logPath: string): string {
+  return `printf '\\033]0;%s\\007' ${shellQuote(title)}; tail -n +1 -f ${shellQuote(logPath)}`;
+}
+
+/**
  * Opens a read-only Orca terminal in the run's worktree that tails the run log.
  * Best effort: it starts in the background, and no failure reaches the run.
  */
@@ -31,7 +39,7 @@ export function openRunMonitor(input: MonitorInput): RunMonitor {
   const opened: Promise<string | null> = (async () => {
     const result = await orcaJson(
       input.orcaPath,
-      ["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", `tail -n +1 -f ${shellQuote(input.logPath)}`],
+      ["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", monitorCommand(input.title, input.logPath)],
       timeoutMs,
     );
     const handle = isRecord(result.terminal) ? str(result.terminal.handle) : null;

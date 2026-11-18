@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
-import { openRunMonitor, shellQuote } from "../src/orca/monitor";
+import { monitorCommand, openRunMonitor, shellQuote } from "../src/orca/monitor";
 import { fixture, makeSandbox, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
@@ -38,6 +38,15 @@ describe("shellQuote", () => {
   });
 });
 
+describe("monitorCommand", () => {
+  test("sets the live title with an OSC 0 escape, then tails the log from its first line", () => {
+    // A shell function stands in for tail, which would never exit; it prints the arguments it got.
+    const script = `tail() { printf '[%s]' "$@"; }; ${monitorCommand("factory: builder x", "/state/it's.jsonl")}`;
+    const out = Bun.spawnSync(["/bin/sh", "-c", script]).stdout.toString();
+    expect(out).toBe("\x1b]0;factory: builder x\x07[-n][+1][-f][/state/it's.jsonl]");
+  });
+});
+
 describe("run monitor", () => {
   test("opens a titled tab tailing the run log in the run's worktree, then closes it when the run ends", async () => {
     const s = spec({ monitor: { agent: "builder" } });
@@ -46,7 +55,7 @@ describe("run monitor", () => {
     const [create, close] = calls();
     expect(create).toEqual([
       "terminal", "create", "--worktree", `path:${realpathSync(sb.worktree)}`, "--title", `factory: builder ${s.runId}`,
-      "--command", `tail -n +1 -f '${r.stdoutPath}'`, "--json",
+      "--command", `printf '\\033]0;%s\\007' 'factory: builder ${s.runId}'; tail -n +1 -f '${r.stdoutPath}'`, "--json",
     ]);
     expect(close).toEqual(["terminal", "close", "--terminal", "term_fake", "--json"]);
     expect(calls()).toHaveLength(2);
