@@ -10,6 +10,8 @@
  * before every signal, so a recycled pid is never signalled.
  * macOS has no cgroups, so one gap remains: a tool that calls setsid() and whose parent exits
  * before the first snapshot is reparented to launchd outside our group and is not found.
+ * Cleanup verification has the same limit: "verified" means no process the tracker can see (the root, its visible
+ * descendants, and its group) is alive, never that such a detached descendant is gone (issue #3).
  */
 import { spawn } from "node:child_process";
 
@@ -279,6 +281,8 @@ export interface Supervised {
   stopped: "cancelled" | "timed_out" | null;
   /** Set when the run was stopped. */
   cleanup: TerminationReport | null;
+  /** Why it cannot be proven that every tracked process is gone; empty when it is proven (see the header's limit). */
+  unverified: string[];
 }
 
 /**
@@ -307,7 +311,27 @@ export async function superviseRun(root: AgentProcess, opts: SuperviseOptions): 
   // The root can exit before its orphaned children are swept, so a stopped run always waits for the report.
   const cleanup = stopped ? await terminated.promise : null;
   if (status === null && root.exitedAt() !== null) status = await root.exited;
-  return { status, stopped, cleanup };
+  return { status, stopped, cleanup, unverified: verifyGone(root, status, cleanup, opts) };
+}
+
+/** Reasons the run's processes may outlive it; a root that exited by itself is checked for group members it left. */
+export function verifyGone(root: AgentProcess, status: ExitStatus | null, cleanup: TerminationReport | null, opts: TerminateOptions): string[] {
+  if (status === null) return [`root pid ${root.pid} never exited`];
+  if (status.error) return []; // nothing started
+  if (cleanup) {
+    const reasons = cleanup.errors.map((e) => `termination: ${e}`);
+    if (cleanup.survivors.length > 0) reasons.push(`${cleanup.survivors.length} owned processes survived termination: ${cleanup.survivors.map((p) => p.pid).join(", ")}`);
+    return reasons;
+  }
+  try {
+    const snap = snapshot(opts.psPath, undefined, opts.psTimeoutMs);
+    const tracker = new Tracker(root);
+    tracker.expand(snap);
+    const left = tracker.verified(snap);
+    return left.length > 0 ? [`${left.length} processes from the run's group outlived it: ${left.map((p) => p.pid).join(", ")}`] : [];
+  } catch (err) {
+    return [`process snapshot failed: ${(err as Error).message}`];
+  }
 }
 
 /**

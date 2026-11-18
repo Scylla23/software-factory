@@ -70,16 +70,12 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     monitor = openRunMonitor({ orcaPath: config.executables.orca, worktreePath: worktree, title: `factory: ${spec.monitor.agent} ${spec.runId}`, attemptId: spec.runId, logPath: logs.stdoutPath });
   }
 
-  const { status, stopped, cleanup } = await superviseRun(proc, { timeoutMs: spec.timeoutMs, signal: spec.signal, psPath: config.executables.ps });
+  const { status, stopped, cleanup, unverified } = await superviseRun(proc, { timeoutMs: spec.timeoutMs, signal: spec.signal, psPath: config.executables.ps });
 
   const diagnostics: string[] = [];
   if (monitor) diagnostics.push(...(await monitor.close()).map((d) => `monitor: ${d}`));
-  if (status === null) diagnostics.push(`root process ${proc.pid} never exited; stopped waiting once termination gave up`);
-  else if (status.error) diagnostics.push(`spawn failed: ${status.error}`);
-  if (cleanup) {
-    diagnostics.push(...cleanup.errors.map((e) => `cleanup: ${e}`));
-    if (cleanup.survivors.length > 0) diagnostics.push(`cleanup: ${cleanup.survivors.length} owned processes survived`);
-  }
+  if (status?.error) diagnostics.push(`spawn failed: ${status.error}`);
+  diagnostics.push(...unverified.map((u) => `cleanup unverified: ${u}`));
   const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
     harness: spec.harness,
@@ -91,6 +87,8 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     stderrPath: logs.stderrPath,
     instructionsPath,
     cleanup,
+    cleanupVerified: unverified.length === 0,
+    quarantineWorktree: unverified.length > 0,
   };
 
   if (spec.harness === "claude") {

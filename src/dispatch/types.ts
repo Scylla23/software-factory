@@ -82,4 +82,12 @@ export interface RunResult {
   diagnostics: string[];
   /** Set when the run was cancelled or timed out; survivors are owned processes that could not be killed. */
   cleanup: TerminationReport | null;
+  /**
+   * True only when it is proven that no process the run owned is still alive: the root exited and termination (if
+   * any) left no survivor and hit no error, or a root that exited by itself left nothing in its group.
+   * A descendant that detached with setsid() before it was seen is outside what can be proven (see process.ts).
+   */
+  cleanupVerified: boolean;
+  /** Set whenever cleanup is unverified: the worktree may still be in use and must not be reused or removed yet. */
+  quarantineWorktree: boolean;
 }
