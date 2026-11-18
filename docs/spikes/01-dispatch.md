@@ -5,10 +5,11 @@ Date: 2026-11-18.
 Versions: Orca 1.4.262, Claude Code 2.1.325, codex-cli 0.169.0, Bun 1.2.10, macOS (Darwin 25.6.0).
 Models: Claude `haiku` (resolved to `claude-haiku-5-5`), Codex `gpt-6-luna`, effort `low`; total spend was a few cents.
 Home paths are shown as `~` and spike worktree names are shortened.
+A repair round after review changed the deny-list, process handling, executable resolution, log location, and parsing; [section 7](#7-repair-round) has what changed and its evidence, and sections 1 to 6 are updated where behavior changed.
 
 ## Verdict
 
-- Dispatch path: the factory spawns `claude -p` and `codex exec --json` directly (`Bun.spawn`) inside the Orca-created worktree, implemented in `src/dispatch`.
+- Dispatch path: the factory spawns `claude -p` and `codex exec --json` directly (`node:child_process` `spawn` as a new process group) inside the Orca-created worktree, implemented in `src/dispatch`.
 - A directly launched session is not visible live in Orca: it is absent from `orca agent list` and from the worktree's agents in `orca worktree ps`, so it cannot be attached.
 - After the fact, `orca search` indexes both harnesses' direct sessions and returns a working resume command, so the owner can inspect and continue a session.
 - The Orca-terminal fallback works (proven below), but it does not make the run an Orca agent either: `orca agent list` still does not list it, and it only adds a raw-output tab.
@@ -18,7 +19,7 @@ Home paths are shown as `~` and spike worktree names are shortened.
 ## 1. Worktree through the orca CLI
 
 `src/orca/worktree.ts` shells out to `orca worktree create --name <n> --no-parent --setup skip --json` and `orca worktree rm --worktree id:<id> --force --delete-branch --json`.
-Run from Bun by `bun scripts/spike-dispatch.ts <logDir>`:
+Run by the spike driver `scripts/spike-dispatch.ts`, which the repair round deleted; the tests and the verification in section 7 replace it:
 
 ```
 ### 1 worktree create
@@ -37,7 +38,7 @@ After all runs, `git worktree list`, `git branch -a`, and `orca worktree list` s
 
 ## 2. Headless Claude Code
 
-Command built by `claudeCommand` in `src/dispatch/claude.ts`:
+Arguments built by `claudeArgs` in `src/dispatch/claude.ts`:
 
 ```
 claude -p --output-format stream-json --verbose --model <model> --effort <effort> --session-id <runId>
@@ -90,7 +91,7 @@ Auth works with the stripped environment (only `HOME`, `USER`, `LOGNAME`, `PATH`
 
 ## 3. Headless Codex
 
-Command built by `codexCommand` in `src/dispatch/codex.ts`:
+Arguments built by `codexArgs` in `src/dispatch/codex.ts`:
 
 ```
 codex exec --json --ignore-user-config --ignore-rules -m <model> -c model_reasoning_effort="<effort>"
@@ -153,7 +154,19 @@ Manual runs, each with a tool `sleep` in flight:
 | SIGKILL | exits 137, tool `sleep 118` left running with ppid 1 | not needed, already orphans on SIGTERM |
 | `orca terminal close` (fallback) | `ptyKilled: true`, exit file `FACTORY_EXIT=143`, no orphan | not tested |
 
-`terminateTree` in `src/dispatch/process.ts` therefore snapshots the descendant tree with `ps`, sends SIGTERM to the root and every descendant, waits up to 5 seconds for the root, re-collects children of survivors, and sends SIGKILL to anything still alive.
+`terminateTree` in `src/dispatch/process.ts` handles this, as rewritten in the repair round:
+
+1. The CLI is spawned with `detached: true`, so it is a session and process-group leader and its pgid equals its pid.
+2. Freeze: SIGSTOP the root through its child handle first, then repeatedly snapshot with `ps`, adopt new descendants and group members, and SIGSTOP them, for up to 5 rounds or until a round finds nothing new.
+3. SIGTERM then SIGCONT to the handle, every tracked process, and the group, then wait up to 5 seconds for the root.
+4. Re-snapshot (always including the root), adopt children forked by TERM handlers and group members reparented to launchd, and SIGKILL them all.
+5. Bounded waits throughout; any process still alive is returned as `cleanup.survivors`, and snapshot or signal failures as `cleanup.errors`, both also surfaced in `RunResult.diagnostics`.
+
+A process is tracked as (pid, `ps` start time) and re-verified against a fresh snapshot before every signal, so a recycled pid is never signalled.
+`ps` runs by absolute path with `LC_ALL=C TZ=UTC PATH=/usr/bin:/bin`.
+A group member counts as ours only while the root is unreaped or if it started no later than the root's exit, because a pgid is only reused after the group empties.
+Darwin's `killpg` returns EPERM while the group holds a zombie; that is ignored for the group signal, because every member is also signalled individually.
+Residual gap: macOS has no cgroups, so a tool that calls `setsid()` and whose parent exits before the first snapshot ends up in its own session under launchd and is not found.
 `runAgent` calls it on `AbortSignal` abort (outcome `cancelled`) and on `timeoutMs` (outcome `timed_out`).
 Evidence through the module (spike step 4):
 
@@ -167,7 +180,8 @@ Evidence through the module (spike step 4):
 ```
 
 Codex dies by the signal itself (`exitCode: null`, `signalCode` set), while Claude traps it and exits 143.
-`bun test` covers the orphan case and the SIGKILL escalation with a fake CLI; removing either the tree SIGTERM or the SIGKILL sweep makes those tests fail.
+`bun test` covers, with a fake CLI: the orphan case, a child forked in the TERM handler, a child reparented to launchd inside the group, SIGKILL escalation, a failing `ps`, pid reuse, a recycled group, and start-time parsing under a non-UTC `TZ`.
+Repeated with the real CLIs after the repair (section 7): both cancelled with no surviving tool `sleep`, `survivors: []`, `errors: []`.
 Codex's shell tool returns to the model after about 30 seconds while the command keeps running in the background, so a long tool command does not mean a long-blocked turn.
 
 ## 5. Visibility in Orca
@@ -231,32 +245,52 @@ $ orca terminal close --terminal term_e739... --json  -> ptyKilled: true
 
 ## 6. Credential canary
 
-Setup: `~/.software-factory/canary.txt` holds `CANARY-<random>` (a first copy under `~/.factory` was removed after the state-dir rename; nothing else in `~/.factory` was touched).
-The spike sets `process.env.FACTORY_CANARY = CANARY-<random2>` in the parent Bun process.
-`scripts/canary-probe.sh` prints only status words and never file contents.
-Baseline outside any sandbox (`FACTORY_CANARY=CANARY-baseline sh scripts/canary-probe.sh`): every file `READ-OK`, `CANARY-FILE-LEAKED`, `CANARY-ENV-LEAKED`, `NET-OPEN`, `KEYCHAIN-ITEM-VISIBLE`.
+`scripts/canary-probe.sh` prints only status words and paths, never file contents, and has four modes:
 
-Through `runAgent` (spike step 6), the tool output of `sh ./canary-probe.sh` in each harness:
+- `--setup` writes `FACTORY-CANARY-<random>` to `~/.software-factory/canary.txt` (mode 600) and plants the same kind of string in fake transcripts at `~/.claude/projects/-factory-canary/canary.jsonl` and `~/.codex/sessions/factory-canary/canary.jsonl`.
+- `--baseline`, outside any sandbox, proves every target exists and is readable, the planted canaries are found by `grep`, and the network is up, so a later DENIED is meaningful.
+- The default mode runs inside the agent sandbox.
+- `--cleanup` removes the planted transcripts.
+
+Each target is classified from `cat`'s error under `LC_ALL=C`: READABLE is a leak, `Operation not permitted` or `Permission denied` is DENIED, `No such file or directory` is MISSING, and anything else is UNKNOWN.
+MISSING and UNKNOWN are inconclusive, never a pass.
+A positive control must read the probe itself and read and `grep` a fresh canary in `$TMPDIR`, or every DENIED could be a broken probe.
+The indirect check runs `grep -rIlE 'FACTORY-CANARY-[0-9a-f]{32}'` over `~/.software-factory`, `~/.claude/projects`, and `~/.codex/sessions`; any match is a leak.
+It also checks `FACTORY_CANARY` in the env and egress to `https://example.com`.
+Exit 0 is a pass, 1 a leak, and 2 inconclusive; a leak wins.
+The keychain is probed only as the `login.keychain-db` file: `security find-generic-password` returns rc 44 both for an absent item and for one the sandbox hides, so it cannot prove denial and was dropped.
+
+Baseline on this machine: all 14 targets READABLE, `INDIRECT-CANARIES-FOUND 3`, `NET-OPEN`, `BASELINE-OK`.
+The default mode run outside any sandbox with `FACTORY_CANARY` set reports `INDIRECT-LEAK` for all three canaries, `ENV-LEAK FACTORY_CANARY`, `NET-OPEN`, and `RESULT LEAK`, which shows the probe detects each leak class.
+
+Through `runAgent` with the real CLIs (repair-round verification, section 7), `sh ./canary-probe.sh; echo EXIT=$?` printed the same in both harnesses:
 
 ```
-READ-DENIED ~/.software-factory/canary.txt
-READ-DENIED ~/.software-factory/github-app.json
-READ-DENIED ~/.ssh/known_hosts
-READ-DENIED ~/.ssh/id_ed25519
-READ-DENIED ~/.config/gh/hosts.yml
-READ-DENIED ~/.config/gh/config.yml
-READ-DENIED ~/Library/Keychains/login.keychain-db
-READ-DENIED ~/.codex/auth.json
-LIST-DENIED ~/.software-factory
-LIST-DENIED ~/.ssh
-LIST-DENIED ~/.config/gh
-CANARY-FILE-HIDDEN
-CANARY-ENV-HIDDEN
-NET-BLOCKED curl-rc=56     (Claude: its proxy refused; stderr has "deny network-outbound example.com:443")
-NET-BLOCKED curl-rc=6      (Codex: "Could not resolve host: example.com")
-KEYCHAIN-ITEM-HIDDEN rc=44
+CONTROL-OK
+DENIED ~/.software-factory/canary.txt
+DENIED ~/.ssh/known_hosts
+DENIED ~/.ssh/config
+DENIED ~/.config/gh/hosts.yml
+DENIED ~/.codex/auth.json
+DENIED ~/.codex/history.jsonl
+DENIED ~/.codex/state_5.sqlite
+DENIED ~/.claude/history.jsonl
+DENIED ~/Library/Keychains/login.keychain-db
+DENIED ~/Library/Application Support/orca/orca-runtime.json
+DENIED ~/.docker/config.json
+DENIED ~/.npmrc
+DENIED ~/.claude/projects/-factory-canary/canary.jsonl
+DENIED ~/.codex/sessions/factory-canary/canary.jsonl
+INDIRECT-HIDDEN
+ENV-HIDDEN
+NET-BLOCKED
+RESULT PASS
+EXIT=0
 ```
 
+Claude's tool output also carried `deny network-outbound example.com:443 (user denied)` from its sandbox.
+
+The original spike (before the repair) ran an older probe through both harnesses with the same result for its narrower target list, with `FACTORY_CANARY` set in the parent Bun process.
 The spike also searched each run's full stdout log for both canary strings: `fileCanaryInOutput: false` and `envCanaryInOutput: false` for both harnesses.
 Direct attempts in the same runs: `printenv FACTORY_CANARY` returned `rc=1` in both, and Codex's `cat ~/.software-factory/canary.txt` failed with `Operation not permitted`.
 Claude's Read tool is blocked separately from the Bash sandbox (dedicated run):
@@ -282,7 +316,14 @@ The env allowlist is the primary env control for Claude: in a manual run that pa
 The same deliberate leak into Codex was hidden by `shell_environment_policy.inherit="core"`.
 Inside Claude's sandbox the env gains proxy variables (`HTTP_PROXY`, `ALL_PROXY`, `SANDBOX_RUNTIME`, and others) that route traffic through its filtering proxy.
 
-The deny-list (`DEFAULT_DENY_READ` in `src/dispatch/policy.ts`) is `~/.software-factory`, `~/.factory` (another tool's state dir on this machine), `~/.ssh`, `~/.config/gh`, `~/Library/Keychains`, `~/.codex/auth.json`, `~/.claude/.credentials.json`, `~/.aws`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.git-credentials`.
+The deny-list is `MANDATORY_DENY_READ` in `src/dispatch/policy.ts`, applied to every run of both harnesses.
+`RunSpec.extraDenyRead` can only add to it; `effectiveDenyRead` merges, validates (absolute or `~/` only), and dedupes.
+
+- Factory state and credential stores: `~/.software-factory`, `~/.factory` (another tool's state dir on this machine), `~/.ssh`, `~/.config/gh`, `~/Library/Keychains`, `~/.codex/auth.json`, `~/.claude/.credentials.json`, `~/.aws`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.git-credentials`.
+- The owner's session history and harness state, added in the repair round because they hold other projects' conversations: `~/.claude/projects`, `~/.claude/history.jsonl`, `~/.claude/shell-snapshots`, `~/.claude/transcripts`, `~/.claude/file-history`, `~/.claude/paste-cache`, `~/.codex/sessions`, `~/.codex/archived_sessions`, `~/.codex/history.jsonl`, `~/.codex/*.sqlite*`, `~/.codex/log`, `~/Library/Application Support/orca`.
+
+Both harnesses accept the `*` glob: Codex records `~/.codex/*.sqlite*` as a `glob_pattern` deny entry, and its run's `turn_context` lists all 26 entries.
+Both CLIs still start and run Bash with these denied: Codex still writes its own rollout under the denied `~/.codex/sessions` (only its tools are sandboxed), and Claude's Bash works with `~/.claude/shell-snapshots` denied.
 Denying all of `~/.codex` breaks Codex, because its sandbox helper re-execs `~/.local/bin/codex`, a symlink into `~/.codex/packages`:
 
 ```
@@ -291,6 +332,61 @@ fs sandbox helper failed with status exit status: 71: sandbox-exec: execvp() of 
 ```
 
 Nonexistent deny paths are accepted by both harnesses.
+
+## 7. Repair round
+
+Fixes after review, with how they were verified.
+
+### Executables
+
+`loadDispatchConfig` resolves `claude` and `codex` once at startup from `~/.local/bin`, `/opt/homebrew/bin`, then `/usr/local/bin` (never `$PATH`), and `ps` as `/bin/ps`.
+Each is canonicalized and must be a regular executable file owned by root or the user, not group or world writable, and outside every temp root and agent write root.
+On this machine they resolve to `~/.local/share/claude/versions/2.1.325`, `~/.codex/packages/standalone/releases/0.169.0-aarch64-apple-darwin/bin/codex`, and `/bin/ps`.
+Because the canonical path names a version, a CLI auto-update that deletes the old version makes the next spawn fail with a diagnostic until the config is reloaded.
+`runAgent` refuses an executable whose canonical path is inside the worktree.
+The agent's `PATH` keeps only absolute entries.
+
+### Managed settings
+
+Claude managed settings outrank `--settings` and survive `--restricted`, so `runAgent` refuses a Claude dispatch while any of these exist unaccepted: `/Library/Application Support/ClaudeCode/managed-settings.json`, every file in `/Library/Application Support/ClaudeCode/managed-settings.d`, `/Library/Managed Preferences/com.anthropic.claudecode.plist`, and the per-user plist under `/Library/Managed Preferences/<user>/`.
+The owner accepts a file by its sha256 through `loadDispatchConfig({ acceptedManagedSettings })`; an unreadable location counts as present.
+On this machine none exist: there is no `/Library/Application Support/ClaudeCode`, no `/Library/Managed Preferences`, and `defaults read com.anthropic.claudecode` reports the domain does not exist.
+
+### Logs
+
+The log dir is canonicalized and must be under the state root (`~/.software-factory` by default) and outside the worktree, temp roots, and agent write roots.
+Log files are opened with `O_CREAT | O_EXCL | O_NOFOLLOW` and mode 600, so a reused attempt id or a planted symlink fails before anything starts.
+Logs are always kept.
+
+### Parsing
+
+`readJsonl` streams the log from disk with an 8 MiB bound per record and reports each bad line as a truncated final record or as interior corruption.
+Any bad line or malformed usage makes Codex usage unknown (`null`) and the run not succeeded, because the lost line could have been a `turn.completed` or `turn.failed`; more than one Claude `result` does the same for Claude.
+A malformed thread id or a missing or unreadable rollout keeps the outcome, logs, and usage, and only makes the observed model unknown with a diagnostic.
+
+### Cancellation
+
+An already-aborted signal throws before spawn.
+Termination is rewritten as described in section 4.
+A bug found on the way: `bun test` forces `TZ=UTC`, and `ps` printed local start times that were parsed as UTC, which skewed the group-ownership check by hours and let a child forked in a TERM handler survive; `ps` now runs with `TZ=UTC`, and a test runs the check under `TZ=America/Los_Angeles`.
+
+### Removed
+
+The spike driver `scripts/spike-dispatch.ts` was deleted, which also removes its review findings.
+
+### Verification
+
+Verification with the real CLIs (`haiku` and `gpt-6-luna` at effort `low`), through `runAgent` with `loadDispatchConfig({ agentWriteRoots: [~/orca/workspaces] })`, in a fresh Orca worktree removed afterwards, logs under `~/.software-factory/runs` removed afterwards:
+
+```
+claude  outcome completed  observedModel claude-haiku-5-5  usage.totalCostUsd 0.00219  diagnostics []  probe RESULT PASS
+codex   outcome completed  observedModel gpt-6-luna        usage.outputTokens 425       diagnostics []  probe RESULT PASS
+claude  cancel during `sleep 313`: outcome cancelled, signal SIGTERM, cleanup {survivors: [], errors: []}, no sleep left
+codex   cancel during `sleep 313`: outcome cancelled, signal SIGTERM, cleanup {survivors: [], errors: []}, no sleep left
+```
+
+Before the repair, SIGTERM to Codex left its tool `sleep` running under launchd (section 4); signalling the group now covers it.
+The planted transcript canaries were removed with `--cleanup`; `~/.software-factory/canary.txt` stays.
 
 ## Proposed design changes
 
@@ -312,7 +408,7 @@ These contradict or refine [design.md](../design.md); none is applied there yet.
    Codex loaded the worktree's `AGENTS.md` both times.
    Proposal: the factory passes the project's `AGENTS.md` to Claude explicitly (for example `--append-system-prompt-file`), decided in step 3 or 4.
 5. Owner customizations still visible to Claude.
-   Under `--restricted`, the `system/init` event still lists the owner's user skills, plugins, and slash commands, and the Bash tool sources a snapshot of the owner's zsh (`~/.claude/shell-snapshots`).
+   Under `--restricted`, the `system/init` event still lists the owner's user skills, plugins, and slash commands, and the Bash tool sources a snapshot of the owner's zsh (`~/.claude/shell-snapshots`, now denied to tools but still sourced by Claude itself).
    Proposal: step 4 decides how factory skills are supplied and whether `--disable-slash-commands` or an explicit plugin dir is needed for hermetic runs.
 6. Session identity and crash recovery.
    Claude takes the factory's attempt id as `--session-id`; Codex assigns its thread id and reveals it only in `thread.started`.
@@ -323,19 +419,24 @@ These contradict or refine [design.md](../design.md); none is applied there yet.
 
 ## Module
 
-- `src/dispatch/index.ts` `runAgent(spec)`: spawns the CLI in the worktree with the stripped env and stdin from `/dev/null`, writes stdout and stderr to `<logDir>/<runId>.*`, handles abort and timeout, and returns `RunResult` (session id, exit code, signal, outcome, requested and observed model, usage or null, final text).
+- `src/dispatch/index.ts` `runAgent(spec, config)`: checks the spec, the signal, the executable, managed settings, and the log location before anything starts; spawns the CLI in the worktree with the stripped env and stdin from `/dev/null`; writes stdout and stderr to `<logDir>/<runId>.*`; handles abort and timeout; and returns `RunResult` (session id, exit code, signal, outcome, requested and observed model, usage or null, final text, diagnostics, cleanup report).
+- `src/dispatch/config.ts`: `loadDispatchConfig`, executable resolution, managed-settings check, and log creation.
 - `src/dispatch/claude.ts` and `src/dispatch/codex.ts`: the proven flags and the parsers.
+- `src/dispatch/jsonl.ts`: the bounded streaming JSONL reader.
 - `src/dispatch/policy.ts`: deny-list and env allowlist.
-- `src/dispatch/process.ts`: process-tree termination.
+- `src/dispatch/process.ts`: process-group spawn and termination.
 - `src/orca/worktree.ts`: worktree create and remove.
 - Usage is kept per harness; normalizing it and pricing it belong to plan step 8.
 - The network policy is off only; install stages that need network come with a later step.
 
 ## Tests
 
-`bun test` runs 29 tests in `test/`.
+`bun test` runs 69 tests in `test/`.
 Parser tests use fixtures captured from the spike runs in `test/fixtures` (Claude stream, Codex JSONL, and a Codex session file trimmed to its metadata, turn context, and token records), with home paths and personal skill and plugin lists scrubbed and account ids replaced.
-`test/run.test.ts` drives `runAgent` against fake `claude` and `codex` executables to cover completion, observed-model lookup, env stripping, abort with an orphan-prone child, timeout, and SIGKILL escalation.
+`test/run.test.ts` drives `runAgent` and `terminateTree` against a fake CLI (`test/helpers.ts`) whose behavior is chosen by its last argument; the fake is passed through `DispatchConfig.executables`, never `PATH`.
+`test/config.test.ts` covers executable trust, managed settings, and log creation; `test/policy.test.ts` covers the deny-list merge for both harnesses and the env allowlist.
+Each repair-round fix was checked by reverting it and seeing its test fail.
+Test state lives under `test/.state` (ignored), because log dirs must not be under a temp root.
 
 ## Tooling note
 
