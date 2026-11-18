@@ -87,6 +87,7 @@ export function makeSandbox(): Sandbox {
     executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps" },
     stateRoot,
     harnessHomes,
+    agentPath: "/usr/bin:/bin",
     managedSettingsPaths: [join(stateRoot, "managed-settings.json"), join(stateRoot, "managed-settings.d")],
   };
   return {

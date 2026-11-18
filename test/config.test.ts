@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, copyFileSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertPrivateDir, assertTrustedExecutable, createRunLogs, managedSettingsProblems, tempRoots } from "../src/dispatch/config";
+import { assertPrivateDir, assertTrustedExecutable, createRunLogs, trustedAgentPath, managedSettingsProblems, tempRoots } from "../src/dispatch/config";
 import { makeSandbox, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
@@ -28,6 +28,23 @@ describe("assertPrivateDir (harness homes)", () => {
     expect(() => assertPrivateDir(realpathSync(sb.worktree), sb.stateRoot)).toThrow("not under");
     expect(() => assertPrivateDir(sb.worktree, sb.stateRoot)).toThrow("not canonical");
     expect(() => assertPrivateDir(join(sb.stateRoot, "missing"), sb.stateRoot)).toThrow("ENOENT");
+  });
+});
+
+describe("trustedAgentPath", () => {
+  test("canonical harness bin dirs first, then the system dirs, deduplicated", () => {
+    const bin = realpathSync(sb.bin);
+    expect(trustedAgentPath([sb.bin, bin, "/usr/bin"], [sb.stateRoot])).toBe(`${bin}:/usr/bin:/bin:/usr/sbin:/sbin`);
+    expect(trustedAgentPath([], [])).toBe("/usr/bin:/bin:/usr/sbin:/sbin");
+  });
+
+  test("refuses a group or world writable dir and one under an agent-writable root", () => {
+    const dir = join(sb.stateRoot, "shared-bin");
+    mkdirSync(dir);
+    chmodSync(dir, 0o775);
+    expect(() => trustedAgentPath([dir], [])).toThrow("group or world writable");
+    chmodSync(dir, 0o755);
+    expect(() => trustedAgentPath([dir], [sb.stateRoot])).toThrow("agent-writable");
   });
 });
 

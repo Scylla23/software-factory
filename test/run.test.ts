@@ -81,6 +81,18 @@ describe("runAgent", () => {
     for (const p of [...MANDATORY_DENY_READ, "/opt/secrets"]) expect(argv).toContain(JSON.stringify(p));
   });
 
+  test("the agent's PATH is the configured one; an absolute worktree dir in the parent PATH never reaches it", async () => {
+    const path = process.env.PATH;
+    process.env.PATH = `${join(sb.worktree, "node_modules", ".bin")}:${path}`;
+    try {
+      await runAgent(spec("codex", `dump:${sb.worktree}`), sb.config);
+    } finally {
+      process.env.PATH = path;
+    }
+    const env = readFileSync(join(sb.worktree, "env"), "utf8").split("\n");
+    expect(env.filter((l) => l.startsWith("PATH="))).toEqual([`PATH=${sb.config.agentPath}`]);
+  });
+
   test("executables come only from the config, never from PATH", async () => {
     const evil = join(sb.worktree, "evil-bin");
     const marker = join(sb.worktree, "evil-ran");
