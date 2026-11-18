@@ -3,6 +3,7 @@ import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
+import { orcaJson } from "../src/orca/cli";
 import { monitorCommand, openRunMonitor, shellQuote } from "../src/orca/monitor";
 import { fixture, makeSandbox, type Sandbox } from "./helpers";
 
@@ -12,7 +13,7 @@ beforeEach(() => {
 });
 afterEach(() => sb.cleanup());
 
-const setMode = (mode: "ok" | "fail" | "hang") => writeFileSync(join(sb.bin, "orca-mode"), mode);
+const setMode = (mode: "ok" | "fail" | "hang" | "hang-create" | "ok-exit") => writeFileSync(join(sb.bin, "orca-mode"), mode);
 /** Each recorded orca call as its argv. */
 const calls = (): string[][] => {
   let text = "";
@@ -96,10 +97,15 @@ describe("monitorCommand", () => {
   });
 
   test("openRunMonitor validates the title itself, before calling orca", () => {
-    expect(() => openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: "bad\x07title", logPath: "/l" })).toThrow("plain words");
+    expect(() => openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: "bad\x07title", attemptId: ATTEMPT, logPath: "/l" })).toThrow("plain words");
+    expect(() => openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: "factory: x", attemptId: ATTEMPT, logPath: "/l" })).toThrow("attempt id");
     expect(calls()).toEqual([]);
   });
 });
+
+const ATTEMPT = "11111111-2222-4333-8444-555555555555";
+const monitor = (extra: { timeoutMs?: number } = {}) =>
+  openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: `factory: builder ${ATTEMPT}`, attemptId: ATTEMPT, logPath: "/l", ...extra });
 
 describe("run monitor", () => {
   test("opens a titled tab tailing the run log in the run's worktree, then closes it when the run ends", async () => {
@@ -138,9 +144,41 @@ describe("run monitor", () => {
   test("a hung orca is bounded and only reported", async () => {
     setMode("hang");
     const started = Date.now();
-    const problems = await openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: "t", logPath: "/l", timeoutMs: 300 }).close();
+    const problems = await monitor({ timeoutMs: 300 }).close();
     expect(Date.now() - started).toBeLessThan(5_000);
-    expect(problems).toEqual([expect.stringContaining("no answer within 300ms")]);
+    expect(problems).toEqual([expect.stringContaining("no answer within 300ms"), expect.stringMatching(/^reconcile failed: .*no answer within 300ms/)]);
+  });
+
+  test("a nonzero exit is a failure even with an ok envelope", async () => {
+    setMode("ok-exit");
+    await expect(orcaJson(sb.config.executables.orca, ["worktree", "rm"])).rejects.toThrow("exit 3 despite an ok envelope");
+    const problems = await monitor().close();
+    expect(problems[0]).toMatch(/^open failed: .*exit 3 despite an ok envelope/);
+    expect(calls().map((c) => c.slice(0, 2).join(" "))).toEqual(["worktree rm", "terminal create", "terminal list"]);
+  });
+
+  test("a create that times out is reconciled: every tab titled with this attempt is closed, and only those", async () => {
+    setMode("hang-create");
+    writeFileSync(join(sb.bin, "orca-list"), JSON.stringify({ ok: true, result: { truncated: false, terminals: [
+      { handle: "term_title", title: `factory: builder ${ATTEMPT}`, paneTitle: "zsh" },
+      { handle: "term_pane", title: "tail", paneTitle: `factory: builder ${ATTEMPT}` },
+      { handle: "term_other", title: `factory: builder ${crypto.randomUUID()}` },
+      { handle: "term_owner", title: "zsh" },
+    ] } }));
+    const problems = await monitor({ timeoutMs: 300 }).close();
+    const closed = calls().filter((c) => c[1] === "close").map((c) => c[3]);
+    expect(closed).toEqual(["term_title", "term_pane"]);
+    expect(problems).toEqual([
+      expect.stringContaining("no answer within 300ms"),
+      "reconcile: closed term_title, opened by the failed create",
+      "reconcile: closed term_pane, opened by the failed create",
+    ]);
+  });
+
+  test("a clean ok:false refusal needs no reconciliation", async () => {
+    setMode("fail");
+    await monitor().close();
+    expect(calls().map((c) => c.slice(0, 2).join(" "))).toEqual(["terminal create"]);
   });
 
   test("a bad agent label is refused before anything starts", async () => {

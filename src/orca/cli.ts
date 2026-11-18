@@ -11,8 +11,18 @@ function orcaEnv(): Record<string, string> {
 }
 
 /**
+ * A failed `orca` call. `uncertain` is true when the command may still have taken effect (a timeout, a nonzero exit, or
+ * output that cannot be read), so a caller that created something must reconcile; false for a clean `ok: false`.
+ */
+export class OrcaError extends Error {
+  constructor(message: string, readonly uncertain: boolean) {
+    super(message);
+  }
+}
+
+/**
  * Runs `<orcaPath> <args> --json` and returns `result`.
- * Rejects on spawn failure, timeout, a nonzero exit, unparsable output, or `ok: false`.
+ * Rejects on spawn failure, timeout, unparsable output, `ok: false`, or a nonzero exit even with an ok envelope.
  */
 export async function orcaJson(orcaPath: string, args: readonly string[], timeoutMs = ORCA_TIMEOUT_MS): Promise<Record<string, unknown>> {
   const what = `orca ${args.slice(0, 2).join(" ")}`;
@@ -22,7 +32,7 @@ export async function orcaJson(orcaPath: string, args: readonly string[], timeou
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       proc.kill("SIGKILL");
-      reject(new Error(`${what}: no answer within ${timeoutMs}ms`));
+      reject(new OrcaError(`${what}: no answer within ${timeoutMs}ms`, true));
     }, timeoutMs);
   });
   try {
@@ -34,10 +44,14 @@ export async function orcaJson(orcaPath: string, args: readonly string[], timeou
     try {
       out = JSON.parse(stdout);
     } catch {
-      throw new Error(`${what}: exit ${code}, unparsable output: ${stderr.trim().slice(0, 300)}`);
+      throw new OrcaError(`${what}: exit ${code}, unparsable output: ${stderr.trim().slice(0, 300)}`, true);
     }
+    if (isRecord(out) && out.ok === false) {
+      throw new OrcaError(`${what} failed: ${JSON.stringify(out.error).slice(0, 300)}`, false);
+    }
+    if (code !== 0) throw new OrcaError(`${what}: exit ${code} despite an ok envelope: ${stderr.trim().slice(0, 300)}`, true);
     if (!isRecord(out) || out.ok !== true || !isRecord(out.result)) {
-      throw new Error(`${what} failed: ${JSON.stringify(isRecord(out) ? out.error : out).slice(0, 300)}`);
+      throw new OrcaError(`${what}: unexpected envelope: ${JSON.stringify(out).slice(0, 300)}`, true);
     }
     return out.result;
   } finally {
