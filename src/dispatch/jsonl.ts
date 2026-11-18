@@ -85,6 +85,28 @@ function concat(parts: Uint8Array[], size: number): Uint8Array {
   return out;
 }
 
+/** How many diagnostics a parse keeps verbatim. */
+export const DIAGNOSTIC_SAMPLE = 20;
+
+/** Keeps the first `limit` diagnostics and counts all of them, so a corrupt log cannot grow a result without bound. */
+export class DiagnosticSample {
+  private readonly kept: string[] = [];
+  count = 0;
+
+  constructor(private readonly limit = DIAGNOSTIC_SAMPLE) {}
+
+  add(message: string): void {
+    this.count++;
+    if (this.kept.length < this.limit) this.kept.push(message);
+  }
+
+  /** The sample, plus one line saying how many were left out. */
+  list(): string[] {
+    const omitted = this.count - this.kept.length;
+    return omitted > 0 ? [...this.kept, `${omitted} more diagnostics not shown (${this.count} total)`] : [...this.kept];
+  }
+}
+
 /** Human-readable diagnostic for an invalid item. */
 export function describeInvalid(item: Extract<JsonlItem, { kind: "invalid" }>): string {
   const where = item.truncatedTail ? "truncated final record" : "corrupt record";
