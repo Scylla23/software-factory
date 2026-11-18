@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
-import { MANDATORY_DENY_READ } from "../src/dispatch/policy";
+import { expandHome, MANDATORY_DENY_READ } from "../src/dispatch/policy";
 import { type ProcRow, type Snapshot, spawnAgentProcess, terminateTree, Tracker } from "../src/dispatch/process";
 import { alive, FIXTURES, fixture, gone, makeSandbox, readPid, type Sandbox, writeLines } from "./helpers";
 
@@ -11,7 +11,7 @@ const saved = { HOME: process.env.HOME };
 beforeEach(() => {
   sb = makeSandbox();
   cpSync(join(FIXTURES, "codex-sessions"), join(sb.codexHome, "sessions"), { recursive: true });
-  process.env.HOME = sb.home; // the agent's HOME
+  process.env.HOME = sb.home; // the factory's inherited HOME; the agent's comes from config.accountHome
 });
 afterEach(() => {
   process.env.HOME = saved.HOME;
@@ -78,7 +78,31 @@ describe("runAgent", () => {
   test.each(["claude", "codex"] as const)("%s: an extra deny path is added to the mandatory list in the real argv", async (harness) => {
     await runAgent(spec(harness, `dump:${sb.worktree}`, { extraDenyRead: ["/opt/secrets"] }), sb.config);
     const argv = readFileSync(join(sb.worktree, "argv"), "utf8");
-    for (const p of [...MANDATORY_DENY_READ, "/opt/secrets"]) expect(argv).toContain(JSON.stringify(p));
+    for (const p of [...MANDATORY_DENY_READ.map((m) => expandHome(m, sb.home)), "/opt/secrets"]) expect(argv).toContain(JSON.stringify(p));
+  });
+
+  test.each(["claude", "codex"] as const)("%s: an alternate state root, its harness homes, and an inherited HOME elsewhere", async (harness) => {
+    process.env.HOME = "/tmp/inherited-home";
+    await runAgent(spec(harness, `dump:${sb.worktree}`), sb.config);
+    const argv = readFileSync(join(sb.worktree, "argv"), "utf8");
+    for (const p of [sb.stateRoot, ...Object.values(sb.config.harnessHomes)]) expect(argv).toContain(JSON.stringify(realpathSync(p)));
+    expect(argv).toContain(JSON.stringify(join(sb.home, ".ssh")));
+    expect(argv).not.toContain("/tmp/inherited-home");
+    expect(readFileSync(join(sb.worktree, "env"), "utf8").split("\n")).toContain(`HOME=${sb.home}`);
+  });
+
+  test("refuses a log dir under a group-writable parent, and a state root that overlaps the worktree", async () => {
+    const shared = join(sb.stateRoot, "shared");
+    mkdirSync(join(shared, "logs"), { recursive: true });
+    chmodSync(shared, 0o777);
+    try {
+      await expect(runAgent(spec("claude", "x", { logDir: join(shared, "logs") }), sb.config)).rejects.toThrow("group or world writable");
+    } finally {
+      chmodSync(shared, 0o755);
+    }
+    const inside = join(sb.stateRoot, "wt");
+    mkdirSync(inside);
+    await expect(runAgent(spec("claude", "x", { worktreePath: inside }), sb.config)).rejects.toThrow("overlaps agent-reachable");
   });
 
   test("the agent's PATH is the configured one; an absolute worktree dir in the parent PATH never reaches it", async () => {

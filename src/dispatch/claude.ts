@@ -1,5 +1,5 @@
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
-import { effectiveDenyRead } from "./policy";
+import type { SandboxPolicy } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
 
 /** Built-in tools a builder may use; nothing that reaches the network. */
@@ -8,10 +8,11 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
 /**
  * Settings passed with `--settings`.
  * `--restricted` ignores user, project, and local settings, so this plus managed settings is the whole policy;
- * runAgent refuses to dispatch when unaccepted managed settings exist (see config.ts).
+ * runAgent refuses to dispatch while any managed settings source exists (see config.ts).
+ * Claude has no read carve-outs: `policy.readable` is for Codex's own binary.
  */
-export function claudeSettings(extraDenyRead: readonly string[] = []): object {
-  const denyRead = effectiveDenyRead(extraDenyRead);
+export function claudeSettings(policy: SandboxPolicy): object {
+  const denyRead = [...policy.denyRead];
   return {
     permissions: {
       allow: [...CLAUDE_BUILDER_TOOLS],
@@ -39,7 +40,7 @@ export interface ClaudeCommandInput {
   model: string;
   effort: string;
   sessionId: string;
-  extraDenyRead?: readonly string[];
+  policy: SandboxPolicy;
   /**
    * File holding the project instructions, appended to the system prompt.
    * `--restricted` already stops Claude from loading the worktree's CLAUDE.md on its own.
@@ -63,7 +64,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--disable-slash-commands",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
-    "--settings", JSON.stringify(claudeSettings(input.extraDenyRead)),
+    "--settings", JSON.stringify(claudeSettings(input.policy)),
     ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",
     input.prompt,

@@ -1,12 +1,12 @@
 import { closeSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
-import { codexArgs, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { assertPrivateDir, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots, writeRunFile } from "./config";
+import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
+import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots, writeRunFile } from "./config";
 import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
-import { agentEnv } from "./policy";
+import { agentEnv, assertPolicySound, effectiveDenyRead, type PolicyContext, type SandboxPolicy } from "./policy";
 import { type AgentProcess, spawnAgentProcess, type TerminationReport, terminateTree } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
 
@@ -39,9 +39,17 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     if (problems.length > 0) throw new Error(`refusing Claude dispatch, managed settings would apply:\n${problems.join("\n")}`);
   }
   const agentWritable = [worktree, ...tempRoots()];
+  const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
+  const policy: SandboxPolicy = {
+    denyRead: effectiveDenyRead(ctx, spec.extraDenyRead),
+    readable: spec.harness === "codex" ? codexReadable(config.accountHome) : [],
+  };
+  assertPolicySound(policy, ctx);
+  assertStateRootIsolated(config.stateRoot, [...agentWritable, ...policy.readable]);
+  assertSafeDir(config.stateRoot, config.accountHome);
   const instructions = buildProjectInstructions(spec.instructionFiles, agentWritable);
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
-  const env = agentEnv(process.env, spec.harness, home, config.agentPath);
+  const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: config.agentPath, accountHome: config.accountHome });
   const logs = createRunLogs(config, spec.logDir, spec.runId, agentWritable);
   let instructionsPath: string | null = null;
   try {
@@ -56,8 +64,8 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   }
   const args =
     spec.harness === "claude"
-      ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, extraDenyRead: spec.extraDenyRead, instructionsFile: instructionsPath })
-      : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, extraDenyRead: spec.extraDenyRead, instructions });
+      ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, instructionsFile: instructionsPath })
+      : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
 
   let proc: AgentProcess;
   try {

@@ -1,21 +1,20 @@
 import { Glob } from "bun";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
-import { effectiveDenyRead } from "./policy";
+import { join } from "node:path";
+import type { SandboxPolicy } from "./policy";
 import type { CodexUsage } from "./types";
 
 const PROFILE = "factory";
 
 /**
- * Read access carved back out of a denied tree, the more specific entry winning in Codex's profile.
- * Codex's sandbox helper re-execs the Codex binary, which is installed under ~/.codex/packages;
- * the packages dir holds only installed releases, no owner data.
+ * Read access carved back out of the denied ~/.codex, the more specific entry winning in Codex's profile:
+ * Codex's sandbox helper re-execs the Codex binary, which is installed under ~/.codex/packages,
+ * and the packages dir holds only installed releases, no owner data.
  */
-export const CODEX_READ_EXCEPTIONS: readonly string[] = ["~/.codex/packages"];
+export function codexReadable(accountHome: string): string[] {
+  return [join(accountHome, ".codex", "packages")];
+}
 
-/**
- * `-c` overrides for a workspace-write sandbox with a read deny-list and no network.
- * Do not add `-s workspace-write`: it silently replaces `default_permissions`, dropping the deny-list.
- */
 /**
  * A TOML basic string. JSON escapes are valid TOML except that TOML also forbids a raw DEL;
  * lone surrogates cannot occur because every input is a well-formed string (UTF-8 is decoded strictly).
@@ -24,15 +23,18 @@ export function tomlString(s: string): string {
   return JSON.stringify(s).replaceAll("\x7f", "\\u007f");
 }
 
-export function codexConfigArgs(extraDenyRead: readonly string[] = []): string[] {
-  const denied = effectiveDenyRead(extraDenyRead);
-  for (const p of denied) {
+/**
+ * `-c` overrides for a workspace-write sandbox with a read deny-list and no network.
+ * Do not add `-s workspace-write`: it silently replaces `default_permissions`, dropping the deny-list.
+ */
+export function codexConfigArgs(policy: SandboxPolicy): string[] {
+  for (const p of policy.readable) {
     // A duplicate key is a TOML error, and the intent (deny or read) would be ambiguous anyway.
-    if (CODEX_READ_EXCEPTIONS.includes(p)) throw new Error(`cannot deny ${p}: Codex needs it readable to run`);
+    if (policy.denyRead.includes(p)) throw new Error(`cannot deny ${p}: Codex needs it readable to run`);
   }
   const filesystem = [
-    ...denied.map((p) => `${tomlString(p)}="none"`),
-    ...CODEX_READ_EXCEPTIONS.map((p) => `${tomlString(p)}="read"`),
+    ...policy.denyRead.map((p) => `${tomlString(p)}="none"`),
+    ...policy.readable.map((p) => `${tomlString(p)}="read"`),
   ].join(",");
   return [
     "-c", `permissions={${PROFILE}={extends=":workspace", filesystem={${filesystem}}}}`,
@@ -65,7 +67,7 @@ export interface CodexCommandInput {
   model: string;
   effort: string;
   worktreePath: string;
-  extraDenyRead?: readonly string[];
+  policy: SandboxPolicy;
   /** Project instructions, given verbatim as developer instructions; Codex's own AGENTS.md discovery is always off. */
   instructions?: string | null;
 }
@@ -79,7 +81,7 @@ export function codexArgs(input: CodexCommandInput): string[] {
     "--ignore-rules",
     "-m", input.model,
     "-c", `model_reasoning_effort=${tomlString(input.effort)}`,
-    ...codexConfigArgs(input.extraDenyRead),
+    ...codexConfigArgs(input.policy),
     // Codex would otherwise load AGENTS.md from the agent-writable worktree on its own, next to the explicit copy.
     "-c", "project_doc_max_bytes=0",
     ...(input.instructions ? ["-c", `developer_instructions=${tomlString(input.instructions)}`] : []),

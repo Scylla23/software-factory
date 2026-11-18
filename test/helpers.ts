@@ -58,7 +58,7 @@ export interface Sandbox {
   logDir: string;
   /** Holds the fakes; `orca-mode` and `orca-calls` live here. */
   bin: string;
-  /** HOME seen by the fake agent. */
+  /** The account home in the config: HOME seen by the fake agent, and where `~` deny entries point. Outside the state root. */
   home: string;
   /** The fake Codex home, which holds the fixture Codex sessions. */
   codexHome: string;
@@ -78,13 +78,13 @@ export function makeSandbox(): Sandbox {
   const stateRoot = mkdtempSync(join(import.meta.dir, ".state", "run-"));
   const logDir = join(stateRoot, "logs");
   mkdirSync(logDir);
-  const home = join(stateRoot, "home");
-  mkdirSync(home);
+  const home = mkdtempSync(join(import.meta.dir, ".state", "home-"));
   const harnessHomes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
   for (const dir of Object.values(harnessHomes)) mkdirSync(dir, { mode: 0o700 });
   const config: DispatchConfig = {
     // Fake executables come in explicitly here, never through PATH.
     executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps" },
+    accountHome: home,
     stateRoot,
     harnessHomes,
     agentPath: "/usr/bin:/bin",
@@ -102,6 +102,7 @@ export function makeSandbox(): Sandbox {
       rmSync(worktree, { recursive: true, force: true });
       rmSync(bin, { recursive: true, force: true });
       rmSync(stateRoot, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     },
   };
 }
