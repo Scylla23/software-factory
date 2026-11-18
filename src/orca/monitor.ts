@@ -21,25 +21,38 @@ export function shellQuote(s: string): string {
   return `'${s.replaceAll("'", `'\\''`)}'`;
 }
 
+/** Plain words joined by single spaces, such as `factory: builder <runId>`; nothing a terminal or shell interprets. */
+const MONITOR_TITLE = /^(?=.{1,128}$)[A-Za-z0-9._:-]+(?: [A-Za-z0-9._:-]+)*$/;
+const LOG_PATH = /^\/[^\x00-\x1f\x7f]*$/;
+
+/** Sets the title, then becomes the trusted tail with no terminal input; `$1` is the title and `$2` the log. */
+const VIEWER = `printf '\\033]0;%s\\007' "$1"; exec /usr/bin/tail -n +1 -f -- "$2" </dev/null`;
+
 /**
- * `--title` only sets the pane title; the tab's live title follows the shell, which the owner's zsh sets to the running
- * command, so the command also sets it with an OSC 0 escape.
+ * The command typed into the monitor tab's shell. `exec` replaces the owner's interactive shell with a non-interactive
+ * `/bin/sh`, which in turn becomes `/usr/bin/tail`, so stopping the viewer (Ctrl-C) ends the tab instead of leaving a
+ * prompt in the owner's shell in the run's worktree, and the viewer reads no keystrokes.
+ * `--title` only sets the pane title; the tab's live title follows the shell, so the viewer also sets it with OSC 0.
  */
 export function monitorCommand(title: string, logPath: string): string {
-  return `printf '\\033]0;%s\\007' ${shellQuote(title)}; tail -n +1 -f ${shellQuote(logPath)}`;
+  if (!MONITOR_TITLE.test(title)) throw new Error(`monitor title must be plain words: ${JSON.stringify(title)}`);
+  if (!LOG_PATH.test(logPath)) throw new Error(`monitor log path must be absolute with no control characters: ${JSON.stringify(logPath)}`);
+  return `exec /bin/sh -c ${shellQuote(VIEWER)} factory-monitor ${shellQuote(title)} ${shellQuote(logPath)}`;
 }
 
 /**
  * Opens a read-only Orca terminal in the run's worktree that tails the run log.
- * Best effort: it starts in the background, and no failure reaches the run.
+ * Throws only for an invalid title or log path; otherwise best effort: it starts in the background, and no failure
+ * reaches the run.
  */
 export function openRunMonitor(input: MonitorInput): RunMonitor {
   const timeoutMs = input.timeoutMs ?? ORCA_TIMEOUT_MS;
+  const command = monitorCommand(input.title, input.logPath); // throws on a bad title, before anything starts
   const problems: string[] = [];
   const opened: Promise<string | null> = (async () => {
     const result = await orcaJson(
       input.orcaPath,
-      ["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", monitorCommand(input.title, input.logPath)],
+      ["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", command],
       timeoutMs,
     );
     const handle = isRecord(result.terminal) ? str(result.terminal.handle) : null;

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { monitorCommand, openRunMonitor, shellQuote } from "../src/orca/monitor";
@@ -39,11 +40,64 @@ describe("shellQuote", () => {
 });
 
 describe("monitorCommand", () => {
-  test("sets the live title with an OSC 0 escape, then tails the log from its first line", () => {
-    // A shell function stands in for tail, which would never exit; it prints the arguments it got.
-    const script = `tail() { printf '[%s]' "$@"; }; ${monitorCommand("factory: builder x", "/state/it's.jsonl")}`;
-    const out = Bun.spawnSync(["/bin/sh", "-c", script]).stdout.toString();
-    expect(out).toBe("\x1b]0;factory: builder x\x07[-n][+1][-f][/state/it's.jsonl]");
+  /**
+   * Types the command into an interactive shell, as the tab does, with another command queued after it, then presses
+   * Ctrl-C (SIGINT to the foreground process group). An interactive shell survives SIGINT, so if the viewer did not
+   * replace it, the queued command would run. Bounded, and the whole group is killed afterwards.
+   */
+  async function typedIntoShell(log: string) {
+    const sh = spawn("/bin/sh", ["-i"], { detached: true, stdio: ["pipe", "pipe", "ignore"], env: { PATH: "/usr/bin:/bin", PS1: "" } });
+    let out = "";
+    sh.stdout!.on("data", (d: Buffer) => (out += d.toString()));
+    const exited = new Promise<string | null>((resolve) => sh.once("exit", (_code, signal) => resolve(signal)));
+    try {
+      sh.stdin!.write(`${monitorCommand("factory: builder x", log)}\necho BACK-IN-OWNER-SHELL\n`);
+      for (let i = 0; i < 250 && !out.includes("first line\n"); i++) await Bun.sleep(20);
+      const comm = Bun.spawnSync(["/bin/ps", "-o", "comm=", "-p", String(sh.pid)]).stdout.toString().trim();
+      const stdin = Bun.spawnSync(["/usr/sbin/lsof", "-a", "-p", String(sh.pid), "-d", "0", "-Fn"]).stdout.toString();
+      process.kill(-sh.pid!, "SIGINT");
+      const signal = await Promise.race([exited, Bun.sleep(2_000).then(() => "still running")]);
+      await Bun.sleep(100); // let a queued echo, if any, reach stdout
+      return { out, comm, stdin, signal };
+    } finally {
+      try {
+        process.kill(-sh.pid!, "SIGKILL");
+      } catch {
+        // the group is already gone
+      }
+      // A viewer the shell put in a job of its own (a regression) is outside that group; the log path is unique.
+      Bun.spawnSync(["/usr/bin/pkill", "-KILL", "-f", `tail -n \\+1 -f -- ${log}`]);
+    }
+  }
+
+  test("sets the live title, then the shell becomes /usr/bin/tail on the log, reading no input", async () => {
+    const log = join(sb.logDir, "it's a log.jsonl");
+    writeFileSync(log, "first line\n");
+    const r = await typedIntoShell(log);
+    expect(r.out.startsWith("\x1b]0;factory: builder x\x07first line\n")).toBe(true);
+    expect(r.comm).toBe("/usr/bin/tail");
+    expect(r.stdin).toContain("n/dev/null");
+  });
+
+  test("interrupting the viewer ends the tab instead of returning to the owner's shell", async () => {
+    const log = join(sb.logDir, "run.jsonl");
+    writeFileSync(log, "first line\n");
+    const r = await typedIntoShell(log);
+    expect(r.signal).toBe("SIGINT");
+    expect(r.out).not.toContain("BACK-IN-OWNER-SHELL");
+  });
+
+  test("refuses titles and log paths a terminal or shell would interpret", () => {
+    for (const title of ["", "a\x1b]0;x", "a'b", "a  b", "$(id)", "a\nb", "x".repeat(129)]) {
+      expect(() => monitorCommand(title, "/l")).toThrow("plain words");
+    }
+    expect(() => monitorCommand("t", "relative.jsonl")).toThrow("absolute");
+    expect(() => monitorCommand("t", "/l\x07")).toThrow("control characters");
+  });
+
+  test("openRunMonitor validates the title itself, before calling orca", () => {
+    expect(() => openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: "bad\x07title", logPath: "/l" })).toThrow("plain words");
+    expect(calls()).toEqual([]);
   });
 });
 
@@ -55,7 +109,7 @@ describe("run monitor", () => {
     const [create, close] = calls();
     expect(create).toEqual([
       "terminal", "create", "--worktree", `path:${realpathSync(sb.worktree)}`, "--title", `factory: builder ${s.runId}`,
-      "--command", `printf '\\033]0;%s\\007' 'factory: builder ${s.runId}'; tail -n +1 -f '${r.stdoutPath}'`, "--json",
+      "--command", monitorCommand(`factory: builder ${s.runId}`, r.stdoutPath), "--json",
     ]);
     expect(close).toEqual(["terminal", "close", "--terminal", "term_fake", "--json"]);
     expect(calls()).toHaveLength(2);
