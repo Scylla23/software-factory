@@ -33,12 +33,31 @@ case "$last" in
 esac
 `;
 
+/**
+ * A fake `orca`. It gets a minimal env, so its behavior comes from the `orca-mode` file next to it
+ * (ok, fail, hang); every call's argv is appended to `orca-calls`, one argument per line, then `--`.
+ */
+const fakeOrca = (bin: string) => `#!/bin/sh
+printf '%s\\n' "$@" -- >> "${bin}/orca-calls"
+mode=$(cat "${bin}/orca-mode" 2>/dev/null || echo ok)
+case "$mode" in
+  fail) echo '{"ok":false,"error":{"code":"runtime_unavailable"}}'; exit 1 ;;
+  hang) sleep 30 ;; # a grandchild that holds the pipes after orca is killed
+esac
+case "$1 $2" in
+  "terminal create") echo '{"ok":true,"result":{"terminal":{"handle":"term_fake"}}}' ;;
+  *) echo '{"ok":true,"result":{}}' ;;
+esac
+`;
+
 export interface Sandbox {
   /** Temp dir standing in for the worktree. */
   worktree: string;
   /** Under the repo, because the state root must be outside every agent-writable temp root. */
   stateRoot: string;
   logDir: string;
+  /** Holds the fakes; `orca-mode` and `orca-calls` live here. */
+  bin: string;
   /** HOME seen by the fake agent. */
   home: string;
   /** The fake Codex home, which holds the fixture Codex sessions. */
@@ -53,6 +72,8 @@ export function makeSandbox(): Sandbox {
   mkdirSync(bin);
   writeFileSync(join(bin, "fake-cli"), FAKE_CLI);
   chmodSync(join(bin, "fake-cli"), 0o755);
+  writeFileSync(join(bin, "fake-orca"), fakeOrca(bin));
+  chmodSync(join(bin, "fake-orca"), 0o755);
   mkdirSync(join(import.meta.dir, ".state"), { recursive: true });
   const stateRoot = mkdtempSync(join(import.meta.dir, ".state", "run-"));
   const logDir = join(stateRoot, "logs");
@@ -63,7 +84,7 @@ export function makeSandbox(): Sandbox {
   for (const dir of Object.values(harnessHomes)) mkdirSync(dir, { mode: 0o700 });
   const config: DispatchConfig = {
     // Fake executables come in explicitly here, never through PATH.
-    executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), ps: "/bin/ps" },
+    executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps" },
     stateRoot,
     harnessHomes,
     managedSettingsPaths: [join(stateRoot, "managed-settings.json"), join(stateRoot, "managed-settings.d")],
@@ -71,6 +92,7 @@ export function makeSandbox(): Sandbox {
   };
   return {
     worktree,
+    bin,
     stateRoot,
     logDir,
     home,

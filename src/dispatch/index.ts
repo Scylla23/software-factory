@@ -4,6 +4,7 @@ import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
 import { assertPrivateDir, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots } from "./config";
 import { readJsonl } from "./jsonl";
+import { openRunMonitor, type RunMonitor } from "../orca/monitor";
 import { agentEnv } from "./policy";
 import { type AgentProcess, spawnAgentProcess, type TerminationReport, terminateTree } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
@@ -12,6 +13,7 @@ export { loadDispatchConfig, type DispatchConfig } from "./config";
 export type { RunResult, RunSpec } from "./types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const AGENT_LABEL = /^[A-Za-z0-9._-]{1,64}$/;
 
 /**
  * Runs one headless agent turn in a worktree and waits for it.
@@ -20,6 +22,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
  */
 export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<RunResult> {
   if (!UUID.test(spec.runId)) throw new Error(`runId must be a lowercase UUID: ${spec.runId}`);
+  if (spec.monitor && !AGENT_LABEL.test(spec.monitor.agent)) throw new Error(`monitor agent label must match ${AGENT_LABEL}: ${JSON.stringify(spec.monitor.agent)}`);
   spec.signal?.throwIfAborted();
   const worktree = realpathSync(spec.worktreePath);
   const executable = config.executables[spec.harness];
@@ -50,6 +53,11 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     closeSync(logs.stderrFd);
   }
 
+  let monitor: RunMonitor | null = null;
+  if (spec.monitor) {
+    monitor = openRunMonitor({ orcaPath: config.executables.orca, worktreePath: worktree, title: `factory: ${spec.monitor.agent} ${spec.runId}`, logPath: logs.stdoutPath });
+  }
+
   let stopped: "cancelled" | "timed_out" | null = null;
   let termination: Promise<TerminationReport> | null = null;
   const stop = (why: "cancelled" | "timed_out") => {
@@ -71,6 +79,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const cleanup: TerminationReport | null = termination ? await (termination as Promise<TerminationReport>) : null;
 
   const diagnostics: string[] = [];
+  if (monitor) diagnostics.push(...(await monitor.close()).map((d) => `monitor: ${d}`));
   if (status.error) diagnostics.push(`spawn failed: ${status.error}`);
   if (cleanup) {
     diagnostics.push(...cleanup.errors.map((e) => `cleanup: ${e}`));

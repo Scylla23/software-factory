@@ -17,6 +17,11 @@ export interface RunSpec {
   signal?: AbortSignal;
   /** Paths denied in addition to MANDATORY_DENY_READ, which always applies. */
   extraDenyRead?: readonly string[];
+  /**
+   * Opens a read-only Orca terminal titled `factory: <agent> <runId>` that tails the stdout log, closed when the run ends.
+   * Best effort: its failures only add `monitor:` diagnostics.
+   */
+  monitor?: { agent: string };
 }
 
 export type RunOutcome = "completed" | "failed" | "cancelled" | "timed_out";
