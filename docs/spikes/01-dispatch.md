@@ -364,8 +364,8 @@ The agent's `PATH` keeps only absolute entries.
 
 ### Managed settings
 
-Claude managed settings outrank `--settings` and survive `--restricted`, so `runAgent` refuses a Claude dispatch while any of these exist unaccepted: `/Library/Application Support/ClaudeCode/managed-settings.json`, every file in `/Library/Application Support/ClaudeCode/managed-settings.d`, `/Library/Managed Preferences/com.anthropic.claudecode.plist`, and the per-user plist under `/Library/Managed Preferences/<user>/`.
-The owner accepts a file by its sha256 through `loadDispatchConfig({ acceptedManagedSettings })`; an unreadable location counts as present.
+Claude managed settings outrank `--settings` and survive `--restricted`, so `runAgent` refuses a Claude dispatch while any of these exists, whatever it holds: `/Library/Application Support/ClaudeCode/managed-settings.json`, the `/Library/Application Support/ClaudeCode/managed-settings.d` directory, `/Library/Managed Preferences/com.anthropic.claudecode.plist`, and the per-user plist under `/Library/Managed Preferences/<user>/`.
+A location that cannot be checked counts as existing, and there is no way to accept one (repair round 2 removed the sha256 acceptance).
 On this machine none exist: there is no `/Library/Application Support/ClaudeCode`, no `/Library/Managed Preferences`, and `defaults read com.anthropic.claudecode` reports the domain does not exist.
 
 ### Logs

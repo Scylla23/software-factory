@@ -88,7 +88,6 @@ export function makeSandbox(): Sandbox {
     stateRoot,
     harnessHomes,
     managedSettingsPaths: [join(stateRoot, "managed-settings.json"), join(stateRoot, "managed-settings.d")],
-    acceptedManagedSettings: {},
   };
   return {
     worktree,
