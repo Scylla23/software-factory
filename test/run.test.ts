@@ -3,7 +3,7 @@ import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpa
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { expandHome, MANDATORY_DENY_READ } from "../src/dispatch/policy";
-import { type ProcRow, type Snapshot, snapshot, spawnAgentProcess, superviseRun, terminateTree, Tracker } from "../src/dispatch/process";
+import { type ProcRow, type Snapshot, snapshot, spawnAgentProcess, superviseRun, terminateTree, verifyGone, Tracker } from "../src/dispatch/process";
 import { alive, FIXTURES, fixture, gone, makeSandbox, readPid, type Sandbox, writeLines } from "./helpers";
 
 let sb: Sandbox;
@@ -314,13 +314,73 @@ describe("bounded waits", () => {
     expect(r.status).toBeNull();
     expect(r.stopped).toBe("timed_out");
     expect(r.cleanup!.errors).toEqual([expect.stringContaining("did not exit")]);
+    expect(r.unverified).toEqual([`root pid ${real.pid} never exited`]);
     expect((await real.exited).signal).not.toBeNull();
   });
 
   test("supervision of a root that exits by itself reports its status and no cleanup", async () => {
     const r = await superviseRun(spawnShell("exit 7"), { timeoutMs: 30_000, psPath: "/bin/ps" });
-    expect(r).toEqual({ status: { code: 7, signal: null, error: null }, stopped: null, cleanup: null });
+    expect(r).toEqual({ status: { code: 7, signal: null, error: null }, stopped: null, cleanup: null, unverified: [] });
   });
+
+});
+
+describe("cleanup verification", () => {
+  const spawnShell = (script: string) => {
+    const o = openSync(join(sb.stateRoot, `${crypto.randomUUID()}.out`), "w");
+    const p = spawnAgentProcess({ executable: "/bin/sh", args: ["-c", script], cwd: sb.worktree, env: { PATH: "/usr/bin:/bin" }, stdoutFd: o, stderrFd: o, psPath: "/bin/ps" });
+    closeSync(o);
+    return p;
+  };
+
+  test("a clean run and a cleanly stopped run are verified, and the worktree is not quarantined", async () => {
+    const done = await runAgent(spec("claude", `replay:${fixture("claude-headless.stream.jsonl")}`), sb.config);
+    expect(done).toMatchObject({ outcome: "completed", cleanupVerified: true, quarantineWorktree: false });
+    const stopped = await runAgent({ ...spec("claude", `hang:${join(sb.worktree, "c.pid")}`), timeoutMs: 300 }, sb.config);
+    expect(stopped).toMatchObject({ outcome: "timed_out", cleanupVerified: true, quarantineWorktree: false });
+  });
+
+  test("a root that exits leaving a process in its group is unverified", async () => {
+    const pidFile = join(sb.worktree, "left.pid");
+    const r = await superviseRun(spawnShell(`sleep 300 & echo $! > "${pidFile}"; exit 0`), { timeoutMs: 30_000, psPath: "/bin/ps" });
+    const left = await readPid(pidFile);
+    try {
+      expect(r.unverified).toEqual([`1 processes from the run's group outlived it: ${left}`]);
+    } finally {
+      process.kill(left, "SIGKILL");
+    }
+  });
+
+  test("a stop whose termination could not enumerate processes is unverified, and runAgent quarantines the worktree", async () => {
+    const psPath = join(sb.bin, "failing-ps");
+    writeFileSync(psPath, "#!/bin/sh\nexit 2\n");
+    chmodSync(psPath, 0o755);
+    const r = await superviseRun(spawnShell("sleep 300"), { timeoutMs: 50, psPath, graceMs: 100, killWaitMs: 200 });
+    expect(r.stopped).toBe("timed_out");
+    expect(r.unverified.length).toBeGreaterThan(0);
+    expect(r.unverified.every((u) => u.startsWith("termination: process snapshot failed"))).toBe(true);
+
+    const config = { ...sb.config, executables: { ...sb.config.executables, ps: psPath } };
+    const childFile = join(sb.worktree, "q.pid");
+    try {
+      const run = await runAgent({ ...spec("claude", `hang:${childFile}`), timeoutMs: 300 }, config);
+      expect(run).toMatchObject({ outcome: "timed_out", cleanupVerified: false, quarantineWorktree: true });
+      expect(run.diagnostics).toContainEqual(expect.stringMatching(/^cleanup unverified: termination: process snapshot failed/));
+      // The flag is truthful: without ps the fake's background child was never found, so it is still alive.
+      expect(alive(await readPid(childFile))).toBe(true);
+    } finally {
+      process.kill(await readPid(childFile), "SIGKILL");
+    }
+  });
+});
+
+test("verifyGone: survivors of termination make cleanup unverified", () => {
+  const exited = { code: null, signal: "SIGKILL", error: null };
+  const survivor = { pid: 4242, start: "Thu Nov 19 00:00:00 2026" };
+  const root = { pid: 4241, exitedAt: () => 1 } as Parameters<typeof verifyGone>[0];
+  expect(verifyGone(root, exited, { survivors: [survivor], errors: [] }, { psPath: "/bin/ps" })).toEqual(["1 owned processes survived termination: 4242"]);
+  expect(verifyGone(root, exited, { survivors: [], errors: [] }, { psPath: "/bin/ps" })).toEqual([]);
+  expect(verifyGone(root, { code: null, signal: null, error: "ENOENT" }, null, { psPath: "/nonexistent" })).toEqual([]);
 });
 
 describe("Tracker identity", () => {
