@@ -40,10 +40,8 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   }
   const agentWritable = [worktree, ...tempRoots()];
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
-  const policy: SandboxPolicy = {
-    denyRead: effectiveDenyRead(ctx, spec.extraDenyRead),
-    readable: spec.harness === "codex" ? codexReadable(config.accountHome) : [],
-  };
+  const denyRead = effectiveDenyRead(ctx, spec.extraDenyRead);
+  const policy: SandboxPolicy = { denyRead, readable: spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [] };
   assertPolicySound(policy, ctx);
   assertStateRootIsolated(config.stateRoot, [...agentWritable, ...policy.readable]);
   assertSafeDir(config.stateRoot, config.accountHome);
