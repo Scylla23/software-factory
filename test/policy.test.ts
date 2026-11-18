@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { claudeArgs, claudeSettings } from "../src/dispatch/claude";
 import { CODEX_READ_EXCEPTIONS, codexArgs, codexConfigArgs } from "../src/dispatch/codex";
-import { agentEnv, effectiveDenyRead, MANDATORY_DENY_READ } from "../src/dispatch/policy";
+import { agentEnv, effectiveDenyRead, MANDATORY_DENY_READ, SYSTEM_PATH_DIRS } from "../src/dispatch/policy";
 
 /** The paths a generated Codex profile carries with the given access. */
 function codexEntries(args: string[], access: "none" | "read"): string[] {
@@ -28,23 +28,30 @@ describe("agentEnv", () => {
       },
       "codex",
       "/state/codex-home",
+      "/opt/harness/bin:/usr/bin:/bin",
     );
-    expect(env).toEqual({ HOME: "/Users/owner", PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8", CODEX_HOME: "/state/codex-home" });
+    expect(env).toEqual({ HOME: "/Users/owner", PATH: "/opt/harness/bin:/usr/bin:/bin", LANG: "en_US.UTF-8", CODEX_HOME: "/state/codex-home" });
   });
 
   test("points each harness at its dedicated home from the config, never the parent's", () => {
     const parent = { HOME: "/h", CODEX_HOME: "/h/.codex", CLAUDE_CONFIG_DIR: "/h/.claude" };
-    expect(agentEnv(parent, "claude", "/state/claude-home")).toEqual({ HOME: "/h", CLAUDE_CONFIG_DIR: "/state/claude-home" });
-    expect(agentEnv(parent, "codex", "/state/codex-home")).toEqual({ HOME: "/h", CODEX_HOME: "/state/codex-home" });
-    expect(() => agentEnv(parent, "codex", "codex-home")).toThrow("must be absolute");
+    expect(agentEnv(parent, "claude", "/state/claude-home", "/bin")).toEqual({ HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/state/claude-home" });
+    expect(agentEnv(parent, "codex", "/state/codex-home", "/bin")).toEqual({ HOME: "/h", PATH: "/bin", CODEX_HOME: "/state/codex-home" });
+    expect(() => agentEnv(parent, "codex", "codex-home", "/bin")).toThrow("must be absolute");
   });
 
-  test("drops relative and empty PATH entries, which would resolve inside the worktree", () => {
-    expect(agentEnv({ HOME: "/h", PATH: "node_modules/.bin::.:/usr/bin:bin:/bin" }, "codex", "/c").PATH).toBe("/usr/bin:/bin");
+  test("PATH is the trusted one, never the parent's, even an absolute worktree entry", () => {
+    const parent = { HOME: "/h", PATH: "/Users/owner/orca/workspaces/p/wt/node_modules/.bin:/usr/bin" };
+    expect(agentEnv(parent, "codex", "/c", "/opt/harness/bin:/usr/bin:/bin").PATH).toBe("/opt/harness/bin:/usr/bin:/bin");
+  });
+
+  test("an empty trusted PATH falls back to the system dirs; a relative entry is refused", () => {
+    expect(agentEnv({ HOME: "/h" }, "codex", "/c", "").PATH).toBe(SYSTEM_PATH_DIRS.join(":"));
+    expect(() => agentEnv({ HOME: "/h" }, "codex", "/c", "bin:/usr/bin")).toThrow("relative entry");
   });
 
   test("requires HOME, which both CLIs need to find their auth", () => {
-    expect(() => agentEnv({ PATH: "/bin" }, "codex", "/c")).toThrow("HOME is required");
+    expect(() => agentEnv({ PATH: "/bin" }, "codex", "/c", "/bin")).toThrow("HOME is required");
   });
 });
 

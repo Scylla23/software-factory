@@ -1,6 +1,7 @@
 import { closeSync, constants, lstatSync, openSync, realpathSync, statSync, writeSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { SYSTEM_PATH_DIRS } from "./policy";
 import type { Harness } from "./types";
 
 /**
@@ -17,6 +18,8 @@ export interface DispatchConfig {
    * logged in to once, so no owner instructions, hooks, skills, plugins, or config reach factory runs.
    */
   harnessHomes: Record<Harness, string>;
+  /** The agent's whole PATH: the verified harness bin dirs, then the system dirs. Never derived from the inherited PATH. */
+  agentPath: string;
   /** Claude managed-settings locations; a Claude dispatch is refused while any of them exists. */
   managedSettingsPaths: readonly string[];
 }
@@ -58,7 +61,8 @@ export interface LoadOptions {
 
 export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   const untrusted = [...tempRoots(), ...opts.agentWriteRoots.map(canonical)];
-  const find = (name: string) => {
+  const harnessBinDirs: string[] = [];
+  const find = (name: string, isHarness = false) => {
     for (const dir of TRUSTED_BIN_DIRS) {
       const candidate = join(dir, name);
       let real: string;
@@ -67,7 +71,9 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
       } catch {
         continue;
       }
-      return assertTrustedExecutable(real, untrusted);
+      const exe = assertTrustedExecutable(real, untrusted);
+      if (isHarness) harnessBinDirs.push(dir, dirname(exe));
+      return exe;
     }
     throw new Error(`${name} not found in ${TRUSTED_BIN_DIRS.join(", ")}`);
   };
@@ -76,11 +82,30 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   const homes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
   for (const home of Object.values(homes)) assertPrivateDir(home, stateRoot);
   return {
-    executables: { claude: find("claude"), codex: find("codex"), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted) },
+    executables: { claude: find("claude", true), codex: find("codex", true), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted) },
     stateRoot,
     harnessHomes: homes,
+    agentPath: trustedAgentPath(harnessBinDirs, untrusted),
     managedSettingsPaths: CLAUDE_MANAGED_SETTINGS_PATHS,
   };
+}
+
+/**
+ * The harness bin dirs, each canonical, outside every untrusted root, owned by root or the user, and not group or
+ * world writable (a writable PATH dir lets anyone plant a command), then the system dirs; deduplicated.
+ */
+export function trustedAgentPath(harnessBinDirs: readonly string[], untrustedRoots: readonly string[]): string {
+  const dirs: string[] = [];
+  for (const dir of harnessBinDirs) {
+    const real = realpathSync(dir);
+    for (const root of untrustedRoots) if (isUnder(real, root)) throw new Error(`PATH dir ${real} is under agent-writable ${root}`);
+    const st = statSync(real);
+    if (!st.isDirectory()) throw new Error(`PATH entry is not a directory: ${real}`);
+    if ((st.mode & 0o022) !== 0) throw new Error(`PATH dir is group or world writable: ${real}`);
+    if (st.uid !== 0 && st.uid !== process.getuid!()) throw new Error(`PATH dir owned by uid ${st.uid}: ${real}`);
+    dirs.push(real);
+  }
+  return [...new Set([...dirs, ...SYSTEM_PATH_DIRS])].join(":");
 }
 
 /** A regular executable, owned by the user or root, not group/world writable, outside every untrusted root. */

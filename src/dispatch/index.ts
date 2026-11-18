@@ -41,7 +41,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const agentWritable = [worktree, ...tempRoots()];
   const instructions = buildProjectInstructions(spec.instructionFiles, agentWritable);
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
-  const env = agentEnv(process.env, spec.harness, home);
+  const env = agentEnv(process.env, spec.harness, home, config.agentPath);
   const logs = createRunLogs(config, spec.logDir, spec.runId, agentWritable);
   let instructionsPath: string | null = null;
   try {

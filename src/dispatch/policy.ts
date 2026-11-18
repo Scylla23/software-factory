@@ -43,16 +43,25 @@ function assertDenyPath(path: string): void {
  * The only parent variables an agent process inherits.
  * Everything else, including tokens, `CLAUDE_CODE_*`, and `ORCA_*`, is dropped.
  */
-const ENV_ALLOWLIST = ["HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR", "LANG", "TERM"] as const;
+const ENV_ALLOWLIST = ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "TERM"] as const;
+
+/** System dirs every agent PATH starts from, and the whole PATH when nothing else is configured. */
+export const SYSTEM_PATH_DIRS: readonly string[] = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 
 /** The variable that points each harness at its dedicated home. */
 export const HARNESS_HOME_VAR = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } as const;
 
 /**
- * The agent's environment: the allowlisted parent variables plus the harness home, which always comes from the
- * factory's config and never from the parent.
+ * The agent's environment: the allowlisted parent variables, plus PATH and the harness home, which always come from
+ * the factory's config and never from the parent. `trustedPath` is DispatchConfig.agentPath; an empty one falls back
+ * to the system dirs.
  */
-export function agentEnv(parent: Record<string, string | undefined>, harness: keyof typeof HARNESS_HOME_VAR, harnessHome: string): Record<string, string> {
+export function agentEnv(
+  parent: Record<string, string | undefined>,
+  harness: keyof typeof HARNESS_HOME_VAR,
+  harnessHome: string,
+  trustedPath: string,
+): Record<string, string> {
   if (!harnessHome.startsWith("/")) throw new Error(`agentEnv: harness home must be absolute: ${harnessHome}`);
   const env: Record<string, string> = {};
   for (const name of ENV_ALLOWLIST) {
@@ -60,8 +69,9 @@ export function agentEnv(parent: Record<string, string | undefined>, harness: ke
     if (value !== undefined) env[name] = value;
   }
   if (!env.HOME) throw new Error("agentEnv: HOME is required for CLI auth");
-  // A relative or empty PATH entry resolves against the agent's cwd, the agent-writable worktree.
-  if (env.PATH !== undefined) env.PATH = env.PATH.split(":").filter((d) => d.startsWith("/")).join(":");
+  const dirs = trustedPath.split(":").filter(Boolean);
+  if (dirs.some((d) => !d.startsWith("/"))) throw new Error(`agentEnv: trusted PATH has a relative entry: ${trustedPath}`);
+  env.PATH = (dirs.length > 0 ? dirs : SYSTEM_PATH_DIRS).join(":");
   env[HARNESS_HOME_VAR[harness]] = harnessHome;
   return env;
 }
