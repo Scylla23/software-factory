@@ -1,7 +1,7 @@
 import { closeSync, constants, lstatSync, openSync, realpathSync, statSync, writeSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { SYSTEM_PATH_DIRS } from "./policy";
+import { overlaps, SYSTEM_PATH_DIRS } from "./policy";
 import type { Harness } from "./types";
 
 /**
@@ -11,6 +11,8 @@ import type { Harness } from "./types";
 export interface DispatchConfig {
   /** Absolute, canonical paths. */
   executables: Record<Harness | "ps" | "orca", string>;
+  /** Canonical account home from the user database (getpwuid), never $HOME; owner-protection paths derive from it. */
+  accountHome: string;
   /** Canonical factory state dir; run logs must live under it. */
   stateRoot: string;
   /**
@@ -77,12 +79,15 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
     }
     throw new Error(`${name} not found in ${TRUSTED_BIN_DIRS.join(", ")}`);
   };
-  const stateRoot = canonical(opts.stateRoot ?? join(HOME, ".software-factory"));
-  for (const root of untrusted) if (isUnder(stateRoot, root)) throw new Error(`state root ${stateRoot} is under agent-writable ${root}`);
+  const accountHome = canonical(HOME);
+  const stateRoot = canonical(opts.stateRoot ?? join(accountHome, ".software-factory"));
+  assertStateRootIsolated(stateRoot, untrusted);
+  assertSafeDir(stateRoot, accountHome);
   const homes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
   for (const home of Object.values(homes)) assertPrivateDir(home, stateRoot);
   return {
     executables: { claude: find("claude", true), codex: find("codex", true), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted) },
+    accountHome,
     stateRoot,
     harnessHomes: homes,
     agentPath: trustedAgentPath(harnessBinDirs, untrusted),
@@ -117,6 +122,27 @@ export function assertTrustedExecutable(path: string, untrustedRoots: readonly s
   if ((st.mode & 0o022) !== 0) throw new Error(`executable is group or world writable: ${real}`);
   if (st.uid !== 0 && st.uid !== process.getuid!()) throw new Error(`executable owned by uid ${st.uid}: ${real}`);
   return real;
+}
+
+/** Refuses a state root that contains, or is contained by, any agent write root or readable carve-out. */
+export function assertStateRootIsolated(stateRoot: string, roots: readonly string[]): void {
+  for (const root of roots) if (overlaps(stateRoot, root)) throw new Error(`state root ${stateRoot} overlaps agent-reachable ${root}`);
+}
+
+/**
+ * A directory owned by the user, where neither it nor any parent up to `home` (or up to `/` outside the home) is
+ * group or world writable, so nobody else can swap a component of the path.
+ */
+export function assertSafeDir(path: string, home: string): void {
+  const st = statSync(path);
+  if (!st.isDirectory()) throw new Error(`not a directory: ${path}`);
+  if (st.uid !== process.getuid!()) throw new Error(`${path} is owned by uid ${st.uid}`);
+  const stop = isUnder(path, home) ? home : "/";
+  for (let dir = path; ; dir = dirname(dir)) {
+    const mode = statSync(dir).mode;
+    if ((mode & 0o022) !== 0) throw new Error(`${dir} is group or world writable (mode ${(mode & 0o777).toString(8)}), so ${path} is not safe`);
+    if (dir === stop || dir === "/") break;
+  }
 }
 
 /** An existing directory, canonical at `path`, under `root`, owned by the user, with no group or world access. */
@@ -167,6 +193,7 @@ export interface RunLogs {
 export function createRunLogs(config: DispatchConfig, logDir: string, runId: string, agentWriteRoots: readonly string[]): RunLogs {
   const dir = canonical(logDir);
   if (!isUnder(dir, config.stateRoot)) throw new Error(`log dir ${dir} is not under the state root ${config.stateRoot}`);
+  assertSafeDir(dir, config.accountHome);
   for (const root of agentWriteRoots) if (isUnder(dir, root)) throw new Error(`log dir ${dir} is under agent-writable ${root}`);
   const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
   const open = (path: string) => {

@@ -91,19 +91,21 @@ describe("tomlString", () => {
   );
 });
 
+const NO_POLICY = { denyRead: ["/denied"], readable: [] };
+
 describe("harness args", () => {
   test("Claude appends the instructions file to the system prompt, before the end of options", () => {
-    const args = claudeArgs({ prompt: "p", model: "m", effort: "low", sessionId: "s", instructionsFile: "/state/i.md" });
+    const args = claudeArgs({ prompt: "p", model: "m", effort: "low", sessionId: "s", policy: NO_POLICY, instructionsFile: "/state/i.md" });
     expect(after(args, "--append-system-prompt-file")).toBe("/state/i.md");
     expect(args.indexOf("--append-system-prompt-file")).toBeLessThan(args.indexOf("--"));
-    expect(claudeArgs({ prompt: "p", model: "m", effort: "low", sessionId: "s" })).not.toContain("--append-system-prompt-file");
+    expect(claudeArgs({ prompt: "p", model: "m", effort: "low", sessionId: "s", policy: NO_POLICY })).not.toContain("--append-system-prompt-file");
   });
 
   test("Codex always turns off its own AGENTS.md discovery, with or without instructions", () => {
-    const none = codexArgs({ prompt: "p", model: "m", effort: "low", worktreePath: "/w" });
+    const none = codexArgs({ prompt: "p", model: "m", effort: "low", worktreePath: "/w", policy: NO_POLICY });
     expect(codexConfig(none, "project_doc_max_bytes")).toBe(0);
     expect(codexConfig(none, "developer_instructions")).toBeUndefined();
-    const some = codexArgs({ prompt: "p", model: "m", effort: "low", worktreePath: "/w", instructions: "Use bun.\n" });
+    const some = codexArgs({ prompt: "p", model: "m", effort: "low", worktreePath: "/w", policy: NO_POLICY, instructions: "Use bun.\n" });
     expect(codexConfig(some, "project_doc_max_bytes")).toBe(0);
     expect(codexConfig(some, "developer_instructions")).toBe("Use bun.\n");
   });
