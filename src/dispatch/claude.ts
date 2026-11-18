@@ -1,4 +1,4 @@
-import { describeInvalid, isRecord, type JsonlItem, str } from "./jsonl";
+import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
 import { effectiveDenyRead } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
 
@@ -79,7 +79,9 @@ export interface ClaudeStreamSummary {
   resultText: string | null;
   /** Null when absent, malformed, or ambiguous; never zero-filled. */
   usage: ClaudeUsage | null;
+  /** A bounded sample; `diagnosticCount` counts them all. */
   diagnostics: string[];
+  diagnosticCount: number;
 }
 
 /**
@@ -88,11 +90,12 @@ export interface ClaudeStreamSummary {
  * but a second `result` event does, because it is unclear whether its totals are cumulative.
  */
 export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promise<ClaudeStreamSummary> {
-  const s: ClaudeStreamSummary = { sessionId: null, observedModel: null, succeeded: false, resultText: null, usage: null, diagnostics: [] };
+  const s: ClaudeStreamSummary = { sessionId: null, observedModel: null, succeeded: false, resultText: null, usage: null, diagnostics: [], diagnosticCount: 0 };
+  const sample = new DiagnosticSample();
   let results = 0;
   for await (const item of items) {
     if (item.kind === "invalid") {
-      s.diagnostics.push(describeInvalid(item));
+      sample.add(describeInvalid(item));
       continue;
     }
     const event = item.value;
@@ -105,14 +108,16 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
       s.succeeded = event.subtype === "success" && event.is_error === false;
       s.resultText = str(event.result);
       s.usage = claudeUsage(event);
-      if (!s.usage) s.diagnostics.push(`line ${item.line}: result event has malformed usage`);
+      if (!s.usage) sample.add(`line ${item.line}: result event has malformed usage`);
     }
   }
   if (results > 1) {
-    s.diagnostics.push(`${results} result events; accounting is ambiguous`);
+    sample.add(`${results} result events; accounting is ambiguous`);
     s.succeeded = false;
     s.usage = null;
   }
+  s.diagnostics = sample.list();
+  s.diagnosticCount = sample.count;
   return s;
 }
 

@@ -1,5 +1,5 @@
 import { Glob } from "bun";
-import { describeInvalid, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
+import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
 import { effectiveDenyRead } from "./policy";
 import type { CodexUsage } from "./types";
 
@@ -96,7 +96,9 @@ export interface CodexStreamSummary {
   resultText: string | null;
   /** Null when any turn's accounting is missing, malformed, or may have been lost; never partial. */
   usage: CodexUsage | null;
+  /** A bounded sample; `diagnosticCount` counts them all. */
   diagnostics: string[];
+  diagnosticCount: number;
 }
 
 /**
@@ -105,7 +107,7 @@ export interface CodexStreamSummary {
  * a corrupt or truncated line may have been a `turn.completed` or a `turn.failed`.
  */
 export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise<CodexStreamSummary> {
-  const diagnostics: string[] = [];
+  const sample = new DiagnosticSample();
   let threadId: string | null = null;
   let resultText: string | null = null;
   let usage: CodexUsage | null = null;
@@ -114,7 +116,7 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
   let failed = false;
   for await (const item of items) {
     if (item.kind === "invalid") {
-      diagnostics.push(describeInvalid(item));
+      sample.add(describeInvalid(item));
       accountingComplete = false;
       continue;
     }
@@ -127,7 +129,7 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
       completed = true;
       const turn = codexTurnUsage(event.usage);
       if (!turn) {
-        diagnostics.push(`line ${item.line}: turn.completed has malformed usage`);
+        sample.add(`line ${item.line}: turn.completed has malformed usage`);
         accountingComplete = false;
       } else {
         usage = usage ? addUsage(usage, turn) : turn;
@@ -137,7 +139,7 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
     }
   }
   if (!accountingComplete) usage = null;
-  return { threadId, succeeded: completed && !failed && accountingComplete, resultText, usage, diagnostics };
+  return { threadId, succeeded: completed && !failed && accountingComplete, resultText, usage, diagnostics: sample.list(), diagnosticCount: sample.count };
 }
 
 function codexTurnUsage(raw: unknown): CodexUsage | null {

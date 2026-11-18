@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseClaudeStream } from "../src/dispatch/claude";
 import { codexSessionModel, findCodexSessionFile, parseCodexEvents } from "../src/dispatch/codex";
-import { type JsonlItem, readJsonl } from "../src/dispatch/jsonl";
+import { DIAGNOSTIC_SAMPLE, DiagnosticSample, type JsonlItem, readJsonl } from "../src/dispatch/jsonl";
 import { FIXTURES, fixture, writeLines } from "./helpers";
 
 // Fixtures are real spike runs (docs/spikes/01-dispatch.md) with home paths and personal lists scrubbed.
@@ -52,6 +52,26 @@ describe("readJsonl", () => {
   });
 });
 
+describe("diagnostics bound", () => {
+  test("DiagnosticSample keeps the first entries and counts every one", () => {
+    const d = new DiagnosticSample(3);
+    for (let i = 1; i <= 10; i++) d.add(`d${i}`);
+    expect(d.count).toBe(10);
+    expect(d.list()).toEqual(["d1", "d2", "d3", "7 more diagnostics not shown (10 total)"]);
+    const few = new DiagnosticSample(3);
+    few.add("only");
+    expect(few.list()).toEqual(["only"]);
+  });
+
+  test.each(["claude", "codex"] as const)("%s: a log of thousands of corrupt lines yields a bounded sample and the full count", async (harness) => {
+    const path = writeLines(tmp, `corrupt-${harness}.jsonl`, Array.from({ length: 5000 }, () => "{not json"));
+    const s = harness === "claude" ? await parseClaudeStream(readJsonl(path)) : await parseCodexEvents(readJsonl(path));
+    expect(s.diagnosticCount).toBe(5000);
+    expect(s.diagnostics).toHaveLength(DIAGNOSTIC_SAMPLE + 1);
+    expect(s.diagnostics.at(-1)).toBe(`${5000 - DIAGNOSTIC_SAMPLE} more diagnostics not shown (5000 total)`);
+  });
+});
+
 describe("parseClaudeStream", () => {
   test("completed run: session, observed model, usage, result", async () => {
     const s = await parseClaudeStream(readJsonl(fixture("claude-headless.stream.jsonl")));
@@ -74,6 +94,7 @@ describe("parseClaudeStream", () => {
         },
       },
       diagnostics: [],
+      diagnosticCount: 0,
     });
   });
 
@@ -127,6 +148,7 @@ describe("parseCodexEvents", () => {
         reasoningOutputTokens: 0,
       },
       diagnostics: [],
+      diagnosticCount: 0,
     });
   });
 
