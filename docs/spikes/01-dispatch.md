@@ -6,6 +6,7 @@ Versions: Orca 1.4.262, Claude Code 2.1.325, codex-cli 0.169.0, Bun 1.2.10, macO
 Models: Claude `haiku` (resolved to `claude-haiku-5-5`), Codex `gpt-6-luna`, effort `low`; total spend was a few cents.
 Home paths are shown as `~` and spike worktree names are shortened.
 A repair round after review changed the deny-list, process handling, executable resolution, log location, and parsing; [section 7](#7-repair-round) has what changed and its evidence, and sections 1 to 6 are updated where behavior changed.
+A second round implemented the owner's decisions on dedicated harness homes, the monitor tab, and explicit project instructions; [section 8](#8-decisions-implemented) has them and their evidence.
 
 ## Verdict
 
@@ -18,7 +19,7 @@ A repair round after review changed the deny-list, process handling, executable 
 
 ## 1. Worktree through the orca CLI
 
-`src/orca/worktree.ts` shells out to `orca worktree create --name <n> --no-parent --setup skip --json` and `orca worktree rm --worktree id:<id> --force --delete-branch --json`.
+`src/orca/worktree.ts` shells out (now through the trusted `orca` from `DispatchConfig`, naming the main checkout with `--repo path:<checkout>`) to `orca worktree create --name <n> --no-parent --setup skip --json` and `orca worktree rm --worktree id:<id> --force --delete-branch --json`.
 Run by the spike driver `scripts/spike-dispatch.ts`, which the repair round deleted; the tests and the verification in section 7 replace it:
 
 ```
@@ -41,9 +42,11 @@ After all runs, `git worktree list`, `git branch -a`, and `orca worktree list` s
 Arguments built by `claudeArgs` in `src/dispatch/claude.ts`:
 
 ```
+CLAUDE_CONFIG_DIR=~/.software-factory/claude-home \
 claude -p --output-format stream-json --verbose --model <model> --effort <effort> --session-id <runId>
-  --restricted --tools Bash,Read,Edit,Write,Glob,Grep --strict-mcp-config
-  --permission-mode dontAsk --permission-prompts none --settings '<json>' -- <prompt>
+  --restricted --tools Bash,Read,Edit,Write,Glob,Grep --strict-mcp-config --disable-slash-commands
+  --permission-mode dontAsk --permission-prompts none --settings '<json>'
+  [--append-system-prompt-file <logDir>/<runId>.instructions.md] -- <prompt>
 ```
 
 The `--settings` JSON (from `claudeSettings`), shown with a shortened deny-list:
@@ -94,16 +97,23 @@ Auth works with the stripped environment (only `HOME`, `USER`, `LOGNAME`, `PATH`
 Arguments built by `codexArgs` in `src/dispatch/codex.ts`:
 
 ```
+CODEX_HOME=~/.software-factory/codex-home \
 codex exec --json --ignore-user-config --ignore-rules -m <model> -c model_reasoning_effort="<effort>"
-  -c 'permissions={factory={extends=":workspace", filesystem={"~/.software-factory"="none","~/.ssh"="none",...}}}'
+  -c 'permissions={factory={extends=":workspace", filesystem={"~/.software-factory"="none",...,"~/.codex/packages"="read"}}}'
   -c 'default_permissions="factory"'
   -c 'shell_environment_policy.inherit="core"'
   -c allow_login_shell=false
+  -c 'web_search="disabled"' -c skills.include_instructions=false -c skills.bundled.enabled=false
+  -c features.plugins=false -c features.remote_plugin=false -c features.apps=false
+  -c features.hooks=false -c features.image_generation=false
+  -c project_doc_max_bytes=0 [-c 'developer_instructions="<project instructions>"']
   -C <worktree> -- <prompt>
 ```
 
+Section 8 explains the flags after `allow_login_shell`.
+
 stdin is `/dev/null` (`stdin: "ignore"`); Codex prints `Reading additional input from stdin...` to stderr and proceeds.
-`--ignore-user-config` keeps auth working (auth still comes from `~/.codex/auth.json`).
+`--ignore-user-config` keeps auth working; auth comes from `$CODEX_HOME/auth.json`, the factory's own login.
 
 Do not pass `-s workspace-write`.
 It silently wins over `default_permissions`, so the deny-list is dropped without any error.
@@ -260,7 +270,7 @@ It also checks `FACTORY_CANARY` in the env and egress to `https://example.com`.
 Exit 0 is a pass, 1 a leak, and 2 inconclusive; a leak wins.
 The keychain is probed only as the `login.keychain-db` file: `security find-generic-password` returns rc 44 both for an absent item and for one the sandbox hides, so it cannot prove denial and was dropped.
 
-Baseline on this machine: all 14 targets READABLE, `INDIRECT-CANARIES-FOUND 3`, `NET-OPEN`, `BASELINE-OK`.
+Baseline on this machine: all targets READABLE (14 in the repair round, 23 after section 8), `INDIRECT-CANARIES-FOUND 3`, `NET-OPEN`, `BASELINE-OK`.
 The default mode run outside any sandbox with `FACTORY_CANARY` set reports `INDIRECT-LEAK` for all three canaries, `ENV-LEAK FACTORY_CANARY`, `NET-OPEN`, and `RESULT LEAK`, which shows the probe detects each leak class.
 
 Through `runAgent` with the real CLIs (repair-round verification, section 7), `sh ./canary-probe.sh; echo EXIT=$?` printed the same in both harnesses:
@@ -319,17 +329,23 @@ Inside Claude's sandbox the env gains proxy variables (`HTTP_PROXY`, `ALL_PROXY`
 The deny-list is `MANDATORY_DENY_READ` in `src/dispatch/policy.ts`, applied to every run of both harnesses.
 `RunSpec.extraDenyRead` can only add to it; `effectiveDenyRead` merges, validates (absolute or `~/` only), and dedupes.
 
-- Factory state and credential stores: `~/.software-factory`, `~/.factory` (another tool's state dir on this machine), `~/.ssh`, `~/.config/gh`, `~/Library/Keychains`, `~/.codex/auth.json`, `~/.claude/.credentials.json`, `~/.aws`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.git-credentials`.
-- The owner's session history and harness state, added in the repair round because they hold other projects' conversations: `~/.claude/projects`, `~/.claude/history.jsonl`, `~/.claude/shell-snapshots`, `~/.claude/transcripts`, `~/.claude/file-history`, `~/.claude/paste-cache`, `~/.codex/sessions`, `~/.codex/archived_sessions`, `~/.codex/history.jsonl`, `~/.codex/*.sqlite*`, `~/.codex/log`, `~/Library/Application Support/orca`.
+- Factory state, which now includes both harness homes with their auth and the factory's own transcripts: `~/.software-factory`, and `~/.factory` (another tool's state dir on this machine).
+- Credential stores: `~/.ssh`, `~/.config/gh`, `~/Library/Keychains`, `~/.aws`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.git-credentials`.
+- The owner's own harness homes, whole: `~/.claude`, `~/.claude.json`, `~/.codex`, `~/.agents` (the owner's cross-harness skills), and `~/Library/Application Support/orca`.
 
-Both harnesses accept the `*` glob: Codex records `~/.codex/*.sqlite*` as a `glob_pattern` deny entry, and its run's `turn_context` lists all 26 entries.
-Both CLIs still start and run Bash with these denied: Codex still writes its own rollout under the denied `~/.codex/sessions` (only its tools are sandboxed), and Claude's Bash works with `~/.claude/shell-snapshots` denied.
-Denying all of `~/.codex` breaks Codex, because its sandbox helper re-execs `~/.local/bin/codex`, a symlink into `~/.codex/packages`:
+The repair round denied only the history inside `~/.claude` and `~/.codex`, because the CLIs used those homes.
+With dedicated homes neither CLI needs them, so the round in section 8 denies them whole, which also covers the owner's settings, instructions, skills, and plugins; the owner's history there is still denied.
+Codex gets `~/.codex/packages` back as read-only (`CODEX_READ_EXCEPTIONS` in `codex.ts`), because its sandbox helper re-execs the Codex binary installed there; the more specific entry wins, and the dir holds only installed releases.
+Without the carve-out, denying `~/.codex` broke Codex in the original spike:
 
 ```
 ERROR codex_core::session: Failed to create session: failed to load AGENTS.md instructions for environment `local`:
 fs sandbox helper failed with status exit status: 71: sandbox-exec: execvp() of '~/.local/bin/codex' failed: Operation not permitted
 ```
+
+With it, `codex sandbox` under the profile reads the binary while `~/.codex/config.toml`, `~/.codex/AGENTS.md`, and a listing of `~/.codex` fail with `Operation not permitted`.
+Both CLIs start and run Bash with everything denied, including their own homes under the denied state dir: the CLI processes read their homes unsandboxed, and only tool commands are confined.
+Both harnesses accept `*` globs in deny entries (Codex records one as a `glob_pattern` entry).
 
 Nonexistent deny paths are accepted by both harnesses.
 
@@ -388,9 +404,96 @@ codex   cancel during `sleep 313`: outcome cancelled, signal SIGTERM, cleanup {s
 Before the repair, SIGTERM to Codex left its tool `sleep` running under launchd (section 4); signalling the group now covers it.
 The planted transcript canaries were removed with `--cleanup`; `~/.software-factory/canary.txt` stays.
 
+## 8. Decisions implemented
+
+The owner decided the three open questions, recorded in [design.md](../design.md) (commit fb27940).
+All real runs below went through `runAgent` with `loadDispatchConfig({ agentWriteRoots: [~/orca/workspaces] })`, `haiku` and `gpt-6-luna` at effort `low`, each in a fresh Orca worktree removed afterwards.
+
+### Dedicated harness homes
+
+Every run sets `CLAUDE_CONFIG_DIR=~/.software-factory/claude-home` for Claude or `CODEX_HOME=~/.software-factory/codex-home` for Codex.
+The value comes from `DispatchConfig.harnessHomes`, never from the parent env, and `agentEnv` adds it after the allowlist.
+`loadDispatchConfig` and every `runAgent` check that the home is a canonical directory under the state root, owned by the user, with mode 700.
+The observed Codex model is now read from `$CODEX_HOME/sessions`.
+Factory transcripts land in the dedicated homes (`claude-home/projects/...`, `codex-home/sessions/...`), not in the owner's.
+
+A dedicated home alone did not make Codex hermetic.
+A run with only `CODEX_HOME` set listed the owner's skills from `~/.agents/skills` (`gh-axi`, `orca-cli`, `bravent-caveman`, and others), which Codex reads from `$HOME`, plus the account's remote plugins (Figma, Linear, and others), and offered the hosted `web__run` tool.
+`web__run` runs on the provider's side, so the sandbox's network block does not stop it; the dispatch before this round exposed it too.
+Each flag was checked against the session rollout, counting mentions of skill and tool names:
+
+| Flags added | Owner skills (`gh-axi`) | Plugin skills (`figma`) | `web__run` |
+|---|---|---|---|
+| none | 6 | 136 | present |
+| `features.plugins=false`, `remote_plugin=false`, `apps=false` | 6 | 0 | present |
+| plus `skills.include_instructions=false`, `skills.bundled.enabled=false` | 0 | 0 | present |
+| plus `web_search="disabled"` | 0 | 0 | absent |
+
+`features.skip_host_skill_discovery=true` did not remove the owner's skills.
+`features.hooks=false` and `features.image_generation=false` are also set, since the factory uses neither.
+Turning skill listings off also hides any skills the factory later installs in `codex-home/skills`, so plan step 4 must supply factory skills another way or revisit this flag.
+Codex still offers its multi-agent tools (`spawn_agent`); its subagents run under the same profile.
+
+For Claude, `--disable-slash-commands` drops the built-in skills and commands as well.
+`system/init` in a run before that flag listed only Claude Code's built-ins (`deep-research`, `dataviz`, `code-review`, and others), none of the owner's `~/.claude/skills`; with it:
+
+```
+"slash_commands": [], "skills": [], "mcp_servers": [], "tools": ["Bash","Edit","Glob","Grep","Read","Write"],
+"plugins": [cc-plugin-agents-md, cc-plugin-telemetry, cc-plugin-privacy, cc-plugin-plugin-authoring, all "path": "builtin"]
+```
+
+The built-in plugins cannot be removed by a flag; `cc-plugin-agents-md` did not load the worktree's `AGENTS.md` (codeword test below).
+The owner's `~/.claude/settings.json` defines 16 hook events; the Claude streams show no hook events.
+Codex no longer prefixes commands with `rtk`: the owner-check run executed `/bin/zsh -c 'echo factory-hi'`, and its rollout has no mention of `rtk`.
+Asked for every skill, plugin, and slash command it knows, Codex answered NONE for all three.
+
+Codex still resolves to `~/.codex/packages/standalone/releases/0.169.0-aarch64-apple-darwin/bin/codex` and runs with the new `CODEX_HOME`; the binary is self-contained, and its sandbox helper re-execs it through the `~/.codex/packages` carve-out.
+`orca` resolves to `/Applications/Orca.app/Contents/Resources/bin/orca` through `/usr/local/bin/orca`.
+
+The canary probe now also targets the factory homes (`codex-home/auth.json`, `claude-home/.claude.json`), `~/.software-factory/github-app.json`, the owner's `~/.codex/config.toml`, `~/.codex/AGENTS.md`, `~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.claude.json`, and `~/.agents/.skill-lock.json`, and its indirect search covers all of `~/.claude` and `~/.codex`.
+Both harnesses: all 23 targets DENIED, `INDIRECT-HIDDEN`, `ENV-HIDDEN`, `NET-BLOCKED`, `RESULT PASS`.
+Cancelling each during a tool `sleep 313` left no `sleep`, with `survivors: []` and `errors: []`.
+
+### Monitor tab
+
+`RunSpec.monitor: { agent }` opens an Orca terminal in the run's worktree, titled `factory: <agent> <runId>`, that runs `tail -n +1 -f <stdout log>`, and closes it when the run ends.
+It opens in the background after spawn, every `orca` call is bounded (15 seconds), and any failure only adds a `monitor:` diagnostic; a failing, missing, or hung `orca` leaves the outcome, usage, and result unchanged (tests).
+The agent label must match `[A-Za-z0-9._-]{1,64}`, and paths are single-quoted, because Orca types the command into the owner's interactive login shell.
+`orca` runs by its trusted path with a fixed minimal env (`HOME`, `USER`, `LOGNAME`, `PATH=/usr/bin:/bin`, `LANG`), which is enough for it to reach the runtime.
+
+`--title` only sets Orca's `paneTitle`; the tab's live `title` follows the shell, and the owner's zsh set it to `tail`.
+The command therefore starts with an OSC 0 escape that sets the live title too.
+Evidence from `orca terminal list` during and after each codeword run:
+
+```
+during: [["..1795027397212", null], ["factory: verifier 99fc83a8-...", "factory: verifier 99fc83a8-..."]]   (title, paneTitle)
+after:  [["..1795027397212", null]]
+```
+
+### Project instructions
+
+`RunSpec.instructionFiles` takes the project's `AGENTS.md`, and `CLAUDE.md` if present (`projectInstructionFiles(checkout)` lists them).
+`runAgent` reads them before spawn and refuses any that resolve into the worktree or a temp root, because a later run in the same worktree would otherwise take its instructions from what an earlier agent wrote.
+They are combined, once per real file, into one `<project_instructions>` text of at most 256 KiB, which is kept as `<logDir>/<runId>.instructions.md`.
+
+- Claude gets that file with `--append-system-prompt-file`; `--restricted` already keeps Claude from loading the worktree's `CLAUDE.md` or `AGENTS.md` on its own.
+- Codex gets the same text as `-c developer_instructions="<text>"`, encoded as a TOML basic string, and `-c project_doc_max_bytes=0` always turns off its own `AGENTS.md` discovery, so the worktree copy can never load next to the explicit one or diverge from it.
+- Codex has no instructions-file option that appends: `model_instructions_file` replaces its base instructions, so argv it is, which is why the text is capped well under macOS's 1 MiB argv limit.
+
+Codeword test: the worktree had `AGENTS.md` with OSPREY and `CLAUDE.md` with HERON, and the explicit files said PELICAN and CORMORANT.
+Asked without tools for every codeword in their instructions, both harnesses answered exactly:
+
+```
+PELICAN
+CORMORANT
+```
+
+Claude made no tool calls, and the Codex rollout contains PELICAN and CORMORANT but not OSPREY.
+Bun 1.2.10's `Bun.TOML.parse` decodes `\t` as a form feed, so tests check the TOML encoding against the basic-string grammar instead.
+
 ## Proposed design changes
 
-These contradict or refine [design.md](../design.md); none is applied there yet.
+These contradict or refine [design.md](../design.md); 1, 3, and 4 are now decided there (commit fb27940), and 2 is reflected in its build section.
 
 1. Dispatch path.
    Replace "Plan step 1 confirms whether directly launched sessions appear in Orca for watching and intervening." and "If they do not, the factory runs the CLI inside an Orca-created terminal in that worktree." with:
@@ -399,15 +502,15 @@ These contradict or refine [design.md](../design.md); none is applied there yet.
    > The factory keeps direct launch, may open a read-only Orca terminal that tails the run log for watching, and supports intervention as cancel plus resume.
 2. Codex sandbox flag.
    Replace "Codex `workspace-write`" with "a Codex permission profile extending `:workspace` with deny entries, selected by `default_permissions`; never `-s`, which silently overrides it".
-3. Hermetic Codex instructions.
+3. Hermetic Codex instructions (decided yes, implemented in section 8).
    Codex loads the owner's global `~/.codex/AGENTS.md` even with `--ignore-user-config`; in the spike it made Codex prefix every command with `rtk`, which failed when `rtk` was not on `PATH`.
    Proposal: give the factory its own `CODEX_HOME` under `~/.software-factory/codex-home`, logged in once by the owner with `CODEX_HOME=... codex login`, so no owner instructions or config reach factory runs and agents still cannot read its `auth.json` (the whole state dir is denied).
-   This needs an owner action and is not done in this step.
-4. Project instructions under Claude `--restricted`.
+   The owner logged in to both dedicated homes; [design.md](../design.md) records the decision.
+4. Project instructions under Claude `--restricted` (decided yes, implemented in section 8).
    `--restricted` does not load the worktree's `CLAUDE.md`: with the same prompt, one run answered `NONE` and another found the codeword only by calling Read on `CLAUDE.md` itself.
    Codex loaded the worktree's `AGENTS.md` both times.
    Proposal: the factory passes the project's `AGENTS.md` to Claude explicitly (for example `--append-system-prompt-file`), decided in step 3 or 4.
-5. Owner customizations still visible to Claude.
+5. Owner customizations still visible to Claude (resolved in section 8 by the dedicated home and `--disable-slash-commands`).
    Under `--restricted`, the `system/init` event still lists the owner's user skills, plugins, and slash commands, and the Bash tool sources a snapshot of the owner's zsh (`~/.claude/shell-snapshots`, now denied to tools but still sourced by Claude itself).
    Proposal: step 4 decides how factory skills are supplied and whether `--disable-slash-commands` or an explicit plugin dir is needed for hermetic runs.
 6. Session identity and crash recovery.
@@ -423,19 +526,23 @@ These contradict or refine [design.md](../design.md); none is applied there yet.
 - `src/dispatch/config.ts`: `loadDispatchConfig`, executable resolution, managed-settings check, and log creation.
 - `src/dispatch/claude.ts` and `src/dispatch/codex.ts`: the proven flags and the parsers.
 - `src/dispatch/jsonl.ts`: the bounded streaming JSONL reader.
-- `src/dispatch/policy.ts`: deny-list and env allowlist.
+- `src/dispatch/policy.ts`: deny-list, env allowlist, and the harness home variable.
+- `src/dispatch/instructions.ts`: reading and combining the project's instruction files.
 - `src/dispatch/process.ts`: process-group spawn and termination.
+- `src/orca/cli.ts`: bounded `orca` calls with a fixed minimal env.
 - `src/orca/worktree.ts`: worktree create and remove.
+- `src/orca/monitor.ts`: the optional read-only monitor tab.
 - Usage is kept per harness; normalizing it and pricing it belong to plan step 8.
 - The network policy is off only; install stages that need network come with a later step.
 
 ## Tests
 
-`bun test` runs 69 tests in `test/`.
+`bun test` runs 99 tests in `test/`.
 Parser tests use fixtures captured from the spike runs in `test/fixtures` (Claude stream, Codex JSONL, and a Codex session file trimmed to its metadata, turn context, and token records), with home paths and personal skill and plugin lists scrubbed and account ids replaced.
 `test/run.test.ts` drives `runAgent` and `terminateTree` against a fake CLI (`test/helpers.ts`) whose behavior is chosen by its last argument; the fake is passed through `DispatchConfig.executables`, never `PATH`.
-`test/config.test.ts` covers executable trust, managed settings, and log creation; `test/policy.test.ts` covers the deny-list merge for both harnesses and the env allowlist.
-Each repair-round fix was checked by reverting it and seeing its test fail.
+`test/config.test.ts` covers executable trust, harness home checks, managed settings, and log creation; `test/policy.test.ts` covers the deny-list merge for both harnesses, the Codex carve-out and hermetic flags, and the env allowlist.
+`test/monitor.test.ts` drives the monitor against a fake `orca`, including a failing, missing, and hung one; `test/instructions.test.ts` covers reading, refusing, and passing project instructions identically to both harnesses.
+Each repair-round fix, and the main fixes of section 8, was checked by reverting it and seeing its test fail.
 Test state lives under `test/.state` (ignored), because log dirs must not be under a temp root.
 
 ## Tooling note
