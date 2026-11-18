@@ -1,4 +1,4 @@
-import { closeSync, constants, lstatSync, openSync, realpathSync, statSync, writeSync } from "node:fs";
+import { closeSync, constants, lstatSync, openSync, realpathSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { overlaps, SYSTEM_PATH_DIRS } from "./policy";
@@ -179,6 +179,13 @@ export function managedSettingsProblems(config: DispatchConfig): string[] {
   return problems;
 }
 
+export interface RunFiles {
+  stdoutPath: string;
+  stderrPath: string;
+  /** Where the exact project instructions are kept, when the run has any. */
+  instructionsPath: string;
+}
+
 export interface RunLogs {
   stdoutPath: string;
   stderrPath: string;
@@ -187,42 +194,60 @@ export interface RunLogs {
 }
 
 /**
- * Creates this attempt's log files, refusing a log dir outside the state root or inside an agent write root,
- * an attempt id that already has logs, and a symlink at the log path.
+ * This attempt's file paths, without creating anything: refuses a log dir outside the state root or inside an agent
+ * write root, and an attempt id that already has any file there (a symlink included).
  */
-export function createRunLogs(config: DispatchConfig, logDir: string, runId: string, agentWriteRoots: readonly string[]): RunLogs {
+export function planRunFiles(config: DispatchConfig, logDir: string, runId: string, agentWriteRoots: readonly string[]): RunFiles {
   const dir = canonical(logDir);
   if (!isUnder(dir, config.stateRoot)) throw new Error(`log dir ${dir} is not under the state root ${config.stateRoot}`);
   assertSafeDir(dir, config.accountHome);
   for (const root of agentWriteRoots) if (isUnder(dir, root)) throw new Error(`log dir ${dir} is under agent-writable ${root}`);
-  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
-  const open = (path: string) => {
+  const files = {
+    stdoutPath: join(dir, `${runId}.stdout.jsonl`),
+    stderrPath: join(dir, `${runId}.stderr.log`),
+    instructionsPath: join(dir, `${runId}.instructions.md`),
+  };
+  for (const path of Object.values(files)) {
     try {
-      return openSync(path, flags, 0o600);
+      lstatSync(path);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`run ${runId} already has a log at ${path}; attempt ids are single-use`);
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw err;
     }
-  };
-  const stdoutPath = join(dir, `${runId}.stdout.jsonl`);
-  const stderrPath = join(dir, `${runId}.stderr.log`);
-  const stdoutFd = open(stdoutPath);
-  let stderrFd: number;
-  try {
-    stderrFd = open(stderrPath);
-  } catch (err) {
-    closeSync(stdoutFd);
-    throw err;
+    throw new Error(`run ${runId} already has a file at ${path}; attempt ids are single-use`);
   }
-  return { stdoutPath, stderrPath, stdoutFd, stderrFd };
+  return files;
 }
 
-/** Writes a new private file next to the logs; like the logs, it refuses to replace anything. */
-export function writeRunFile(path: string, content: string): void {
-  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+/**
+ * Creates the attempt's files exclusively (private, never through a symlink) and writes the instructions, if any.
+ * All or nothing: on any failure it closes what it opened and removes what it created, so the attempt id stays unused.
+ */
+export function reserveRunFiles(files: RunFiles, instructions: string | null): RunLogs {
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+  const created: { path: string; fd: number }[] = [];
+  const open = (path: string) => {
+    const fd = openSync(path, flags, 0o600);
+    created.push({ path, fd });
+    return fd;
+  };
   try {
-    writeSync(fd, content);
-  } finally {
-    closeSync(fd);
+    const stdoutFd = open(files.stdoutPath);
+    const stderrFd = open(files.stderrPath);
+    if (instructions !== null) {
+      const fd = open(files.instructionsPath);
+      writeSync(fd, instructions);
+      closeSync(fd);
+      created.pop();
+      created.push({ path: files.instructionsPath, fd: -1 });
+    }
+    return { stdoutPath: files.stdoutPath, stderrPath: files.stderrPath, stdoutFd, stderrFd };
+  } catch (err) {
+    for (const { path, fd } of created) {
+      if (fd >= 0) closeSync(fd);
+      unlinkSync(path);
+    }
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`attempt files already exist; attempt ids are single-use: ${(err as Error).message}`);
+    throw err;
   }
 }
