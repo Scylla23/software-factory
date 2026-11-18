@@ -7,7 +7,7 @@ import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
 import { agentEnv, assertPolicySound, effectiveDenyRead, type PolicyContext, type SandboxPolicy } from "./policy";
-import { type AgentProcess, spawnAgentProcess, type TerminationReport, terminateTree } from "./process";
+import { type AgentProcess, spawnAgentProcess, superviseRun } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
 
 export { loadDispatchConfig, type DispatchConfig } from "./config";
@@ -70,39 +70,22 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     monitor = openRunMonitor({ orcaPath: config.executables.orca, worktreePath: worktree, title: `factory: ${spec.monitor.agent} ${spec.runId}`, attemptId: spec.runId, logPath: logs.stdoutPath });
   }
 
-  let stopped: "cancelled" | "timed_out" | null = null;
-  let termination: Promise<TerminationReport> | null = null;
-  const stop = (why: "cancelled" | "timed_out") => {
-    if (stopped) return;
-    stopped = why;
-    termination = terminateTree(proc, { psPath: config.executables.ps });
-  };
-  const timer = setTimeout(() => stop("timed_out"), spec.timeoutMs);
-  const onAbort = () => stop("cancelled");
-  spec.signal?.addEventListener("abort", onAbort, { once: true });
-  let status;
-  try {
-    status = await proc.exited;
-  } finally {
-    clearTimeout(timer);
-    spec.signal?.removeEventListener("abort", onAbort);
-  }
-  // The root can exit before its orphaned children are swept.
-  const cleanup: TerminationReport | null = termination ? await (termination as Promise<TerminationReport>) : null;
+  const { status, stopped, cleanup } = await superviseRun(proc, { timeoutMs: spec.timeoutMs, signal: spec.signal, psPath: config.executables.ps });
 
   const diagnostics: string[] = [];
   if (monitor) diagnostics.push(...(await monitor.close()).map((d) => `monitor: ${d}`));
-  if (status.error) diagnostics.push(`spawn failed: ${status.error}`);
+  if (status === null) diagnostics.push(`root process ${proc.pid} never exited; stopped waiting once termination gave up`);
+  else if (status.error) diagnostics.push(`spawn failed: ${status.error}`);
   if (cleanup) {
     diagnostics.push(...cleanup.errors.map((e) => `cleanup: ${e}`));
     if (cleanup.survivors.length > 0) diagnostics.push(`cleanup: ${cleanup.survivors.length} owned processes survived`);
   }
-  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status.code === 0 && succeeded ? "completed" : "failed");
+  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
     harness: spec.harness,
     runId: spec.runId,
-    exitCode: status.code,
-    signalCode: status.signal,
+    exitCode: status?.code ?? null,
+    signalCode: status?.signal ?? null,
     requestedModel: spec.model,
     stdoutPath: logs.stdoutPath,
     stderrPath: logs.stderrPath,

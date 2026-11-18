@@ -29,8 +29,11 @@ export type Snapshot = Map<number, ProcRow>;
 
 const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/;
 
-/** All processes, or the given pids. Runs `ps` by absolute path with a minimal, fixed env. */
-export function snapshot(psPath: string, pids?: readonly number[]): Snapshot {
+/** Bound on one `ps` call, which answers in milliseconds when the system is healthy. */
+export const PS_TIMEOUT_MS = 5_000;
+
+/** All processes, or the given pids. Runs `ps` by absolute path with a minimal, fixed env, and bounded. */
+export function snapshot(psPath: string, pids?: readonly number[], timeoutMs = PS_TIMEOUT_MS): Snapshot {
   const select = pids ? ["-p", pids.join(",")] : ["-A"];
   const ps = Bun.spawnSync([psPath, ...select, "-o", "pid=,ppid=,pgid=,stat=,lstart="], {
     // TZ pins lstart to UTC so parsing it never depends on the factory's time zone.
@@ -38,7 +41,10 @@ export function snapshot(psPath: string, pids?: readonly number[]): Snapshot {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
   });
+  if (ps.exitedDueToTimeout) throw new Error(`ps gave no answer within ${timeoutMs}ms`);
   // `ps -p` exits 1 when none of the pids exist; that is an empty answer, not a failure.
   if (ps.exitCode !== 0 && !(pids && ps.stdout.length === 0)) {
     throw new Error(`ps exited ${ps.exitCode}: ${ps.stderr.toString().trim().slice(0, 200)}`);
@@ -196,6 +202,8 @@ export interface TerminateOptions {
   graceMs?: number;
   /** Bound on every wait after SIGKILL. */
   killWaitMs?: number;
+  /** Bound on each `ps` call. */
+  psTimeoutMs?: number;
 }
 
 const FREEZE_ROUNDS = 5;
@@ -205,13 +213,13 @@ const FREEZE_ROUNDS = 5;
  * Never throws: enumeration and signalling failures land in the report, and the handle is always signalled.
  */
 export async function terminateTree(root: AgentProcess, opts: TerminateOptions): Promise<TerminationReport> {
-  const { psPath, graceMs = 5_000, killWaitMs = 2_000 } = opts;
+  const { psPath, graceMs = 5_000, killWaitMs = 2_000, psTimeoutMs = PS_TIMEOUT_MS } = opts;
   const errors: string[] = [];
   const tracker = new Tracker(root);
 
   const discover = (): { snap: Snapshot; added: number } | null => {
     try {
-      const snap = snapshot(psPath);
+      const snap = snapshot(psPath, undefined, psTimeoutMs);
       return { snap, added: tracker.expand(snap) };
     } catch (err) {
       errors.push(`process snapshot failed: ${(err as Error).message}`);
@@ -258,6 +266,48 @@ export async function terminateTree(root: AgentProcess, opts: TerminateOptions):
     await Bun.sleep(50);
   }
   return { survivors, errors };
+}
+
+export interface SuperviseOptions extends TerminateOptions {
+  timeoutMs: number;
+  signal?: AbortSignal;
+}
+
+export interface Supervised {
+  /** Null when the root's exit was never observed, even after termination gave up on it. */
+  status: ExitStatus | null;
+  stopped: "cancelled" | "timed_out" | null;
+  /** Set when the run was stopped. */
+  cleanup: TerminationReport | null;
+}
+
+/**
+ * Waits for the root to exit, terminating the tree on timeout or abort.
+ * Once termination finishes, it stops waiting on a root that still has not exited, so such a root cannot hang dispatch.
+ */
+export async function superviseRun(root: AgentProcess, opts: SuperviseOptions): Promise<Supervised> {
+  let stopped: Supervised["stopped"] = null;
+  const terminated = Promise.withResolvers<TerminationReport>();
+  const stop = (why: "cancelled" | "timed_out") => {
+    if (stopped) return;
+    stopped = why;
+    terminateTree(root, opts).then(terminated.resolve);
+  };
+  const timer = setTimeout(() => stop("timed_out"), opts.timeoutMs);
+  const onAbort = () => stop("cancelled");
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
+  if (opts.signal?.aborted) onAbort();
+  let status: ExitStatus | null;
+  try {
+    status = await Promise.race([root.exited, terminated.promise.then(() => null)]);
+  } finally {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
+  }
+  // The root can exit before its orphaned children are swept, so a stopped run always waits for the report.
+  const cleanup = stopped ? await terminated.promise : null;
+  if (status === null && root.exitedAt() !== null) status = await root.exited;
+  return { status, stopped, cleanup };
 }
 
 /**
