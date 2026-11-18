@@ -26,7 +26,7 @@ const calls = (): string[][] => {
 function spec(extra: Partial<RunSpec> = {}): RunSpec {
   return {
     harness: "claude", worktreePath: sb.worktree, prompt: `replay:${fixture("claude-headless.stream.jsonl")}`, model: "requested",
-    effort: "low", logDir: sb.logDir, runId: crypto.randomUUID(), timeoutMs: 30_000, instructionFiles: [], ...extra,
+    effort: "low", logDir: sb.logDir, runId: crypto.randomUUID(), timeoutMs: 30_000, instructions: null, ...extra,
   };
 }
 
