@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, copyFileSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertPrivateDir, assertTrustedExecutable, createRunLogs, trustedAgentPath, managedSettingsProblems, tempRoots } from "../src/dispatch/config";
+import { assertPrivateDir, assertTrustedExecutable, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots, trustedAgentPath } from "../src/dispatch/config";
 import { makeSandbox, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
@@ -98,32 +98,54 @@ describe("managedSettingsProblems", () => {
   });
 });
 
-describe("createRunLogs", () => {
+describe("planRunFiles and reserveRunFiles", () => {
+  const openFds = () => readdirSync("/dev/fd").length;
+
   test("creates private, exclusive log files under the state root", () => {
-    const logs = createRunLogs(sb.config, sb.logDir, RUN, [sb.worktree, ...tempRoots()]);
-    expect(logs.stdoutPath).toBe(join(sb.logDir, `${RUN}.stdout.jsonl`));
+    const files = planRunFiles(sb.config, sb.logDir, RUN, [sb.worktree, ...tempRoots()]);
+    expect(files.stdoutPath).toBe(join(sb.logDir, `${RUN}.stdout.jsonl`));
+    const logs = reserveRunFiles(files, "text");
+    closeSync(logs.stdoutFd);
+    closeSync(logs.stderrFd);
     expect((Bun.file(logs.stdoutPath) as any).size).toBe(0);
+    expect(readFileSync(files.instructionsPath, "utf8")).toBe("text");
+    expect(statSync(files.instructionsPath).mode & 0o777).toBe(0o600);
   });
 
   test("rejects a log dir outside the state root", () => {
-    expect(() => createRunLogs(sb.config, sb.worktree, RUN, [])).toThrow("not under the state root");
+    expect(() => planRunFiles(sb.config, sb.worktree, RUN, [])).toThrow("not under the state root");
   });
 
   test("rejects a log dir inside an agent write root, even within the state root", () => {
-    expect(() => createRunLogs(sb.config, sb.logDir, RUN, [sb.stateRoot])).toThrow("agent-writable");
+    expect(() => planRunFiles(sb.config, sb.logDir, RUN, [sb.stateRoot])).toThrow("agent-writable");
   });
 
   test("rejects a log dir that is a symlink out of the state root", () => {
     const link = join(sb.stateRoot, "escape");
     symlinkSync(sb.worktree, link);
-    expect(() => createRunLogs(sb.config, link, RUN, [sb.worktree])).toThrow("not under the state root");
+    expect(() => planRunFiles(sb.config, link, RUN, [sb.worktree])).toThrow("not under the state root");
   });
 
-  test("rejects reusing an attempt id, and a symlink planted at the log path", () => {
-    createRunLogs(sb.config, sb.logDir, RUN, []);
-    expect(() => createRunLogs(sb.config, sb.logDir, RUN, [])).toThrow("attempt ids are single-use");
+  test("rejects reusing an attempt id, and a symlink planted at any of its paths", () => {
+    const logs = reserveRunFiles(planRunFiles(sb.config, sb.logDir, RUN, []), null);
+    closeSync(logs.stdoutFd);
+    closeSync(logs.stderrFd);
+    expect(() => planRunFiles(sb.config, sb.logDir, RUN, [])).toThrow("attempt ids are single-use");
     const other = "99999999-2222-4333-8444-555555555555";
-    symlinkSync(join(sb.worktree, "x"), join(sb.logDir, `${other}.stdout.jsonl`));
-    expect(() => createRunLogs(sb.config, sb.logDir, other, [])).toThrow("single-use");
+    symlinkSync(join(sb.worktree, "x"), join(sb.logDir, `${other}.instructions.md`));
+    expect(() => planRunFiles(sb.config, sb.logDir, other, [])).toThrow("single-use");
+  });
+
+  test("a reservation that fails part way closes and removes what it created", () => {
+    const files = planRunFiles(sb.config, sb.logDir, RUN, []);
+    symlinkSync(join(sb.worktree, "x"), files.instructionsPath); // planted after the plan
+    const before = openFds();
+    expect(() => reserveRunFiles(files, "text")).toThrow("single-use");
+    expect(openFds()).toBe(before);
+    expect(existsSync(files.stdoutPath) || existsSync(files.stderrPath)).toBe(false);
+    unlinkSync(files.instructionsPath);
+    const logs = reserveRunFiles(planRunFiles(sb.config, sb.logDir, RUN, []), "text");
+    closeSync(logs.stdoutFd);
+    closeSync(logs.stderrFd);
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { claudeArgs } from "../src/dispatch/claude";
@@ -208,6 +208,19 @@ describe("runAgent with project instructions", () => {
     const c = await runAgent(spec("claude"), sb.config);
     expect(argv()).not.toContain("--append-system-prompt-file");
     expect(c.instructionsPath).toBeNull();
+  });
+
+  test("a run rejected after its checks leaves no open descriptors and does not use the attempt id", async () => {
+    writeFileSync(join(repo, "AGENTS.md"), "x\n");
+    const s = spec("claude", { instructions: source(commit()) });
+    const planted = join(sb.logDir, `${s.runId}.instructions.md`);
+    mkdirSync(planted);
+    const before = readdirSync("/dev/fd").length;
+    await expect(runAgent(s, sb.config)).rejects.toThrow();
+    expect(readdirSync("/dev/fd").length).toBe(before);
+    expect(readdirSync(sb.logDir)).toEqual([`${s.runId}.instructions.md`]);
+    rmSync(planted, { recursive: true });
+    expect((await runAgent(s, sb.config)).outcome).toBe("completed");
   });
 
   test("a refused instruction source stops the run before anything starts", async () => {

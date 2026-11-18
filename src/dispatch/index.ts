@@ -1,8 +1,8 @@
 import { closeSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, createRunLogs, type DispatchConfig, isUnder, managedSettingsProblems, tempRoots, writeRunFile } from "./config";
+import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots } from "./config";
 import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
@@ -48,23 +48,15 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const instructions = spec.instructions ? buildProjectInstructions(spec.instructions, config.executables.git, agentWritable) : null;
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
   const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: config.agentPath, accountHome: config.accountHome });
-  const logs = createRunLogs(config, spec.logDir, spec.runId, agentWritable);
-  let instructionsPath: string | null = null;
-  try {
-    if (instructions !== null) {
-      instructionsPath = join(dirname(logs.stdoutPath), `${spec.runId}.instructions.md`);
-      writeRunFile(instructionsPath, instructions);
-    }
-  } catch (err) {
-    closeSync(logs.stdoutFd);
-    closeSync(logs.stderrFd);
-    throw err;
-  }
+  const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
+  const instructionsPath = instructions === null ? null : files.instructionsPath;
   const args =
     spec.harness === "claude"
       ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, instructionsFile: instructionsPath })
       : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
 
+  // Everything above only checks; from here the attempt id is used, and every step either spawns or undoes itself.
+  const logs = reserveRunFiles(files, instructions);
   let proc: AgentProcess;
   try {
     proc = spawnAgentProcess({ executable, args, cwd: worktree, env, stdoutFd: logs.stdoutFd, stderrFd: logs.stderrFd, psPath: config.executables.ps });
