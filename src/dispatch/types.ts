@@ -15,6 +15,12 @@ export interface RunSpec {
   runId: string;
   timeoutMs: number;
   signal?: AbortSignal;
+  /**
+   * The project's instruction files (AGENTS.md, and CLAUDE.md if present), passed to the harness explicitly and
+   * identically; empty when the project has none. Read before spawn from a factory-controlled checkout, never from
+   * the worktree or a temp dir (see `projectInstructionFiles`).
+   */
+  instructionFiles: readonly string[];
   /** Paths denied in addition to MANDATORY_DENY_READ, which always applies. */
   extraDenyRead?: readonly string[];
   /**
@@ -69,6 +75,8 @@ export interface RunResult {
   resultText: string | null;
   stdoutPath: string;
   stderrPath: string;
+  /** The exact project instructions the run received, kept with the logs; null when there were none. */
+  instructionsPath: string | null;
   /** Why a field is unknown or the stream was imperfect: corrupt lines, a missing rollout, a spawn error. */
   diagnostics: string[];
   /** Set when the run was cancelled or timed out; survivors are owned processes that could not be killed. */

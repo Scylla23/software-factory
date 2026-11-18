@@ -40,6 +40,11 @@ export interface ClaudeCommandInput {
   effort: string;
   sessionId: string;
   extraDenyRead?: readonly string[];
+  /**
+   * File holding the project instructions, appended to the system prompt.
+   * `--restricted` already stops Claude from loading the worktree's CLAUDE.md on its own.
+   */
+  instructionsFile?: string | null;
 }
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
@@ -59,6 +64,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
     "--settings", JSON.stringify(claudeSettings(input.extraDenyRead)),
+    ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",
     input.prompt,
   ];

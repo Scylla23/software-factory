@@ -15,7 +15,7 @@ for last; do :; done
 arg="\${last#*:}"
 case "$last" in
   replay:*) cat "$arg" ;;
-  dump:*) printf '%s\\n' "$@" > "$arg/argv"; env > "$arg/env"; cat "${fixture("claude-headless.stream.jsonl")}" ;;
+  dump:*) printf '%s\\n' "$@" > "$arg/argv"; printf '%s\\0' "$@" > "$arg/argv0"; env > "$arg/env"; cat "${fixture("claude-headless.stream.jsonl")}" ;;
   started:*) : > "$arg"; cat "${fixture("claude-headless.stream.jsonl")}" ;;
   hang:*)
     echo '{"type":"system","subtype":"init","session_id":"s","model":"m"}'
