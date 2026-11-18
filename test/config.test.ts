@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, copyFileSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import { assertPrivateDir, assertTrustedExecutable, createRunLogs, managedSettingsProblems, tempRoots } from "../src/dispatch/config";
 import { makeSandbox, type Sandbox } from "./helpers";
 
@@ -61,21 +60,24 @@ describe("managedSettingsProblems", () => {
     expect(managedSettingsProblems(sb.config)).toEqual([]);
   });
 
-  test("a present managed-settings file fails closed until its exact contents are accepted", () => {
-    const file = sb.config.managedSettingsPaths[0]!;
-    writeFileSync(file, '{"sandbox":{"network":{"allowedDomains":["*"]}}}');
-    expect(managedSettingsProblems(sb.config)).toEqual([expect.stringContaining("present and not accepted")]);
-    const digest = createHash("sha256").update('{"sandbox":{"network":{"allowedDomains":["*"]}}}').digest("hex");
-    expect(managedSettingsProblems({ ...sb.config, acceptedManagedSettings: { [file]: digest } })).toEqual([]);
-    writeFileSync(file, "{}");
-    expect(managedSettingsProblems({ ...sb.config, acceptedManagedSettings: { [file]: digest } })).toHaveLength(1);
+  test("any existing source refuses, whatever it holds: a file, even empty, or a directory, even empty", () => {
+    const [file, dir] = sb.config.managedSettingsPaths as [string, string];
+    writeFileSync(file, "");
+    expect(managedSettingsProblems(sb.config)).toEqual([`${file}: exists`]);
+    rmSync(file);
+    mkdirSync(dir);
+    expect(managedSettingsProblems(sb.config)).toEqual([`${dir}: exists`]);
   });
 
-  test("every file in a managed-settings.d directory is checked", () => {
-    const dir = sb.config.managedSettingsPaths[1]!;
-    mkdirSync(dir);
-    writeFileSync(join(dir, "10-egress.json"), "{}");
-    expect(managedSettingsProblems(sb.config)).toEqual([expect.stringContaining("10-egress.json")]);
+  test("a location that cannot be checked counts as existing", () => {
+    const blocked = join(sb.stateRoot, "blocked");
+    mkdirSync(blocked);
+    chmodSync(blocked, 0o000);
+    try {
+      expect(managedSettingsProblems({ ...sb.config, managedSettingsPaths: [join(blocked, "managed-settings.json")] })).toEqual([expect.stringContaining("cannot check")]);
+    } finally {
+      chmodSync(blocked, 0o700);
+    }
   });
 });
 

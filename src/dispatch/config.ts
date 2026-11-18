@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { closeSync, constants, lstatSync, openSync, readdirSync, readFileSync, realpathSync, statSync, writeSync } from "node:fs";
+import { closeSync, constants, lstatSync, openSync, realpathSync, statSync, writeSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type { Harness } from "./types";
@@ -18,10 +17,8 @@ export interface DispatchConfig {
    * logged in to once, so no owner instructions, hooks, skills, plugins, or config reach factory runs.
    */
   harnessHomes: Record<Harness, string>;
-  /** Claude managed-settings locations checked before every Claude dispatch. */
+  /** Claude managed-settings locations; a Claude dispatch is refused while any of them exists. */
   managedSettingsPaths: readonly string[];
-  /** Managed-settings files the owner accepted, as canonical path to sha256 of contents. */
-  acceptedManagedSettings: Readonly<Record<string, string>>;
 }
 
 const HOME = userInfo().homedir; // from the user database, not $HOME
@@ -57,7 +54,6 @@ export interface LoadOptions {
   /** Directories agents can write besides the temp roots, such as the Orca workspaces dir. */
   agentWriteRoots: readonly string[];
   stateRoot?: string;
-  acceptedManagedSettings?: Readonly<Record<string, string>>;
 }
 
 export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
@@ -84,7 +80,6 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
     stateRoot,
     harnessHomes: homes,
     managedSettingsPaths: CLAUDE_MANAGED_SETTINGS_PATHS,
-    acceptedManagedSettings: opts.acceptedManagedSettings ?? {},
   };
 }
 
@@ -117,34 +112,17 @@ function canonical(path: string): string {
 
 /**
  * Managed settings take precedence over --settings and survive --restricted, so they can widen egress or reads.
- * Returns one problem per present and unaccepted file; an unreadable location counts as present.
+ * Any source that exists, whatever it holds (even an empty file or directory), refuses Claude dispatch;
+ * a location that cannot be checked counts as existing. There is deliberately no way to accept one.
  */
 export function managedSettingsProblems(config: DispatchConfig): string[] {
   const problems: string[] = [];
-  const check = (file: string) => {
-    let digest: string;
-    try {
-      digest = createHash("sha256").update(readFileSync(file)).digest("hex");
-    } catch (err) {
-      problems.push(`${file}: unreadable (${(err as Error).message})`);
-      return;
-    }
-    const accepted = config.acceptedManagedSettings[file];
-    if (accepted !== digest) problems.push(`${file}: present and not accepted (sha256 ${digest})`);
-  };
   for (const path of config.managedSettingsPaths) {
-    let st;
     try {
-      st = lstatSync(path);
+      lstatSync(path);
+      problems.push(`${path}: exists`);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
-      problems.push(`${path}: cannot stat (${(err as Error).message})`);
-      continue;
-    }
-    if (st.isDirectory()) {
-      for (const name of readdirSync(path).sort()) check(join(path, name));
-    } else {
-      check(path);
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") problems.push(`${path}: cannot check (${(err as Error).message})`);
     }
   }
   return problems;
