@@ -10,7 +10,13 @@ export interface MonitorInput {
   attemptId: string;
   /** The run's stdout log, under the state root. */
   logPath: string;
-  timeoutMs?: number;
+  /** Bound on the create call. */
+  openTimeoutMs?: number;
+  /**
+   * Bound on each close and reconcile call, separate from the create's: a create that timed out on a busy runtime
+   * must not leave the cleanup that follows it less time.
+   */
+  cleanupTimeoutMs?: number;
 }
 
 export interface RunMonitor {
@@ -49,16 +55,17 @@ export function monitorCommand(title: string, logPath: string): string {
  * reaches the run.
  */
 export function openRunMonitor(input: MonitorInput): RunMonitor {
-  const timeoutMs = input.timeoutMs ?? ORCA_TIMEOUT_MS;
+  const openTimeoutMs = input.openTimeoutMs ?? ORCA_TIMEOUT_MS;
+  const cleanupTimeoutMs = input.cleanupTimeoutMs ?? ORCA_TIMEOUT_MS;
   const command = monitorCommand(input.title, input.logPath); // throws on a bad title, before anything starts
   if (!ATTEMPT_ID.test(input.attemptId) || !input.title.includes(input.attemptId)) {
     throw new Error(`monitor title ${JSON.stringify(input.title)} must contain the attempt id ${JSON.stringify(input.attemptId)}`);
   }
-  const orca = (args: string[]) => orcaJson(input.orcaPath, args, timeoutMs);
+  const orca = (args: string[], timeoutMs: number) => orcaJson(input.orcaPath, args, timeoutMs);
   const problems: string[] = [];
   let uncertain = false;
   const opened: Promise<string | null> = (async () => {
-    const result = await orca(["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", command]);
+    const result = await orca(["terminal", "create", "--worktree", `path:${input.worktreePath}`, "--title", input.title, "--command", command], openTimeoutMs);
     const handle = isRecord(result.terminal) ? str(result.terminal.handle) : null;
     if (!handle) throw new OrcaError(`orca terminal create returned no handle: ${JSON.stringify(result).slice(0, 300)}`, true);
     return handle;
@@ -69,7 +76,7 @@ export function openRunMonitor(input: MonitorInput): RunMonitor {
   });
   const closeTab = async (handle: string) => {
     try {
-      await orca(["terminal", "close", "--terminal", handle]);
+      await orca(["terminal", "close", "--terminal", handle], cleanupTimeoutMs);
       return true;
     } catch (err) {
       problems.push(`close failed for ${handle}: ${(err as Error).message}`);
@@ -79,7 +86,7 @@ export function openRunMonitor(input: MonitorInput): RunMonitor {
   /** A create that timed out or answered oddly may still have opened the tab: close every tab titled with this attempt. */
   const reconcile = async () => {
     try {
-      const list = await orca(["terminal", "list", "--worktree", `path:${input.worktreePath}`]);
+      const list = await orca(["terminal", "list", "--worktree", `path:${input.worktreePath}`], cleanupTimeoutMs);
       if (!Array.isArray(list.terminals)) throw new Error(`no terminals in ${JSON.stringify(list).slice(0, 300)}`);
       if (list.truncated === true) problems.push("reconcile: terminal list was truncated; a tab may stay open");
       for (const t of list.terminals) {
