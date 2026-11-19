@@ -14,6 +14,7 @@
  * descendants, and its group) is alive, never that such a detached descendant is gone (issue #3).
  */
 import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 
 export interface ProcIdentity {
   pid: number;
@@ -78,6 +79,9 @@ export interface AgentProcess {
   exitedAt: () => number | null;
   /** Signals through the child handle; a no-op once it has exited, so it never hits a recycled pid. */
   kill: (sig: NodeJS.Signals) => void;
+  /** The output pipes, when spawned with `"pipe"`; the caller must drain them. */
+  stdout: Readable | null;
+  stderr: Readable | null;
 }
 
 export interface SpawnInput {
@@ -85,8 +89,9 @@ export interface SpawnInput {
   args: string[];
   cwd: string;
   env: Record<string, string>;
-  stdoutFd: number;
-  stderrFd: number;
+  /** A file descriptor the child writes directly, or `"pipe"` for the caller to read and bound. */
+  stdoutFd: number | "pipe";
+  stderrFd: number | "pipe";
   psPath: string;
 }
 
@@ -127,6 +132,8 @@ export function spawnAgentProcess(input: SpawnInput): AgentProcess {
     kill: (sig) => {
       if (exitedAt === null && pid > 0) child.kill(sig);
     },
+    stdout: child.stdout,
+    stderr: child.stderr,
   };
 }
 
@@ -297,7 +304,11 @@ export async function superviseRun(root: AgentProcess, opts: SuperviseOptions): 
   const stop = (why: "cancelled" | "timed_out") => {
     if (stopped) return;
     stopped = why;
-    terminateTree(root, opts).then(terminated.resolve);
+    // terminateTree is written not to throw, but a throw would otherwise leave this run waiting forever, so it settles
+    // as a report whose error quarantines the run.
+    terminateTree(root, opts).then(terminated.resolve, (err: unknown) =>
+      terminated.resolve({ survivors: [], errors: [`termination threw: ${err instanceof Error ? err.message : String(err)}`] }),
+    );
   };
   const timer = setTimeout(() => stop("timed_out"), opts.timeoutMs);
   const onAbort = () => stop("cancelled");
@@ -342,6 +353,11 @@ export const LSOF_TIMEOUT_MS = 10_000;
 export interface SweepOptions extends TerminateOptions {
   lsofPath: string;
   lsofTimeoutMs?: number;
+  /**
+   * Processes still in use, such as a running preview server, that are left alone with all their descendants.
+   * Matched by identity, so a recycled pid is not spared.
+   */
+  spare?: readonly ProcIdentity[];
 }
 
 export interface SweepResult {
@@ -382,11 +398,22 @@ export function scanWorktree(worktree: string, opts: SweepOptions): ProcIdentity
     else if (line.startsWith("n") && pid > 0 && isUnderPath(line.slice(1), worktree)) inWorktree.add(pid);
   }
   inWorktree.delete(process.pid);
+  const spared = new Set<number>();
+  for (const id of opts.spare ?? []) if (snap.get(id.pid)?.start === id.start) spared.add(id.pid);
+  for (let grew = spared.size > 0; grew; ) {
+    grew = false;
+    for (const row of snap.values()) {
+      if (!spared.has(row.pid) && spared.has(row.ppid)) {
+        spared.add(row.pid);
+        grew = true;
+      }
+    }
+  }
   const tops = new Set([1, process.pid]);
   const found: ProcIdentity[] = [];
   for (const p of inWorktree) {
     const row = snap.get(p);
-    if (!row || row.zombie) continue; // started after the snapshot, or already gone
+    if (!row || row.zombie || spared.has(p)) continue; // started after the snapshot, already gone, or still in use
     let ok = true;
     for (let cur = row, steps = 0; !tops.has(cur.ppid); steps++) {
       const parent = snap.get(cur.ppid);
@@ -425,12 +452,32 @@ export async function sweepWorktree(worktree: string, opts: SweepOptions): Promi
     }
     return { code: null, signal: null, error: null };
   })();
-  const standIn: AgentProcess = { pid: -1, identity: null, exited: allGone, exitedAt: () => 0, kill: () => {} };
+  const standIn: AgentProcess = { pid: -1, identity: null, exited: allGone, exitedAt: () => 0, kill: () => {}, stdout: null, stderr: null };
   try {
     return { found, cleanup: await terminateTree(standIn, opts, found), scanError: null };
   } finally {
     done = true;
   }
+}
+
+export interface CleanupAssessment {
+  /** True when no process the factory knows of outlived the run (see RunResult.noKnownSurvivors). */
+  noKnownSurvivors: boolean;
+  /** Why the worktree must be quarantined; empty when it may be reused or removed. */
+  quarantineReasons: string[];
+}
+
+/** Combines supervision's unverified reasons with the worktree sweep into one verdict, shared by every spawned run. */
+export function assessCleanup(unverified: readonly string[], sweep: SweepResult): CleanupAssessment {
+  const quarantineReasons = [...unverified];
+  if (sweep.scanError) quarantineReasons.push(`worktree scan failed: ${sweep.scanError}`);
+  if (sweep.found.length > 0) quarantineReasons.push(`${sweep.found.length} processes were still running in the worktree after the run: ${sweep.found.map((p) => p.pid).join(", ")}`);
+  const sweepClean = !sweep.cleanup || (sweep.cleanup.survivors.length === 0 && sweep.cleanup.errors.length === 0);
+  if (sweep.cleanup) {
+    quarantineReasons.push(...sweep.cleanup.errors.map((e) => `worktree sweep: ${e}`));
+    if (sweep.cleanup.survivors.length > 0) quarantineReasons.push(`worktree sweep could not kill: ${sweep.cleanup.survivors.map((p) => p.pid).join(", ")}`);
+  }
+  return { noKnownSurvivors: unverified.length === 0 && sweep.scanError === null && sweepClean, quarantineReasons };
 }
 
 function isUnderPath(path: string, root: string): boolean {

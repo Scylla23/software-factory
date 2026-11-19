@@ -319,6 +319,17 @@ describe("bounded waits", () => {
     expect((await real.exited).signal).not.toBeNull();
   });
 
+  test("a termination that throws still settles supervision, as a quarantine reason", async () => {
+    const real = spawnShell("sleep 300");
+    const throwing = { ...real, exited: new Promise<never>(() => {}), exitedAt: () => null, kill: () => { throw new Error("EPERM signalling"); } };
+    const r = await superviseRun(throwing, { timeoutMs: 20, psPath: "/bin/ps", graceMs: 50, killWaitMs: 50 });
+    expect(r.stopped).toBe("timed_out");
+    expect(r.cleanup!.errors).toEqual(["termination threw: EPERM signalling"]);
+    expect(r.unverified).toEqual([`root pid ${real.pid} never exited`]);
+    real.kill("SIGKILL");
+    expect((await real.exited).signal).toBe("SIGKILL");
+  });
+
   test("supervision of a root that exits by itself reports its status and no cleanup", async () => {
     const r = await superviseRun(spawnShell("exit 7"), { timeoutMs: 30_000, psPath: "/bin/ps" });
     expect(r).toEqual({ status: { code: 7, signal: null, error: null }, stopped: null, cleanup: null, unverified: [] });
@@ -363,14 +374,30 @@ describe("cleanup verification", () => {
 
     const config = { ...sb.config, executables: { ...sb.config.executables, ps: psPath } };
     const childFile = join(sb.worktree, "q.pid");
+    // Stopped only once the child is running: a fixed short timeout could stop the fake before it starts the child,
+    // and the pid this test reads would then never be written.
+    const ac = new AbortController();
+    const pending = runAgent({ ...spec("claude", `hang:${childFile}`), signal: ac.signal }, config);
     try {
-      const run = await runAgent({ ...spec("claude", `hang:${childFile}`), timeoutMs: 300 }, config);
-      expect(run).toMatchObject({ outcome: "timed_out", noKnownSurvivors: false, quarantineWorktree: true });
+      await readPid(childFile);
+      ac.abort();
+      const run = await pending;
+      expect(run).toMatchObject({ outcome: "cancelled", noKnownSurvivors: false, quarantineWorktree: true });
       expect(run.diagnostics).toContainEqual(expect.stringMatching(/^quarantine: termination: process snapshot failed/));
       // The flag is truthful: without ps the fake's background child was never found, so it is still alive.
       expect(alive(await readPid(childFile))).toBe(true);
     } finally {
-      process.kill(await readPid(childFile), "SIGKILL");
+      // The run is settled inside the test, and the child killed only if it was ever started.
+      ac.abort();
+      await pending.catch(() => undefined);
+      const pid = Number(readFileSync(childFile, { encoding: "utf8", flag: "a+" }).trim());
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
     }
   });
 });

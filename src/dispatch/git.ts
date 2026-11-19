@@ -13,7 +13,7 @@ export class GitError extends Error {
  * git from the trusted path, with no system or global config, replace refs, or prompts, so only the repo itself
  * decides what is read.
  */
-export function runGit(gitPath: string, repo: string, args: string[]): Buffer {
+export function runGit(gitPath: string, repo: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Buffer {
   const r = Bun.spawnSync([gitPath, "--no-replace-objects", "-C", repo, ...args], {
     env: {
       PATH: "/usr/bin:/bin",
@@ -25,12 +25,14 @@ export function runGit(gitPath: string, repo: string, args: string[]): Buffer {
       GIT_OPTIONAL_LOCKS: "0",
     },
     stdin: "ignore",
-    timeout: GIT_TIMEOUT_MS,
+    timeout: timeoutMs,
     killSignal: "SIGKILL",
   });
-  if (r.exitedDueToTimeout) throw new GitError(`git ${args[0]} gave no answer within ${GIT_TIMEOUT_MS}ms`, "");
+  // Name the subcommand, not a leading `-c key=value`.
+  const what = args.find((a) => !a.startsWith("-") && !a.includes("=")) ?? args[0];
+  if (r.exitedDueToTimeout) throw new GitError(`git ${what} gave no answer within ${timeoutMs}ms`, "");
   const stderr = r.stderr.toString("utf8").trim();
-  if (r.exitCode !== 0) throw new GitError(`git ${args[0]} failed in ${repo}: ${stderr.slice(0, 300) || `exit ${r.exitCode}`}`, stderr);
+  if (r.exitCode !== 0) throw new GitError(`git ${what} failed in ${repo}: ${stderr.slice(0, 300) || `exit ${r.exitCode}`}`, stderr);
   return r.stdout;
 }
 
