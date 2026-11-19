@@ -11,6 +11,7 @@ export interface Capture {
   coverage: "complete" | "partial" | "unknown";
   lines: Line[];
   costUsd: number | null;
+  reportedTotal: boolean;
   priceDate: string;
 }
 
@@ -32,7 +33,7 @@ export function codexLine(model: string | null, raw: Record<string, unknown>, pe
 export function summarize(lines: Line[], source: Capture["source"], complete: boolean, total?: number | null): Capture {
   const costUsd = total ?? (lines.length && lines.every(l => l.costUsd !== null)
     ? lines.reduce((n, l) => n + l.costUsd!, 0) : null);
-  return { source, coverage: lines.length ? (complete ? "complete" : "partial") : "unknown", lines, costUsd, priceDate };
+  return { source, coverage: lines.length ? (complete ? "complete" : "partial") : "unknown", lines, costUsd, reportedTotal: total != null, priceDate };
 }
 
 export function primary(usage: unknown, model: string | null, outcome: string): Capture {
@@ -56,4 +57,4 @@ export function primary(usage: unknown, model: string | null, outcome: string): 
   return summarize([], "unknown", false);
 }
 
-export type RunUsage = Pick<RunResult, "harness" | "runId" | "sessionId" | "requestedModel" | "observedModel" | "usage"> & { outcome: RunResult["outcome"] | "uncertain" };
+export type RunUsage = Pick<RunResult, "harness" | "runId" | "sessionId" | "requestedModel" | "observedModel" | "usage" | "reportedCostUsd"> & { outcome: RunResult["outcome"] | "uncertain" };

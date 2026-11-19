@@ -25,12 +25,12 @@ function coverage(a: Coverage, b: Coverage): Coverage {
   return a === b ? a : "partial";
 }
 
-function add(t: Totals, lines: Line[], usd: number | null, state: Coverage) {
+function add(t: Totals, lines: Line[], usd: number | null, state: Coverage, reportedTotal: boolean) {
   const tokens = lines.length ? lines.reduce((sum, l) => sum + l.input + l.cacheRead + l.cacheWrite + l.output, 0) : null;
   const costs = lines.flatMap(l => l.costUsd === null ? [] : [l.costUsd]);
   const knownCost = usd ?? (costs.length ? costs.reduce((a,b) => a + b, 0) : null);
   const tokenState = tokens === null ? "unknown" : state;
-  const costState = knownCost === null ? "unknown" : usd === null && costs.length !== lines.length ? "partial" : state;
+  const costState = reportedTotal && usd !== null ? "complete" : knownCost === null ? "unknown" : usd === null && costs.length !== lines.length ? "partial" : state;
   t.tokenCoverage = t.runs ? coverage(t.tokenCoverage, tokenState) : tokenState;
   t.costCoverage = t.runs ? coverage(t.costCoverage, costState) : costState;
   if (tokens !== null) t.tokens = (t.tokens ?? 0) + tokens;
@@ -48,9 +48,9 @@ function totalsBy(db: Database, by: Dimension) {
   const migrated = hasCaptures(db);
   const rows = db.query<Audit, []>(`SELECT a.*,t.repo_id,${migrated ? "u.capture,u.model_flag" : "NULL AS capture,NULL AS model_flag"}
     FROM audit a JOIN tasks t ON t.id=a.task ${migrated ? "LEFT JOIN usage_captures u USING(attempt)" : ""} ORDER BY a.task,a.rowid`).all();
-  function accumulate(key: string | number, lines: Line[], cost: number | null, state: Coverage) {
+  function accumulate(key: string | number, lines: Line[], cost: number | null, state: Coverage, reportedTotal: boolean) {
     const group = groups.get(key) ?? empty();
-    add(group, lines, cost, state);
+    add(group, lines, cost, state, reportedTotal);
     groups.set(key, group);
   }
   for (const r of rows) {
@@ -66,10 +66,10 @@ function totalsBy(db: Database, by: Dimension) {
         billed.set(key,bucket);
       }
       if (!billed.size) billed.set(r.observed_model ?? "unknown", []);
-      for (const [key, lines] of billed) accumulate(key, lines, billed.size === 1 ? capture.costUsd : null, capture.coverage);
+      for (const [key, lines] of billed) accumulate(key, lines, billed.size === 1 ? capture.costUsd : null, capture.coverage, billed.size === 1 && capture.reportedTotal);
     } else {
       const project = r.repo_id === config.pilot.repoId ? config.pilot.owner + "/" + config.pilot.repo : String(r.repo_id);
-      accumulate(by === "task" ? r.task : by === "stage" ? r.stage : project, capture.lines, capture.costUsd, capture.coverage);
+      accumulate(by === "task" ? r.task : by === "stage" ? r.stage : project, capture.lines, capture.costUsd, capture.coverage, capture.reportedTotal);
     }
   }
   return { groups, flags };

@@ -74,6 +74,8 @@ export interface RunResult {
   observedModel: string | null;
   /** Null when usage is unrecoverable; never zero-filled. */
   usage: ClaudeUsage | CodexUsage | null;
+  /** Claude result total when the token breakdown was malformed or absent. */
+  reportedCostUsd?: number;
   /** Final agent message. */
   resultText: string | null;
   stdoutPath: string;

@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { codexTurnUsage, findCodexSessionFile } from "../dispatch/codex";
 import { assertPrivateDir } from "../dispatch/config";
 import { isRecord, readJsonl, str } from "../dispatch/jsonl";
-import { codexLine, count, primary, summarize, type Line, type RunUsage } from "./capture";
+import { codexLine, count, money, primary, summarize, type Line, type RunUsage } from "./capture";
 import { estimate } from "./prices";
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
@@ -43,7 +43,6 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
       if (!child || !lines.has(id)) lines.set(id, { ...t, model: name,
         costUsd: count(longWrites) && longWrites <= cacheWrite ? estimate(name, t, longWrites, true) : null });
     }
-
   }
   return mainModel;
 }
@@ -81,7 +80,9 @@ async function codexResponses(root: string, session: string, lines: Map<string, 
 }
 
 export async function captureRun(run: RunUsage, stateRoot: string) {
-  const direct = primary(run.usage, run.observedModel, run.outcome);
+  const direct = run.harness === "claude" && !run.usage && money(run.reportedCostUsd)
+    ? summarize([], "result", false, run.reportedCostUsd)
+    : primary(run.usage, run.observedModel, run.outcome);
   const session = run.sessionId ?? (run.harness === "claude" ? run.runId : null);
   let observed = run.observedModel;
   const result = (capture: typeof direct) => ({ session, observed, capture });

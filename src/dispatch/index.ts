@@ -110,6 +110,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
       outcome: outcome(s.succeeded),
       observedModel: s.observedModel,
       usage: s.usage,
+      ...(s.reportedCostUsd === undefined ? {} : { reportedCostUsd: s.reportedCostUsd }),
       resultText: s.resultText,
       diagnostics: [...diagnostics, ...s.diagnostics],
     };

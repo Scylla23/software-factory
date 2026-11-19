@@ -89,6 +89,8 @@ export interface ClaudeStreamSummary {
   /** Null when absent, malformed, or ambiguous; never zero-filled. */
   usage: ClaudeUsage | null;
   /** A bounded sample; `diagnosticCount` counts them all. */
+  /** A valid result total can survive an unreadable token breakdown. */
+  reportedCostUsd?: number;
   diagnostics: string[];
   diagnosticCount: number;
 }
@@ -117,6 +119,8 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
       s.succeeded = event.subtype === "success" && event.is_error === false;
       s.resultText = str(event.result);
       s.usage = claudeUsage(event);
+      const total = usd(event.total_cost_usd);
+      if (!s.usage && total !== null) s.reportedCostUsd = total;
       if (!s.usage) sample.add(`line ${item.line}: result event has malformed usage`);
     }
   }
@@ -124,6 +128,7 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
     sample.add(`${results} result events; accounting is ambiguous`);
     s.succeeded = false;
     s.usage = null;
+    delete s.reportedCostUsd;
   }
   s.diagnostics = sample.list();
   s.diagnosticCount = sample.count;

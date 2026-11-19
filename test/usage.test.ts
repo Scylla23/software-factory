@@ -124,3 +124,20 @@ test("Claude keeps per-model usage and honors a provider total distinct from its
   expect(c.costUsd).toBe(0.25);
   expect(c.lines.map(l => [l.model, l.costUsd])).toEqual([["a",0.1],["b",0.1]]);
 });
+
+test("Claude preserves a reported cost even when only transcript tokens survive", async () => {
+  const { path, run } = await replay("claude", "killed");
+  const raw = { type: "result", session_id: run.sessionId, is_error: true, subtype: "error", total_cost_usd: 0.75 };
+  const log = join(root, "exit.jsonl");
+  writeFileSync(log, JSON.stringify(raw));
+  const parsed = await parseClaudeStream(readJsonl(log));
+  const incomplete = { ...run, usage: parsed.usage, reportedCostUsd: parsed.reportedCostUsd };
+  expect((await captureRun(incomplete, root)).capture).toMatchObject({ source: "session", coverage: "partial", reportedTotal: true, costUsd: 0.75 });
+  rmSync(path);
+  expect((await captureRun(incomplete, root)).capture).toMatchObject({ source: "result", coverage: "unknown", reportedTotal: true, costUsd: 0.75 });
+});
+
+test("each recovered Codex response applies the request's context tier", () => {
+  const tokens = { input: 272001, cacheRead: 5, cacheWrite: 10, output: 77, reasoning: 60 };
+  expect(estimate("gpt-6-luna", tokens, 0, true)).toBeCloseTo((272001 * 0.2 + 5 * 0.02 + 10 * 0.25 + 77 * 0.75) / 1e6, 12);
+});
