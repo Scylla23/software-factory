@@ -72,9 +72,10 @@ Run `bun scripts/probe-step-04b.ts` with the test name to reproduce a row.
 Both D3 probes kept parent and child on the requested cheap model and low effort.
 They establish no discrimination between different model and effort settings.
 The Codex definition-absent control sometimes selected an unnamed default child, so it does not prove a named rejection.
-S1, S3, S4, S7 and S8 need additional source-specific controls.
+S1, the system-source arm of S3, S7 and S8 need additional source-specific controls.
 All 24 prelaunch Claude S4 arms ran on the dedicated login and passed for skills, commands and agents in each of the four added directories.
-Same-session discovery after a write remains unverified.
+Same-session discovery after a write was never measured live.
+The coordinator replaced that arm with a prelaunch write prohibition for every skill role, described below.
 Claude S3 listed debug, simplify and claude-api in its enabled arm only.
 Codex S3 listed skill-creator, skill-installer and openai-docs under its bundled root in `01a1f5be-850d-71c1-ba1f-c946341d2f48` and none in `01a1f5be-9b50-79c0-abd3-a117f9f823a0`.
 Its developer message uses a directory alias for the bundled root.
@@ -91,9 +92,48 @@ The final Codex R1 scorer binds the exact factory-supplied tool call to its nati
 The earlier scorer missed nested command results that were absent from exec stdout.
 Claude D5 passed in `1a5db030-d5cd-4100-aa2b-38aff85705c0` with a pinned disposable factory tree and the excluded source path refused.
 Codex D5 passed in `01a1f5b1-477b-76f0-b1e6-5265345951bd` using the pinned checkout's skill body as the refused source and a distinct marker in its excluded eval folder.
-Claude S2 passed both arms for project `.claude/skills`, while the positive `.agents/skills` control did not list the definition.
-Codex S2 listed the project `.agents/skills` definition only in the positive arm.
-Automatic loading was unverified there, and the project `.claude/skills` positive arm did not list the definition.
+Claude S2 listed and loaded project `.claude/skills` only in enabled session `e7fb4e55-a671-43a6-bd74-408f2fb8ae63`.
+The factory-flags session was `91619044-f3ac-4553-8b7e-554cfeec3724`.
+Codex listed project `.agents/skills` in enabled thread `01a1f5a7-7ff7-7613-8169-33115da35c7a` and then read the marked skill file in response to the named request.
+The original scorer inspected only instruction messages and missed the native read.
+Call `call_2200ae2ee58e49b0b084988b698c5d3e` used the exact file and checkout, and its matching protected tool result contained the skill name, fresh description and body marker.
+Replaying the corrected scorer on the stored rollout passed without a provider request.
+The factory-flags thread `01a1f5a7-a291-7460-9fdf-f732565016cd` had neither listing nor loaded body.
+The Codex read was an explicit load after discovery.
+For the alternate locations, neither harness listed or loaded the marked body in either arm.
+The enabled alternate arms were Claude `0f752b09-ae7e-4f95-a577-6a32475ea927` and Codex `01a1f5a7-c8d0-7c72-8b79-a50fb592d150`.
+
+## Coordinator decisions after 176b086
+
+1. The coordinator approved neutral evidence and migration wording for `spec-lead-02-tier-promotion-runs-team`.
+   Commit `81b10c5` updates the fixture while retaining its S classification, low confidence and false migration flag.
+   All 44 variants were re-staged and the validator passed all 221 checks.
+2. Direct Bash R1 applies only when the role receives Bash.
+   Claude skill launches expose file tools, and code-stage reviewers and auditors use the registered-command broker.
+   The generated lead and specialist definitions omit Bash and a skill session reporting Bash at initialization fails validation.
+   The future Claude builder remains refused pending a proven project command path in [step 5 issue 43](https://github.com/Scylla23/software-factory/issues/43).
+3. The coordinator replaced mid-session S4 with a write prohibition for every role, including the builder.
+   Both harnesses protect `.claude`, `.agents`, `.codex`, `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md` and `CLAUDE.local.md`, including nested and mixed-case names.
+   Codex applies filesystem deny globs and Claude applies native read, edit and write denials.
+   The broker and reviewer dependency setup apply a Seatbelt write denial at the syscall.
+   Skill policy preparation rejects symlinks and multiply linked files inside discovery sources.
+   The builder diff guard escalates a protected change before publication.
+   The separate instruction composer reads the approved project files from pinned Git blobs.
+   The offline pinned proof `bun scripts/probe-discovery-writes.ts` allowed an ordinary write and denied eight protected destinations per harness, including one below a new directory.
+   The new Codex check exercised the pinned sandbox shell, including refusal to rename or delete an existing protected file.
+   The separate native Codex matrix retains the three unobserved role profiles recorded above.
+   The Claude CLI used its native Write and Edit tools against a loopback response fixture with provider network access denied.
+   A permitted edit succeeded and the protected original retained its bytes.
+4. The coordinator accepts an unlisted and unloaded alternate directory as "not a source on the pinned binary" once the real source passes both arms.
+   This disposition applies to Claude `.agents/skills` and Codex `.claude/skills`.
+   Neither alternate showed automatic loading.
+5. The coordinator retained the credential gates for S1, the S3 system source, S7 and S8.
+   No paid proof or evaluation ran during this revision.
+6. The coordinator accepts partial Claude D3 for step 4b only after a discriminating model and effort observation.
+   The batch command schedules `D3-distinct` with a Haiku 5.5 low parent and a Sonnet 5.5 medium child in a disposable authenticated home.
+   The definition-absent arm must request the same child and record no start.
+   The enabled arm must link the child to the parent start and verify its effective skill, run brief, model and request effort in the private transcript.
+   This live arm awaits the owner credential.
 
 ## Disposable proof authentication
 
@@ -124,13 +164,15 @@ A separate Codex run used shell output and correctly failed the native receipt c
 The project-command substitution arm remains open.
 D4 separately demonstrated the protected specialist receipt.
 
-`python3 scripts/mutate-step-04b.py` killed 48 of 48 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions and judge quotations.
+`python3 scripts/mutate-step-04b.py` killed 59 of 59 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions, judge quotations, discovery write denials, lazy reads and specialist model selection.
 The three development suites passed with 331, 342 and 355 tests.
 The third suite ran in 97.37 seconds under the external watchdog.
 The coordinator-requested regression suite first passed 365 tests with 5,654 assertions in 99.92 seconds.
 The batch runner and its fixtures then passed a 376-test suite with 5,732 assertions in 100.48 seconds.
 The planted pilot separately passed its registered typecheck and all six application tests.
-After the final fixture and dispatcher edits, the factory typecheck and 18 focused tests passed.
+The earlier batch-runner revision passed the factory typecheck and 18 focused tests.
+After the coordinator decisions the final suite passed 382 tests across 38 files, with 6,544 assertions in 95.80 seconds.
+The factory typecheck passed and all nine Codex shell role profiles passed their offline write-root checks.
 The 20 consecutive final runs await completed evals at the coordinator's request.
 
 ## Skill evals
@@ -167,35 +209,36 @@ The command includes Codex contestant preflight only.
 It records approved Claude trial sessions in a private batch database and reports the session estimates, actuals, trial outcomes and cumulative usage.
 An interrupted or unmeasured Claude session blocks a new reservation.
 Exit 2 means cases were skipped for missing evidence.
-Provisioning both Keychain items makes isolated S1 runnable.
-S2 and the disposable system-source arm of S3 are separate open controls, as are Claude direct Bash R1 and same-session S4.
+Provisioning the Keychain items makes isolated S1 and the distinct Claude D3 proof runnable.
+The S3 system-source proof remains independently required on both harnesses.
 The factory still refuses a case if any of its controls is open.
 
-The command returned both missing-credential results, zero S1 arms, zero contestant and judge sessions, zero input tokens, zero output tokens and zero pending reservations.
+The last credential-aware invocation returned both missing-credential results and zero S1 arms.
+The subsequent no-spend preflight reported zero contestant and judge sessions, zero input and output tokens, and zero pending reservations.
 Each row requires three scored trials.
 The 21 Claude and 36 Codex trials have no measured pass rate.
 
 | Case and variant | Contestant | Missing proof or fixture condition |
 | --- | --- | --- |
-| `triage-01-single-area-bug` | Sonnet low | S1, S2, S3, S4, direct Bash R1 |
-| `triage-02-schema-change-called-tiny` | Sonnet low | S1, S2, S3, S4, direct Bash R1 |
-| `triage-03-injected-instructions` | Sonnet low | S1, S2, S3, S4, direct Bash R1 |
-| `spec-lead-01-draft-and-revise/bug-reproduce-first` | Opus high | S1, S2, S3, S4, direct Bash R1 |
-| `spec-lead-01-draft-and-revise/revision-answers-both-reviewers` | Opus high | S1, S2, S3, S4, direct Bash R1 |
-| `spec-lead-02-tier-promotion-runs-team` | Opus high | S1, S2, S3, S4, direct Bash R1, S8, D3, disclosed tier |
-| `spec-lead-03-ac-changing-conflict-escalates` | Opus high | S1, S2, S3, S4, direct Bash R1, S8, D3 |
-| `builder-01-bug-reproduce-first` | Sol high | S1, S2, S3 |
-| `builder-02-security-criteria` | Sol high | S1, S2, S3 |
-| `builder-03-repair-fix-and-dispute` | Sol high | S1, S2, S3 |
-| `spec-reviewer-01-planted-defects/four-defects` | Astra high | S1, S2, S3, native write roots |
-| `spec-reviewer-01-planted-defects/requirement-moved-to-non-goals` | Astra high | S1, S2, S3, native write roots |
-| `spec-reviewer-02-clean-spec-approves/bug-spec` | Astra high | S1, S2, S3, native write roots |
-| `spec-reviewer-02-clean-spec-approves/plan-creates-a-file` | Astra high | S1, S2, S3, native write roots |
-| `spec-reviewer-03-revision-breaks-something-else` | Astra high | S1, S2, S3, native write roots |
-| `security-auditor-01-cross-user-access-in-diff` | Astra high | S1, S2, S3, R3 |
-| `security-auditor-02-safe-diff-approves` | Astra high | S1, S2, S3, R3 |
-| `security-auditor-03-spec-stage/lead-dropped-a-mitigation` | Astra high | S1, S2, S3 |
-| `security-auditor-03-spec-stage/revision-edits-only-the-threat-model` | Astra high | S1, S2, S3 |
+| `triage-01-single-area-bug` | Sonnet low | S1, S3 |
+| `triage-02-schema-change-called-tiny` | Sonnet low | S1, S3 |
+| `triage-03-injected-instructions` | Sonnet low | S1, S3 |
+| `spec-lead-01-draft-and-revise/bug-reproduce-first` | Opus high | S1, S3 |
+| `spec-lead-01-draft-and-revise/revision-answers-both-reviewers` | Opus high | S1, S3 |
+| `spec-lead-02-tier-promotion-runs-team` | Opus high | S1, S3, S8, D3 |
+| `spec-lead-03-ac-changing-conflict-escalates` | Opus high | S1, S3, S8, D3 |
+| `builder-01-bug-reproduce-first` | Sol high | S1, S3 |
+| `builder-02-security-criteria` | Sol high | S1, S3 |
+| `builder-03-repair-fix-and-dispute` | Sol high | S1, S3 |
+| `spec-reviewer-01-planted-defects/four-defects` | Astra high | S1, S3, native write roots |
+| `spec-reviewer-01-planted-defects/requirement-moved-to-non-goals` | Astra high | S1, S3, native write roots |
+| `spec-reviewer-02-clean-spec-approves/bug-spec` | Astra high | S1, S3, native write roots |
+| `spec-reviewer-02-clean-spec-approves/plan-creates-a-file` | Astra high | S1, S3, native write roots |
+| `spec-reviewer-03-revision-breaks-something-else` | Astra high | S1, S3, native write roots |
+| `security-auditor-01-cross-user-access-in-diff` | Astra high | S1, S3, R3 |
+| `security-auditor-02-safe-diff-approves` | Astra high | S1, S3, R3 |
+| `security-auditor-03-spec-stage/lead-dropped-a-mitigation` | Astra high | S1, S3 |
+| `security-auditor-03-spec-stage/revision-edits-only-the-threat-model` | Astra high | S1, S3 |
 
 Triage uses Sonnet 5.5 low and the named spec lead uses Opus 5.5 high.
 The lead runner requests native specialists for the L conflict case and measures the tier-promotion handoff and fresh team on separate attempt IDs.
@@ -236,15 +279,12 @@ Actuals come from each final result's per-model totals, counting normal input, c
 | #19 | Open pending authorized blind spec lead evals under the selected lead definition, with D1 verified separately |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
+| #43 | Open for step 5 to prove the Claude builder command path |
 
 ## Contract findings
 
-The supplied `spec-lead-02-tier-promotion-runs-team` triage input tells the contestant twice that the provisional classification is deliberately wrong.
-That conflicts with the blind method in `skills/_shared/evals.md`.
-The runner skips this fixture before spending any tokens.
-The proposed fixture edit replaces the tier evidence with "The issue requests a badge in the existing task list" and the migration reason with "The issue does not name a stored field".
-The proposed edit preserves the deliberately incorrect S tier and false migration flag for the lead to challenge.
-The pinned skill fixture still contains its original wording.
+The original tier-promotion fixture disclosed the intended classification and contradicted the blind method in `skills/_shared/evals.md`.
+The coordinator approved the separately committed fixture correction recorded above.
 
 Disposable Claude authentication is a prerequisite for source-specific discovery controls.
 Copying the factory account's non-secret login metadata into a fresh configuration did not establish a login.
