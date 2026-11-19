@@ -313,6 +313,8 @@ describe("evidence summary comment", () => {
     expect(redact("GET http://h:1/p?a=1")).toBe("GET http://h:1/p?[redacted]");
     expect(redact(`AKIA${"A".repeat(16)} eyJhbGciOiJI.eyJzdWIiOiIx.c2lnbmF0dXJl`)).toBe("[redacted] [redacted]");
     expect(redact("plain words stay")).toBe("plain words stay");
+    const home = require("node:os").homedir();
+    expect(redact(`DENIED ${home}/Library/Keychains/login.keychain-db`)).toBe("DENIED ~/Library/Keychains/login.keychain-db");
     expect(redact("ab ".repeat(100), 10)).toBe("ab ab ab a [... 290 more characters]");
   });
 

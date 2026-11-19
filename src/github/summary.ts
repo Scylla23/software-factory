@@ -63,10 +63,11 @@ export function redact(text: string, cap = EXCERPT_CHARS): string {
       return "[url]";
     }
   });
-  for (const p of SECRET_PATTERNS) t = t.replace(p, "[redacted]");
-  t = t.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
+  // The home first: a path under it is then short enough to survive the long-run pattern, and no longer names the account.
   const home = homedir();
   if (home.length > 1) t = t.split(home).join("~");
+  for (const p of SECRET_PATTERNS) t = t.replace(p, "[redacted]");
+  t = t.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
   return t.length > cap ? `${t.slice(0, cap)} [... ${t.length - cap} more characters]` : t;
 }
 
