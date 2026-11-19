@@ -67,10 +67,11 @@ const passed = (name: string, detail = "ok") => ({ name, detail, pass: true });
 const pull = (t: Task) => ({ number: 5, htmlUrl: "fixture", baseSha: base, baseRef: "main", headSha: t.head,
   state: "open", draft: !existsSync(join(root, t.visit + "-mark-ready.resource")) });
 const when = "2026-01-01T00:00:00Z";
+const revised = "d".repeat(40);
 const git: Parameters<typeof runStages>[2]["git"] = {
   boundPull: async t => pull(t), fetch: async () => {}, basePaths: () => new Set(["app.test.ts"]),
   reproduction: () => { throw Error("unexpected fallback"); },
-  commit: async (t,id) => remote(t.state === "building" ? "commit-fix" : "commit-spec", t.state === "building" ? head : spec, id),
+  commit: async (t,id) => remote(t.state === "building" ? "commit-fix" : "commit-spec", t.state === "building" ? head : t.spec ? revised : spec, id),
   draft: async (_t,id) => remote("open-draft", 5, id),
   comment: async (_pr,id) => {
     const t = s.task(1);
@@ -80,7 +81,10 @@ const git: Parameters<typeof runStages>[2]["git"] = {
   },
   comments: async () => {
     const t = s.task(1), abandoned = s.interrupted(t);
-    const body = abandoned ? "/resume " + abandoned.id : t.state === "escalated" ? "/reverify " + t.head : "/approve " + spec;
+    if (scenario === "revision" && t.state === "awaiting_spec_approval" && t.spec === spec)
+      return [{ id: 14, createdAt: when, updatedAt: when, lastEditedAt: null, htmlUrl: "", author: "owner",
+        authorId: config.ownerId, body: "/respec use assigned port" }];
+    const body = abandoned ? "/resume " + abandoned.id : t.state === "escalated" ? "/reverify " + t.head : "/approve " + t.spec;
     return [{ id: t.state === "escalated" ? 25 : 15, createdAt: when, updatedAt: when, lastEditedAt: null, htmlUrl: "",
       author: "owner", authorId: config.ownerId, body }];
   },
@@ -97,6 +101,9 @@ try {
         remote(a.action, "login refused", a.id);
         throw new WorkerLoginError("fixture login");
       }
+      if (scenario === "revision" && t.state === "spec_drafting" &&
+          (role !== "spec" || config.agents[role].model !== "claude-opus-5-5" || config.agents[role].effort !== "high"))
+        throw Error("the spec and its revision require Opus high");
       const body = role === "spec" ? "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
       if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
         throw Error("reviewer did not see both reproduction results");

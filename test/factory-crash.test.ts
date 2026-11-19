@@ -87,3 +87,17 @@ for (const [scenario, action] of [
     } finally { s.db.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("owner feedback returns a spec revision to the same high-effort lead before building", async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-revision-"));
+  try {
+    expect(await invoke(root, "revision")).toBe(true);
+    const s = new Store(join(root, "state.sqlite"));
+    try {
+      expect(s.task(1).state).toBe("done");
+      expect(s.task(1).spec).toBe("d".repeat(40));
+      expect(s.db.query("SELECT id FROM attempts WHERE action='dispatch-spec'").all()).toHaveLength(2);
+      expect(s.db.query("SELECT sha FROM approvals WHERE kind='comment' AND accepted=1").all()).toEqual([{ sha: "d".repeat(40) }]);
+    } finally { s.db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
