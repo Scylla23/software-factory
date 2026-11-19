@@ -152,14 +152,15 @@ async function gateTwo(store: Store, git: Publisher, task: Task) {
     publishSummary(git.pulls, evidence, { botLogin: `${git.meta.slug}[bot]` }),
   );
   store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [comment.id, task.id]);
-  await effect(store, task, "mark-ready", { pr: task.pr, head: task.head }, async () => {
+  const ready = await effect<string | true>(store, task, "mark-ready", { pr: task.pr, head: task.head }, async () => {
     await git.ready(task);
-    return true;
+    return git.reviewBoundary(task, comment.id);
   });
   const pull = await git.boundPull(task);
   if (pull.draft) throw new Error("PR is still a draft");
   console.log(`Approve PR #${task.pr} at ${task.head} ${pull.htmlUrl}`);
-  const decision = headDecision(task, await git.pages<Review>(`/pulls/${task.pr}/reviews`));
+  const readyAt = ready === true ? await git.reviewBoundary(task, comment.id) : ready;
+  const decision = headDecision(task, await git.pages<Review>(`/pulls/${task.pr}/reviews`), readyAt);
   if (!decision) return null;
   if (!decision.accepted) {
     store.record(task.id, decision);

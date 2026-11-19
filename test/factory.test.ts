@@ -181,11 +181,14 @@ test("spec approval syntax requires the entire current SHA", () => {
 test("a later rejection or dismissal supersedes an owner review and stale commits cannot finish", () => {
   const t = { head: current } as Task;
   const first = { id: 7, user: { id: owner }, state: "APPROVED", commit_id: current, submitted_at: "2026-01-01" };
-  expect(headDecision(t, [first])?.accepted).toBe(true);
+  const decide = (reviews: Parameters<typeof headDecision>[1]) => headDecision(t, reviews, "2025-12-31");
+  expect(decide([first])?.accepted).toBe(true);
+  for (const boundary of ["2026-01-01", "2026-01-02", "invalid"])
+    expect(headDecision(t, [first], boundary)?.reason).toBe("predates verified evidence");
   for (const state of ["CHANGES_REQUESTED", "DISMISSED"])
-    expect(headDecision(t, [{ ...first, id: 8, state, submitted_at: "2026-01-02" }, first])?.accepted).toBe(false);
-  expect(headDecision(t, [{ ...first, commit_id: old }])?.accepted).toBe(false);
-  expect(headDecision(t, [{ ...first, user: { id: owner + 1 } }])).toBeNull();
+    expect(decide([{ ...first, id: 8, state, submitted_at: "2026-01-02" }, first])?.accepted).toBe(false);
+  expect(decide([{ ...first, commit_id: old }])?.accepted).toBe(false);
+  expect(decide([{ ...first, user: { id: owner + 1 } }])).toBeNull();
 });
 
 test("intent exists before an effect and retry reuses its id and completed result", async () => {

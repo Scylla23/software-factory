@@ -181,6 +181,14 @@ export class Publisher {
   pull(number: number) {
     return getPullRequest(this.read, number);
   }
+  async reviewBoundary(task: Task, commentId: number) {
+    const events = await this.pages<{ event: string; created_at: string }>(`/issues/${task.pr}/timeline`);
+    const ready = events.filter((e) => e.event === "ready_for_review").at(-1);
+    const summary = await this.read.request<{ updated_at: string }>("GET", `${this.read.base}/issues/comments/${commentId}`);
+    const boundary = Math.max(Date.parse(ready?.created_at ?? ""), Date.parse(summary?.updated_at ?? ""));
+    if (!Number.isFinite(boundary)) throw new Error("waiting for GitHub ready and evidence timestamps");
+    return new Date(boundary).toISOString();
+  }
   async ready(task: Task) {
     const bound = await this.boundPull(task);
     if (!bound.draft) return;

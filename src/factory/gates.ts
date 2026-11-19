@@ -75,19 +75,20 @@ export interface Review {
   commit_id: string | null;
   submitted_at: string | null;
 }
-export function headDecision(task: Task, reviews: Review[]) {
+export function headDecision(task: Task, reviews: Review[], readyAt: string) {
   const latest = reviews
     .filter((r) => r.user.id === config.ownerId && ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(r.state))
     .sort((a, b) => (a.submitted_at ?? "").localeCompare(b.submitted_at ?? "") || a.id - b.id)
     .at(-1);
   if (!latest) return null;
-  const accepted = latest.state === "APPROVED" && latest.commit_id === task.head;
+  const onHead = latest.state === "APPROVED" && latest.commit_id === task.head;
+  const accepted = onHead && Date.parse(latest.submitted_at ?? "") > Date.parse(readyAt);
   return {
     kind: "review" as const,
     id: latest.id,
     actor: latest.user.id,
     sha: latest.commit_id ?? "",
     accepted,
-    reason: accepted ? "approved verified head" : "stale or unapproved head",
+    reason: accepted ? "approved verified head" : onHead ? "predates verified evidence" : "stale or unapproved head",
   };
 }
