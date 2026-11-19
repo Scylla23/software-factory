@@ -8,6 +8,7 @@ import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
 import { checkAbandonedPreviews, ProjectChecks, requireHealthyInfrastructure } from "./checks";
 import { verdict, check, type Check } from "../verify/verdict";
 import { fenced, redact, type EvidenceSummary } from "../github/summary";
+import { recordFeedback } from "../usage/feedback";
 import { verifyPilot } from "./verify";
 import { Store, type Attempt, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
@@ -180,7 +181,10 @@ async function gateTwo(store: Store, git: StagePublisher, task: Task) {
   if (pull.draft) throw new Error("PR is still a draft");
   console.log(`Approve PR #${task.pr} at ${task.head} ${pull.htmlUrl}`);
   const readyAt = ready === true ? await git.reviewBoundary(task, comment.id) : ready;
-  const decision = headDecision(task, await git.pages<Review>(`/pulls/${task.pr}/reviews`), readyAt);
+  const reviews = await git.pages<Review>(`/pulls/${task.pr}/reviews`);
+  recordFeedback(store.db, task.id, "review", reviews);
+  recordFeedback(store.db, task.id, "inline", await git.pages(`/pulls/${task.pr}/comments`));
+  const decision = headDecision(task, reviews, readyAt);
   if (!decision) return null;
   if (!decision.accepted) {
     store.record(task.id, decision);

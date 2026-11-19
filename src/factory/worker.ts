@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { meteredJob, recordUsage, recordInterrupted } from "../usage/store";
 import {
   closeSync,
   existsSync,
@@ -147,6 +147,11 @@ export async function dispatchWorker(
 ): Promise<WorkerOutput> {
   const dir = jobDir(attempt.id, stateRoot);
   const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role] };
+  const snapshot = () => meteredJob(dir, { ...job, agent: config.agents[role] });
+  const interrupted = async (error: Error): Promise<never> => {
+    await recordInterrupted(store.db, task, snapshot(), dir, stateRoot);
+    throw error;
+  };
   const claim = join(dir, "claim");
   const receipt = join(dir, "result.json");
   if (!attempt.fresh) observe("recover-worker", attempt.id);
@@ -175,38 +180,25 @@ export async function dispatchWorker(
       if (attempt.fresh) observe("dispatched", attempt.id);
     }
     if (existsSync(join(dir, "result.json"))) break;
-    if (Date.now() - start > timeout) throw new Uncertain(`worker completion is uncertain for ${attempt.id}`);
+    if (Date.now() - start > timeout) return interrupted(new Uncertain(`worker completion is uncertain for ${attempt.id}`));
     if (Date.now() - start > 5000) {
       const claimedPid = existsSync(claim) ? Number(readFileSync(claim, "utf8")) : 0;
       const pid = claimedPid > 1 ? claimedPid : launcherPid;
-      if (!pid || pid <= 1) throw new Uncertain(`worker startup is uncertain for ${attempt.id}`);
+      if (!pid || pid <= 1) return interrupted(new Uncertain(`worker startup is uncertain for ${attempt.id}`));
       try {
         process.kill(pid, 0);
       } catch {
-        if (!existsSync(join(dir, "result.json"))) throw new Uncertain(`unsettled worker disappeared: ${attempt.id}`);
+        if (!existsSync(join(dir, "result.json"))) return interrupted(new Uncertain(`unsettled worker disappeared: ${attempt.id}`));
       }
     }
     await Bun.sleep(150);
   }
   const reply: { output?: WorkerOutput; error?: string; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
-  if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
-  if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
+  if (reply.escalated) return interrupted(new Uncertain(reply.error ?? "worker requires inspection"));
+  if (!reply.output) return interrupted(new AgentFailed(reply.error ?? "missing worker result"));
   const { result } = reply.output;
   if (result.runId !== attempt.id) throw new Uncertain("worker receipt belongs to another attempt");
-  store.db.run("INSERT OR IGNORE INTO audit VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
-    attempt.id,
-    task.id,
-    task.state,
-    result.sessionId,
-    result.requestedModel,
-    result.observedModel,
-    config.agents[role].effort,
-    createHash("sha256").update(prompt).digest("hex"),
-    task.base,
-    task.head,
-    result.outcome,
-    JSON.stringify(result.usage),
-  ]);
+  await recordUsage(store.db, task, snapshot(), result, stateRoot);
   if (result.outcome === "failed" && !result.quarantineWorktree && result.resultText?.startsWith("Not logged in"))
     throw new WorkerLoginError("factory harness needs its dedicated login");
   if (result.quarantineWorktree || result.outcome === "timed_out")
