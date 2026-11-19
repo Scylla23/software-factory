@@ -185,10 +185,13 @@ export class Publisher {
     if (!bound.draft) return;
     const pr = await this.read.request<{ node_id: string }>("GET", `${this.read.base}/pulls/${task.pr}`);
     const query = "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft headRefOid}}}";
-    const updated = await this.pulls.request<{
-      data?: { markPullRequestReadyForReview: { pullRequest: { isDraft: boolean; headRefOid: string } } };
+    const readyClient = new RepoClient(pilot.owner, pilot.repo, this.tokens({ contents: "write", pull_requests: "write" }));
+    const updated = await readyClient.request<{
+      data?: { markPullRequestReadyForReview: { pullRequest: { isDraft: boolean; headRefOid: string } } | null };
+      errors?: { type?: string; message: string }[];
     }>("POST", "/graphql", { query, variables: { id: pr?.node_id } });
-    const result = updated?.data?.markPullRequestReadyForReview.pullRequest;
+    if (updated?.errors?.length) throw new Error(`GitHub ready mutation failed: ${updated.errors[0]?.message.slice(0, 300)}`);
+    const result = updated?.data?.markPullRequestReadyForReview?.pullRequest;
     if (!result || result.isDraft || result.headRefOid !== task.head)
       throw new Error("GitHub did not confirm the verified head ready");
   }
