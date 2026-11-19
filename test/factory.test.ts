@@ -6,7 +6,8 @@ import { issueNumber, readIssue } from "../src/factory/github";
 import { RepoClient } from "../src/github/api";
 import { InstallationToken } from "../src/github/app";
 import { afterVerification, reviewVerdict } from "../src/factory/run";
-import { effect } from "../src/factory/machine";
+import { requireHealthyInfrastructure } from "../src/factory/checks";
+import { Uncertain, effect } from "../src/factory/machine";
 import { Store, type Approval, type Issue, type Task } from "../src/factory/store";
 import { inventoryMatches } from "../src/factory/verify";
 
@@ -336,4 +337,21 @@ test("CLI routes only a registered issue and reviewer output must have a verdict
   expect(reviewVerdict('{"verdict":"approve","rationale":"app.ts:2 AC-1"}').verdict).toBe("approve");
   for (const input of ["approve", '{"verdict":"approve"}', '{"verdict":"unknown","rationale":"x"}'])
     expect(() => reviewVerdict(input)).toThrow();
+});
+
+test("infrastructure failure escalates without consuming a code repair", async () => {
+  for (const [name, detail] of [
+    ["test teardown", "removed false"], ["lint", "exit 127\nenv: node: No such file or directory"],
+    ["typecheck", "exit 126"], ["test", "exit 1\nOperation not permitted"], ["test", "timed_out"],
+    ["test", "exit 1; left behind: child"], ["complete browser verification", "browser unavailable"],
+  ]) expect(() => requireHealthyInfrastructure([{ name: name!, detail: detail!, pass: false }])).toThrow(Uncertain);
+  expect(() => requireHealthyInfrastructure([{ name: "lint", detail: "exit 1\ninvalid syntax", pass: false }])).not.toThrow();
+  const s = new Store(":memory:");
+  try {
+    const build = s.move(spec(s), "building", {}, approved);
+    const t = s.move(s.move(s.move(build, "checks"), "code_review"), "verifying");
+    expect(() => afterVerification(s, t, { pr: t.pr, base: t.base, head: t.head, captures: [], evidenceDir: "/fixture",
+      attemptId: "fixture", checks: [{ name: "before teardown", pass: false, detail: "removed false" }] })).toThrow(Uncertain);
+    expect(s.task(t.id).repairCount).toBe(0);
+  } finally { s.db.close(); }
 });

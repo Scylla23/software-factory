@@ -9,6 +9,16 @@ import { check, type Check } from "../verify/verdict";
 import type { Attempt, Task } from "./store";
 import { Uncertain } from "./machine";
 
+/** Works on persisted results as well as fresh checks. Infrastructure failures require owner attention. */
+export function requireHealthyInfrastructure(checks: readonly Check[]) {
+  for (const c of checks) {
+    if (c.pass) continue;
+    if (/teardown$|^complete browser verification$|verification profile signed out$|install same reproduction/.test(c.name) ||
+        /^(exit (126|127)\b|killed by a signal|timed_out|cancelled)|; left behind:|operation not permitted|permission denied|command not found|sandbox(?:-exec)?:.*deny/i.test(c.detail))
+      throw new Uncertain(`factory infrastructure failed during ${c.name}: ${c.detail.slice(0, 800)}`);
+  }
+}
+
 export class ProjectChecks {
   private runtime?: VerifyConfig;
   get verify() {
@@ -94,6 +104,7 @@ export class ProjectChecks {
           timeoutMs: 30_000,
         });
         const output = tail(result.logPath, 24_000);
+        requireHealthyInfrastructure([commandCheck("run reproduction", result)]);
         const ran = result.stopped === null && !result.quarantineReasons.length;
         const ok = baseTest
           ? result.exitCode === 1 && /\(fail\) AC-1/.test(output) && /error: expect\(/.test(output)
@@ -109,8 +120,8 @@ export class ProjectChecks {
         }
       });
     } catch (e) {
-      if (e instanceof PreviewError && e.teardown && !e.teardown.removed) throw new Uncertain(e.message);
-      throw e;
+      if (e instanceof Uncertain) throw e;
+      throw new Uncertain(`project check infrastructure: ${e instanceof PreviewError ? e.message : String(e)}`);
     }
     const result = { base: task.base, head: task.head, tested: sha, checks };
     writeFileSync(`${receipt}.tmp`, JSON.stringify(result), { mode: 0o600, flag: "wx" });

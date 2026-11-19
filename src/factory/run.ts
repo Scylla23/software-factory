@@ -5,7 +5,7 @@ import { assertPrivateDir } from "../dispatch/config";
 import { Publisher, issueNumber } from "./github";
 import { headDecision, pendingRevision, pendingReverification, pendingSpec, type Review } from "./gates";
 import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
-import { ProjectChecks } from "./checks";
+import { ProjectChecks, requireHealthyInfrastructure } from "./checks";
 import { runGit } from "../dispatch/git";
 import { verdict, check, type Check } from "../verify/verdict";
 import { fenced, publishSummary, redact, type EvidenceSummary } from "../github/summary";
@@ -47,6 +47,7 @@ async function build(store: Store, git: Publisher, task: Task, project: ProjectC
   const proof = await effect(store, task, "base-reproduction", { base: task.base, content }, (a) =>
     project.test(task, a, content),
   );
+  requireHealthyInfrastructure(proof.checks);
   if (!verdict(proof.checks).pass)
     return store.move(task, "escalated", {
       reason: `base did not reproduce the named regression: ${verdict(proof.checks).failed.join(", ")}`,
@@ -71,6 +72,7 @@ async function checks(store: Store, git: Publisher, task: Task, project: Project
     await git.fetch(task.head);
     return project.test(task, a);
   });
+  requireHealthyInfrastructure(result.checks);
   const v = verdict(result.checks);
   return v.pass ? store.move(task, "code_review") : repair(store, task, `failed head checks: ${v.failed.join(", ")}`);
 }
@@ -115,6 +117,7 @@ function latest<T>(store: Store, task: Task, action: string): T {
 export function afterVerification(store: Store, task: Task, evidence: EvidenceSummary) {
   if (task.state !== "verifying" || evidence.pr !== task.pr || evidence.head !== task.head || evidence.base !== task.base)
     throw new Error("verification evidence does not match the task revisions");
+  requireHealthyInfrastructure(evidence.checks);
   const v = verdict(evidence.checks);
   if (!v.pass) return repair(store, task, `failed verification: ${v.failed.join(", ")}`);
   return store.move(task, "awaiting_pr_approval");
