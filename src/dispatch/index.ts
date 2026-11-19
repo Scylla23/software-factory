@@ -45,10 +45,10 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const policy: SandboxPolicy = {
     denyRead,
     readable: spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [],
-    denyWrite: gitWriteProtectedPaths(config.executables.git, worktree),
+    denyWrite: [...gitWriteProtectedPaths(config.executables.git, worktree), ...(spec.readOnlyWorktree ? [worktree] : [])],
   };
   assertPolicySound(policy, ctx);
-  assertWorktreeWritable(policy, worktree);
+  if (!spec.readOnlyWorktree) assertWorktreeWritable(policy, worktree);
   assertStateRootIsolated(config.stateRoot, [...agentWritable, ...policy.readable]);
   assertSafeDir(config.stateRoot, config.accountHome);
   const instructions = spec.instructions ? buildProjectInstructions(spec.instructions, config.executables.git, agentWritable) : null;

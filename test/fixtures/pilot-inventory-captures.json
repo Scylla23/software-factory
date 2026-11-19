@@ -1,0 +1,32 @@
+{
+  "attemptId": "d42c6461-6029-4873-9726-b19fdee4e8d2",
+  "pr": 5,
+  "base": "bb4111571a0b36b2ec811ccd7e25ecd15d1f51ab",
+  "head": "e2569da8bfb3bc795e8e39b28713a6f3f1127863",
+  "captures": [
+    {
+      "name": "before-desktop",
+      "commitSha": "bb4111571a0b36b2ec811ccd7e25ecd15d1f51ab",
+      "screenshotSha256": "24e041c3374caae60124ee4cc1c60ce6d9aff357bb49d218a2723f87eb1b705d",
+      "pageText": "# Equipment inventory\n\nItemStock count\n\nBench vises4\n\nMeasuring tapesUncounted\n\nTool chestsUncounted"
+    },
+    {
+      "name": "before-mobile",
+      "commitSha": "bb4111571a0b36b2ec811ccd7e25ecd15d1f51ab",
+      "screenshotSha256": "4bb8c34d6771b348cb6374154ffb0461276984cd48361b2492de77a897ad2a32",
+      "pageText": "# Equipment inventory\n\nItemStock count\n\nBench vises4\n\nMeasuring tapesUncounted\n\nTool chestsUncounted"
+    },
+    {
+      "name": "after-desktop",
+      "commitSha": "e2569da8bfb3bc795e8e39b28713a6f3f1127863",
+      "screenshotSha256": "2cdd7bb555ae5721e053616b7e7c9db4730000618a08196754f045793d10ed00",
+      "pageText": "# Equipment inventory\n\nItemStock count\n\nBench vises4\n\nMeasuring tapes0\n\nTool chestsUncounted"
+    },
+    {
+      "name": "after-mobile",
+      "commitSha": "e2569da8bfb3bc795e8e39b28713a6f3f1127863",
+      "screenshotSha256": "9be647bc7eab909e0387c9b3f1c8b99f7158458c709cd2ef1e67ba7192177dd0",
+      "pageText": "# Equipment inventory\n\nItemStock count\n\nBench vises4\n\nMeasuring tapes0\n\nTool chestsUncounted"
+    }
+  ]
+}
