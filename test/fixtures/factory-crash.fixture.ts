@@ -112,7 +112,7 @@ try {
         remote(a.action, "login refused", a.id);
         throw new WorkerLoginError("fixture login");
       }
-      if (scenario === "revision" && t.state === "spec_drafting" &&
+      if (role !== "triage" && scenario === "revision" && t.state === "spec_drafting" &&
           (role !== "spec" || config.agents[role].model !== "claude-opus-5-5" || config.agents[role].effort !== "high"))
         throw Error("the spec and its revision require Opus high");
       const teamHandoff = scenario === "tier-L" ? "tier L, members architect, infra, frontend, threat-modeler" :
@@ -122,7 +122,11 @@ try {
         throw Error("reviewer did not see both reproduction results");
       const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro.test.ts", content: "eA==" }] : [];
       if (role === "builder" && scenario === "edited-test") files.push({ path: "app.test.ts", content: "eA==" });
-      return remote(a.action, { result: { resultText: body } as WorkerOutput["result"], files }, a.id);
+      const [path, content] = role === "triage" ? ["triage.json", "{}"] : role === "spec" ? ["spec.md", body] :
+        role === "builder" ? ["build-report.json", "{}"] : ["verdicts/code-reviewer.json", '{"verdict":"approve","summary":"AC-1 reviewed"}'];
+      const collection = { attempt: a.id, role, round: 1, base: t.base, head: t.head, bundleHash: "fixture",
+        files: [{ path, base64: Buffer.from(content).toString("base64"), session: "fixture", role, sha256: "fixture" }] };
+      return remote(a.action, { collection, result: { resultText: role === "spec" && teamHandoff ? body : "completed" } as WorkerOutput["result"], files }, a.id);
     },
     test: async (t, a, content) => {
       interruptOnce(a, content ? "resume-base" : "resume-check");

@@ -5,6 +5,7 @@ export type Harness = "claude" | "codex";
 
 export interface RunSpec {
   harness: Harness;
+  skill?: import("./skill-launch").SkillLaunch;
   /** Absolute path of the Orca-created worktree the agent works in. */
   worktreePath: string;
   prompt: string;
@@ -63,6 +64,7 @@ export interface CodexUsage {
 }
 
 export interface RunResult {
+  bundleHash?: string;
   harness: Harness;
   runId: string;
   /** Claude session id or Codex thread id, as reported by the CLI. */

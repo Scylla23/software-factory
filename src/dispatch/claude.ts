@@ -61,6 +61,7 @@ export interface ClaudeCommandInput {
   instructionsFile?: string | null;
   /** Factory-selected attempt directories, excluding the definitions and the run root. */
   directories?: readonly string[];
+  team?: { file: string; members: readonly string[] };
 }
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
@@ -73,7 +74,8 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",
-    "--tools", CLAUDE_BUILDER_TOOLS.join(","),
+    "--tools", [...CLAUDE_BUILDER_TOOLS, ...(input.team ? ["Agent"] : [])].join(","),
+    ...(input.team ? ["--agents", input.team.file, "--agent", "spec-lead"] : []),
     "--strict-mcp-config",
     // No skills or slash commands at all; the dedicated CLAUDE_CONFIG_DIR already drops the owner's, this drops the built-ins.
     "--disable-slash-commands",

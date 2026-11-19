@@ -8,6 +8,7 @@ export const config = {
   workspaceRoot: join(home, "orca/workspaces"),
   stateRoot: join(home, ".software-factory"),
   agents: {
+    triage: { harness: "claude", model: "claude-sonnet-5-5", effort: "low", timeoutMs: 900_000 },
     spec: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
     builder: { harness: "codex", model: "gpt-6.2-sol", effort: "high", timeoutMs: 900_000 },
     reviewer: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },

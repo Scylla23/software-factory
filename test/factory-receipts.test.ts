@@ -7,8 +7,13 @@ import { checkAbandonedPreviews, previewId, ProjectChecks } from "../src/factory
 import { Uncertain } from "../src/factory/machine";
 import { Store } from "../src/factory/store";
 import { verifyPilot } from "../src/factory/verify";
+import { outputDigest } from "../src/dispatch/output";
 import { dispatchWorker } from "../src/factory/worker";
 
+function triageOutput(id: string, base: string, session: string) {
+  return { attempt: id, role: "triage", round: 1, base, head: base, bundleHash: "a".repeat(64),
+    files: [{ path: "triage.json", role: "triage", session, base64: "e30=", sha256: outputDigest(Buffer.from("{}")) }] };
+}
 test("worker, project check and capture receipts are adopted only for the intended attempt and revisions", async () => {
   const root = mkdtempSync(join(tmpdir(), "factory-receipts-"));
   const store = new Store(":memory:"), project = new ProjectChecks(root);
@@ -18,11 +23,14 @@ test("worker, project check and capture receipts are adopted only for the intend
     const job = join(root, "jobs", a.id);
     mkdirSync(job, { recursive: true });
     const result = { runId: a.id, sessionId: "one", requestedModel: "fixture", observedModel: "fixture", outcome: "completed",
-      quarantineWorktree: false, resultText: "AC-1", usage: null };
+      quarantineWorktree: false, bundleHash: "a".repeat(64), resultText: "completed", usage: null };
     const events: string[] = [];
-    const dispatch = () => dispatchWorker(store, t, a, "spec", "prompt", (e) => events.push(e), root);
+    const dispatch = () => dispatchWorker(store, t, a, "triage", "{}", (e) => events.push(e), root);
     const save = (value: unknown) => writeFileSync(join(job, "result.json"), JSON.stringify(value));
     save({ output: { result, files: [] } });
+    await expect(dispatch()).rejects.toThrow("authenticated skill collection");
+    events.length = 0;
+    save({ output: { result, files: [], collection: triageOutput(a.id, t.base, "one") } });
     expect((await dispatch()).result.sessionId).toBe("one");
     await dispatch();
     expect(events).toEqual(["recover-worker", "recover-worker"]);
@@ -64,9 +72,9 @@ test("a live launcher can take longer than five seconds to claim its attempt", a
   try {
     const t = s.intake({ source: "github", repoId: 1, issueId: 2, number: 4, title: "stock", body: "", sender: config.ownerId, revision: "r", url: "fixture" }, "a".repeat(40));
     const a = s.plan(t, "dispatch-spec", {});
-    const result = await dispatchWorker(s, t, a, "spec", "prompt", () => {}, root, (dir, id) => {
+    const result = await dispatchWorker(s, t, a, "triage", "{}", () => {}, root, (dir, id) => {
       const output = { result: { runId: id, sessionId: "delayed", requestedModel: "fixture", observedModel: "fixture",
-        outcome: "completed", resultText: "AC-1", usage: null }, files: [] };
+        outcome: "completed", bundleHash: "a".repeat(64), resultText: "completed", usage: null }, files: [], collection: triageOutput(id, t.base, "delayed") };
       child = Bun.spawn([process.execPath, "-e", `
         await Bun.sleep(5500);
         await Bun.write("claim", String(process.pid));

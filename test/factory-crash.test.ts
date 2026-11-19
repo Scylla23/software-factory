@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/factory/store";
 
-const actions = ["dispatch-spec", "commit-spec", "open-draft", "request-spec-approval", "dispatch-builder", "base-reproduction",
+const actions = ["dispatch-triage", "dispatch-spec", "commit-spec", "open-draft", "request-spec-approval", "dispatch-builder", "base-reproduction",
   "commit-fix", "head-checks", "code-review", "verify", "publish-evidence", "mark-ready"];
 const states = ["received", "spec_drafting", "awaiting_spec_approval", "building", "checks", "code_review", "verifying", "awaiting_pr_approval", "done"];
 

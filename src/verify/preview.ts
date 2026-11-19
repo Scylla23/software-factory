@@ -328,6 +328,42 @@ export function reserveAttempt(config: Pick<VerifyConfig, "stateRoot" | "untrust
   return dir;
 }
 
+/** Prepare dependencies in the reviewer's disposable checkout before any harness starts. */
+export async function prepareScratchRepo(config: VerifyConfig, input: {
+  id: string; checkout: string; scratch: string; logDir: string; commands: Pick<ProjectCommands, "setup" | "egress">;
+}) {
+  if (!UUID.test(input.id) || realpathSync(input.scratch) !== input.scratch || realpathSync(input.checkout) !== join(input.scratch, "repo"))
+    throw new Error("invalid scratch checkout");
+  assertEgressHosts(input.commands.egress);
+  const home = join(input.scratch, "setup-home");
+  mkdirSync(home, { mode: 0o700 });
+  mkdirSync(join(home, "tmp"), { mode: 0o700 });
+  const gitDirs = gitWriteProtectedPaths(config.executables.git, input.checkout);
+  if (!gitDirs.length) throw new Error("missing scratch git database");
+  const log = openLog(config, input.logDir, input.id + ".scratch-egress.log");
+  let proxy: EgressProxy | undefined;
+  try {
+    proxy = config.egress.startPhase({allow: input.commands.egress, logFd: log.fd});
+    const policy: ProjectSandbox = { writable: [input.checkout, home], readable: [...gitDirs, ...config.toolRoots],
+      denyWrite: gitDirs, denyRead: effectiveDenyRead(config), network: {kind: "proxy", port: proxy.port} };
+    const env = projectEnv({home, path: config.toolPath, user: userInfo().username, proxy: proxy.url});
+    for (const [i, argv] of input.commands.setup.entries()) {
+      const dest = openLog(config, input.logDir, input.id + ".scratch-setup-" + i + ".log");
+      const run = spawnSandboxed(config, policy, argv, input.checkout, env, dest.fd, 120_000);
+      try {
+        const result = await run.supervised;
+        const sweep = await settle(config, result.unverified, [input.scratch]);
+        if (result.stopped || result.status?.code !== 0 || !sweep.noKnownSurvivors || sweep.quarantineReasons.length)
+          throw new Error("scratch dependency setup failed or left processes, see " + dest.path);
+      } finally { await closeOutput(run); }
+    }
+  } finally {
+    proxy?.stop();
+    closeSync(log.fd);
+  }
+  rmSync(home, { recursive: true });
+}
+
 /**
  * Materializes `spec.sha`, runs setup, starts the preview, and returns once it answers 200 on the ready path from a
  * listener inside the preview's own process tree. On any failure everything started is torn down before it throws.

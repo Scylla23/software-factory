@@ -11,8 +11,9 @@ import { fenced, redact, type EvidenceSummary } from "../github/summary";
 import { collectFeedback } from "../usage/feedback";
 import { verifyPilot } from "./verify";
 import { Store, type Attempt, type Task } from "./store";
-import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
+import { dispatchWorker, protectsChecks, WorkerLoginError, type WorkerOutput } from "./worker";
 
+import { InvalidSkillOutput } from "./skill-validation";
 import { drive, effect, Uncertain } from "./machine";
 
 export type Observer = (event: string, id: string) => void;
@@ -27,6 +28,21 @@ interface Services {
   observe: Observer;
 }
 
+function submittedText(output: WorkerOutput, path: string) {
+  const file = output.collection?.files.find(f => f.path === path);
+  if (!file) throw new Uncertain("missing authenticated skill output " + path);
+  return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(file.base64, "base64"));
+}
+
+async function skillEffect<T>(store: Store, task: Task, action: string, intent: unknown, execute: (a: Attempt) => Promise<T>) {
+  try { return await effect(store, task, action, intent, execute); }
+  catch (error) { if (!(error instanceof InvalidSkillOutput)) throw error; }
+  try { return await effect(store, task, action + "-validation-retry", intent, execute); }
+  catch (error) {
+    if (!(error instanceof InvalidSkillOutput)) throw error;
+    throw new Uncertain("skill output failed validation twice: " + error.message);
+  }
+}
 function repair(store: Store, task: Task, reason: string) {
   if (task.repairCount) return store.move(task, "escalated", { reason });
   return store.move(task, "building", { reason, repairCount: 1 });
@@ -38,10 +54,12 @@ async function build(store: Store, task: Task, { git, dispatch, test, observe }:
     .get(task.id, task.spec);
   if (!approved) throw new Error("spec has no owner approval");
   const prompt = buildPrompt(task);
-  const files = await effect(store, task, "dispatch-builder", { base: task.base, head: task.head, prompt }, async (a) => {
+  const files = await skillEffect(store, task, "dispatch-builder", { base: task.base, head: task.head, prompt }, async (a) => {
     await git.boundPull(task);
     await git.fetch(task.head);
-    return (await dispatch(store, task, a, "builder", prompt, observe)).files;
+    const output = await dispatch(store, task, a, "builder", prompt, observe);
+    submittedText(output, "build-report.json");
+    return output.files;
   });
   const protectedFile = files.find((f) => protectsChecks(f.path));
   if (protectedFile) return store.move(task, "escalated", { reason: `builder changed check configuration: ${protectedFile.path}` });
@@ -113,10 +131,11 @@ async function review(store: Store, task: Task, { git, dispatch, observe }: Serv
   };
   const prompt = reviewPrompt(task, observation("base-reproduction", "AC-1 fails on base", task.base),
     observation("head-checks", "AC-1 passes on head", task.head));
-  const result = await effect(store, task, "code-review", { base: task.base, head: task.head, prompt }, async (a) => {
+  const result = await skillEffect(store, task, "code-review", { base: task.base, head: task.head, prompt }, async (a) => {
     await git.boundPull(task);
     const output = await dispatch(store, task, a, "reviewer", prompt, observe);
-    return { base: task.base, head: task.head, ...reviewVerdict(output.result.resultText ?? "") };
+    const submitted = JSON.parse(submittedText(output, "verdicts/code-reviewer.json"));
+    return { base: task.base, head: task.head, ...reviewVerdict(JSON.stringify({ verdict: submitted.verdict, rationale: submitted.summary })) };
   });
   return result.verdict === "approve" ? store.move(task, "verifying") : repair(store, task, result.rationale);
 }
@@ -240,9 +259,17 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
 }
 
 async function draft(store: Store, task: Task, { git, dispatch, observe }: Services) {
+  if (!task.spec) {
+    await skillEffect(store, task, "dispatch-triage", { base: task.base, revision: task.issue.revision }, async a => {
+      await git.fetch(task.base);
+      const output = await dispatch(store, task, a, "triage", "{}", observe);
+      submittedText(output, "triage.json");
+      return a.id;
+    });
+  }
   const prompt = specPrompt(task);
   const writeSpec = (action: string) =>
-    effect(store, task, action, { head: task.head, prompt }, async (a) => {
+    skillEffect(store, task, action, { head: task.head, prompt }, async (a) => {
       await git.fetch(task.head);
       const output = await dispatch(store, task, a, "spec", prompt, observe);
       const text = output.result.resultText?.trim() ?? "";
@@ -250,8 +277,9 @@ async function draft(store: Store, task: Task, { git, dispatch, observe }: Servi
       if (text.startsWith("BLOCKED: team required"))
         throw new Uncertain("spec team required but no proven team-capable launch is available: " + text.slice(0, 600));
       if (text.startsWith("BLOCKED: ")) throw new Uncertain("spec lead blocked: " + text.slice(9, 609));
-      if (!text.includes("AC-1") || text.length > 32_000) throw new Error("invalid spec writer output");
-      return `${text}\n`;
+      const spec = submittedText(output, "spec.md");
+      if (!spec.includes("AC-1") || spec.length > 32_000) throw new InvalidSkillOutput("invalid spec writer output");
+      return spec;
     });
   let spec: string;
   try {

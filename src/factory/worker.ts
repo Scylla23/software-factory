@@ -10,6 +10,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -22,10 +23,23 @@ import { PROJECT_INSTRUCTION_PATHS } from "../dispatch/instructions";
 import { assertRepoPath } from "../github/commit";
 import { createWorktree, removeWorktree } from "../orca/worktree";
 import type { Attempt, Store, Task } from "./store";
+import { createAttempt, checkoutSnapshot } from "../dispatch/attempt";
+import { claudeWrites } from "../dispatch/claude-writes";
+import { codexWrites } from "../dispatch/codex-writes";
+import { collectOutputs, outputDigest, OutputIntegrityError } from "../dispatch/output";
+import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
+import { archiveCollection, pinFactoryCommit, type Collection } from "./skill-store";
+import { expectedFiles, skillInputs, skillRoles, stageInputs } from "./skill-inputs";
+import { InvalidSkillOutput, validateSkillOutput } from "./skill-validation";
+import { loadVerifyConfig, prepareScratchRepo } from "../verify/preview";
 import { AgentFailed, Uncertain } from "./machine";
 
 type Role = keyof typeof config.agents;
+const factoryRepo = join(import.meta.dir, "../..");
 interface Job {
+  input: ReturnType<typeof skillInputs>;
+  factoryCommit: string;
+  testPassed: boolean;
   id: string;
   role: Role;
   head: string;
@@ -34,6 +48,7 @@ interface Job {
   agent?: (typeof config.agents)[Role];
 }
 export interface WorkerOutput {
+  collection?: Collection;
   result: RunResult;
   files: { path: string; content: string }[];
 }
@@ -88,32 +103,63 @@ async function work(id: string) {
   try {
     const job: Job = JSON.parse(readFileSync(join(dir, "job.json"), "utf8"));
     const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
-    const wt = await createWorktree(dispatch.executables.orca, `factory-${id}`, config.pilot.path, job.head);
+    const agent = job.agent ?? config.agents[job.role];
+    requireSkillProofs(agent.harness, job.input.role, job.input.members);
+    const wt = job.role === "builder"
+      ? await createWorktree(dispatch.executables.orca, `factory-${id}`, config.pilot.path, job.input.inputSha) : undefined;
     let quarantine = true;
     let output: WorkerOutput;
+    const dirs = createAttempt({ accountHome: dispatch.accountHome, stateRoot: dispatch.stateRoot,
+      runRoot: join(dispatch.accountHome, ".software-factory-runs"), project: wt?.path ?? config.pilot.path,
+      attemptId: id, role: job.input.role, stage: job.input.stage });
     try {
-      const current = runGit(dispatch.executables.git, wt.path, ["rev-parse", "HEAD"]).toString().trim();
-      if (current !== job.head) throw new Error("Orca checkout does not match intended head");
-      const result = await runAgent(
-        {
-          ...(job.agent ?? config.agents[job.role]),
-          runId: id,
-          worktreePath: wt.path,
-          logDir: dir,
-          prompt: job.prompt,
-          readOnlyWorktree: job.role !== "builder",
-          instructions: { repo: config.pilot.path, baseSha: job.base, paths: PROJECT_INSTRUCTION_PATHS },
-        },
-        dispatch,
-      );
-      quarantine = result.quarantineWorktree;
-      output = { result, files: job.role === "builder" && result.outcome === "completed" && !quarantine ? changes(wt.path) : [] };
+      if (!wt) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.worktree);
+      if (dirs.scratchRepo) {
+        checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.scratchRepo);
+        const verify = loadVerifyConfig(dispatch, {toolDirs: config.pilot.toolDirs, toolRoots: config.pilot.toolDirs, agentWriteRoots: [config.workspaceRoot]});
+        try { await prepareScratchRepo(verify, {id, checkout: dirs.scratchRepo, scratch: dirs.scratchDir, logDir: dir, commands: config.pilot.commands}); }
+        catch (error) { throw new Uncertain("scratch setup requires inspection: " + (error as Error).message); }
+        finally { verify.egress.close(); }
+      }
+      const current = runGit(dispatch.executables.git, dirs.worktree, ["rev-parse", "HEAD"]).toString().trim();
+      if (current !== job.input.inputSha) throw new Uncertain("checkout does not match intended skill input");
+      const brief = stageInputs(dirs, job.input);
+      const result = await runAgent({
+        ...agent, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",
+        skill: { brief, dirs, members: job.input.members, toolDirs: config.pilot.toolDirs, factoryRepo, factoryCommit: job.factoryCommit },
+        instructions: { repo: config.pilot.path, baseSha: job.base, paths: PROJECT_INSTRUCTION_PATHS },
+      }, dispatch);
+      output = { result, files: [] };
+      if (!result.quarantineWorktree && result.noKnownSurvivors && result.outcome === "completed" && !result.resultText?.startsWith("BLOCKED: ")) {
+        if (!result.bundleHash || !result.sessionId) throw new Uncertain("skill output lacks trusted session or bundle hash");
+        const identity = { taskId: brief.taskId, attemptId: id, role: dirs.role, sessionId: result.sessionId };
+        const author = { role: dirs.role, sessionId: result.sessionId };
+        const expected = new Map(expectedFiles[job.role].map(path => [path, author]));
+        const home = dispatch.harnessHomes[agent.harness];
+        let captured: Map<string, Buffer>;
+        try {
+          const writes = await (agent.harness === "claude" ? claudeWrites : codexWrites)(identity, dispatch.stateRoot, home, dirs.outDir);
+          captured = collectOutputs(dirs, identity, expected, writes);
+        } catch (error) {
+          throw new OutputIntegrityError("skill output integrity escalation: " + (error as Error).message);
+        }
+        const files = wt ? changes(wt.path) : [];
+        validateSkillOutput(job.input, dirs, captured, files.map(f => f.path), dispatch.executables.git, job.testPassed);
+        output = { result, files, collection: { attempt: id, role: dirs.role, base: job.base, head: job.head,
+          bundleHash: result.bundleHash, round: brief.round,
+          files: [...captured].map(([path, bytes]) => ({ path, role: author.role, session: author.sessionId,
+            sha256: outputDigest(bytes), base64: bytes.toString("base64") })) } };
+      }
+      quarantine = result.quarantineWorktree || !result.noKnownSurvivors;
     } finally {
-      if (!quarantine) await removeWorktree(dispatch.executables.orca, wt.id);
+      if (!quarantine) {
+        rmSync(dirs.root, { recursive: true });
+        if (wt) await removeWorktree(dispatch.executables.orca, wt.id);
+      }
     }
     finish({ output });
   } catch (e) {
-    finish({ error: String(e), escalated: e instanceof Uncertain });
+    finish({ error: String(e), invalid: e instanceof InvalidSkillOutput, escalated: e instanceof Uncertain || e instanceof SkillProofMissing || e instanceof OutputIntegrityError });
   }
 }
 
@@ -146,7 +192,7 @@ export async function dispatchWorker(
   launch = launchSupervisor,
 ): Promise<WorkerOutput> {
   const dir = jobDir(attempt.id, stateRoot);
-  const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role] };
+  const job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role] };
   const snapshot = () => meteredJob(dir, { ...job, agent: config.agents[role] });
   const auditWarning = (cause: unknown) => console.warn(`usage audit failed for ${attempt.id}`, cause);
   const recordInterruption = async () => {
@@ -164,13 +210,24 @@ export async function dispatchWorker(
   if (!existsSync(claim) && !existsSync(receipt)) {
     mkdirSync(dir, { mode: 0o700, recursive: true });
     const path = join(dir, "job.json");
+    const commit = runGit("/usr/bin/git", factoryRepo, ["rev-parse", "HEAD"]).toString().trim();
+    const input = skillInputs(store, task, role, prompt);
+    const check = store.db.query<{result: string}, [number]>(
+      "SELECT result FROM attempts WHERE task=? AND action='head-checks' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
+    ).get(task.id);
+    const proof = check && JSON.parse(check.result);
+    const testPassed = !!(proof && proof.base === task.base && proof.tested === task.head && proof.head === task.head &&
+      proof.checks.some((c: {name: string; pass: boolean; detail: string}) => c.name === "test" && c.pass && c.detail.startsWith("exit 0\n")));
+    const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role], input,
+      factoryCommit: pinFactoryCommit(store.db, task.id, commit), testPassed };
     if (!existsSync(path)) {
       const tmp = join(dir, `job-${process.pid}.tmp`);
       writeFileSync(tmp, JSON.stringify(job), { mode: 0o600 });
       renameSync(tmp, path);
     } else {
       const published: Job = JSON.parse(readFileSync(path, "utf8"));
-      if (published.base !== job.base || published.head !== job.head || published.prompt !== prompt || published.role !== role)
+      if (published.base !== job.base || published.head !== job.head || published.prompt !== prompt || published.role !== role ||
+          published.factoryCommit !== job.factoryCommit || JSON.stringify(published.input) !== JSON.stringify(input) || published.testPassed !== testPassed)
         throw new Uncertain("worker job identity changed");
     }
     launcherPid = launch(dir, attempt.id, stateRoot);
@@ -198,8 +255,9 @@ export async function dispatchWorker(
     }
     await Bun.sleep(150);
   }
-  const reply: { output?: WorkerOutput; error?: string; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
-  if (reply.escalated || !reply.output) await recordInterruption();
+  const reply: { output?: WorkerOutput; error?: string; invalid?: boolean; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+  if (reply.invalid || reply.escalated || !reply.output) await recordInterruption();
+  if (reply.invalid) throw new InvalidSkillOutput(reply.error ?? "invalid skill output");
   if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
   if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;
@@ -211,6 +269,14 @@ export async function dispatchWorker(
     auditWarning(cause);
   }
   if (failure) throw failure;
+  if (!result.resultText!.startsWith("BLOCKED: ")) {
+    const c = reply.output.collection;
+    if (!c || c.attempt !== attempt.id || c.base !== task.base || c.head !== task.head || c.role !== skillRoles[role] ||
+        c.bundleHash !== result.bundleHash || c.files.length !== expectedFiles[role].length ||
+        !expectedFiles[role].every(name => c.files.some(f => f.path === name && f.session === result.sessionId && f.role === c.role)))
+      throw new Uncertain("worker receipt lacks the matching authenticated skill collection");
+    archiveCollection(store.db, task.id, c);
+  }
   return reply.output;
 }
 function workerFailure(result: RunResult, dir: string) {
