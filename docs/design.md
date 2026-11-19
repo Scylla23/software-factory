@@ -159,6 +159,9 @@ Clarifying questions may also be asked and answered in the source channel.
 
 - The builder works in an Orca worktree under the harness sandbox (a Codex permission profile extending `:workspace` with deny entries, selected by `default_permissions` and never `-s`, which silently overrides it; Claude Code `--restricted` with sandbox, a fixed tool allowlist, and inline settings).
 - Agents get a read deny-list covering `~/.software-factory`, `~/.ssh`, `~/.config/gh`, Keychain, and other credential stores, and their environment is stripped of secrets.
+- Agent sandboxes move to closed-by-default reads (owner decision Q57): agents read only the worktree, the run's private dirs, the skill bundle, and declared toolchain roots, the same trust model as project commands, and they run project tests directly in that sandbox.
+  Reviewers and auditors get a read-only snapshot of the reviewed code plus a disposable copy to run tests in, so the reviewed snapshot cannot change.
+  Step 4b proves both harnesses work this way; a harness that cannot falls back to running its tests through the factory's project-command sandbox.
 - Network is allowed only for stages that install dependencies; build stages run without network.
 - Only the publisher process pushes and opens PRs, using short-lived GitHub App installation tokens minted from a private key in Keychain.
 - Project setup, test, lint, typecheck, and preview commands, and git hooks, run sandboxed and never in a process that holds publishing credentials.
@@ -193,7 +196,8 @@ Clarifying questions may also be asked and answered in the source channel.
 The PR body is an acceptance evidence table: AC id, tag, fixture, action, expected, observed, proof (test name, screenshot, console log), commit, verdict.
 Screenshots, logs, and full records stay on the factory host, in `~/.software-factory/evidence/<attempt>`, and are kept until the owner removes them.
 The store is owner-only, and every file in it is created exclusively, never through a symlink, and within a per-file and per-attempt size limit.
-A screenshot is cited in the PR by its SHA-256, its commit, and its viewport; nothing is uploaded.
+A screenshot is cited in the PR by its SHA-256, its commit, and its viewport.
+Owner decision Q56 (after step 2): evidence may be published to the PR on GitHub, since repos are private; screenshot publishing returns in plan step 5, with the same redaction rules for text.
 The PR gets one text-only comment from the App per attempt, with allowlisted fields in the open and diagnostics redacted, capped, and fenced.
 The comment starts with a hidden marker naming the PR, the attempt, the base, the head, and the captured revision, and a retry of the same attempt updates that comment instead of adding another.
 `manual` criteria become an owner checklist and require the owner's recorded observation before completion.
@@ -256,7 +260,8 @@ Signals for later improvement are recorded from day one: owner review comments, 
 - Model inference sends repository content to Anthropic and OpenAI under the owner's subscriptions.
 - Each GitHub operation mints its own installation token, limited to the named repository and the permissions it needs, and refuses a token GitHub granted less than asked.
   A token is refreshed 5 minutes before it expires, and an expired one is never used; the App does not request `issues: write`.
-- Verification evidence never leaves the factory host; the PR gets redacted text only.
+- Hosted models may see verification evidence, including screenshots and redacted logs, the same as source code (Q56); raw logs with secrets never reach a model or GitHub.
+- Until plan step 5, the PR gets redacted text only; from step 5, screenshots are published to the PR as well (Q56).
 - Accepted residual: a surviving setup process can connect to the Mac's LAN address at its proxy port, which Seatbelt cannot tell from loopback (spike 02, blocker 3 follow-up).
   Only an unsandboxed local process listening on that port could answer and relay, and a local accomplice outside every sandbox already defeats the model.
   The proxy ports are released only when the factory process exits, and an attempt that leaves a survivor is quarantined.
