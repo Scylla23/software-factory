@@ -1,0 +1,37 @@
+diff --git a/src/task-list/sort.test.ts b/src/task-list/sort.test.ts
+index 8cab894..9f644b4 100644
+--- a/src/task-list/sort.test.ts
++++ b/src/task-list/sort.test.ts
+@@ -17,3 +17,13 @@ test("formats a due date as day and month", () => {
+   expect(formatDue("2026-11-02")).toBe("2 Nov");
+   expect(formatDue(null)).toBe("");
+ });
++
++const dated = [task(1, "c", "2026-11-20"), task(2, "b", "2026-11-10"), task(3, "a", "2026-11-02")];
++
++test("AC-1: sorting by due date ascending is chronological", () => {
++  expect(sortTasks(dated, "due", "asc").map((t) => t.due)).toEqual(["2026-11-02", "2026-11-10", "2026-11-20"]);
++});
++
++test("AC-2: sorting by due date descending is reverse chronological", () => {
++  expect(sortTasks(dated, "due", "desc").map((t) => t.due)).toEqual(["2026-11-20", "2026-11-10", "2026-11-02"]);
++});
+diff --git a/src/task-list/sort.ts b/src/task-list/sort.ts
+index bbbe4c9..f0ea61e 100644
+--- a/src/task-list/sort.ts
++++ b/src/task-list/sort.ts
+@@ -20,9 +20,13 @@ export function formatDue(due: string | null): string {
+ 
+ const comparators: Record<Column, (a: Task, b: Task) => number> = {
+   title: (a, b) => a.title.localeCompare(b.title),
+-  due: (a, b) => formatDue(a.due).localeCompare(formatDue(b.due)),
++  due: (a, b) => dueTime(a) - dueTime(b),
+ };
+ 
++function dueTime(task: Task): number {
++  return task.due === null ? Number.MAX_SAFE_INTEGER : Date.parse(task.due);
++}
++
+ export function sortTasks(tasks: readonly Task[], column: Column, direction: Direction): Task[] {
+   const sorted = [...tasks].sort(comparators[column]);
+   return direction === "asc" ? sorted : sorted.reverse();

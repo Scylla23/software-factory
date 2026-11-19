@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-task-by-id",
+  "round": 1,
+  "status": "ready-for-review",
+  "tier": {
+    "provisional": "M",
+    "confirmed": "M",
+    "reason": "The change adds API routes in one module, with no schema change and no new dependency."
+  },
+  "riskFlags": {
+    "security": {
+      "value": true,
+      "reason": "New routes read and write per-user data by id and parse a request body."
+    },
+    "migration": {
+      "value": false,
+      "reason": "No persisted shape change."
+    },
+    "newProject": {
+      "value": false,
+      "reason": "project.isNew is false."
+    }
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "tag": "test"
+    },
+    {
+      "id": "AC-2",
+      "tag": "test"
+    },
+    {
+      "id": "AC-3",
+      "tag": "test"
+    },
+    {
+      "id": "AC-4",
+      "tag": "test"
+    }
+  ],
+  "retiredCriteria": [],
+  "team": [],
+  "conflicts": [],
+  "escalations": [],
+  "catalogGaps": [],
+  "changes": []
+}

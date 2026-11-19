@@ -1,0 +1,2 @@
+/** SQL the running release sends to Postgres. */
+export const LIST_TASKS = "SELECT id, owner_id, title, due, assignee, legacy_notes FROM tasks WHERE owner_id = $1 ORDER BY id";

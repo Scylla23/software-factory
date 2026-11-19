@@ -1,0 +1,81 @@
+diff --git a/src/api/tasks.test.ts b/src/api/tasks.test.ts
+index eae410e..6b98017 100644
+--- a/src/api/tasks.test.ts
++++ b/src/api/tasks.test.ts
+@@ -21,3 +21,34 @@ test("lists only the caller's tasks", async () => {
+ test("rejects a request with no session", async () => {
+   expect((await call("GET", "/api/tasks", null)).status).toBe(401);
+ });
++
++test("AC-1: returns one of the caller's tasks by id", async () => {
++  const task = createTask(1, "mine", null);
++  const res = await call("GET", `/api/tasks/${task.id}`, 1);
++  expect(res.status).toBe(200);
++  expect(((await res.json()) as { title: string }).title).toBe("mine");
++});
++
++test("AC-2: updates the title of one of the caller's tasks", async () => {
++  const task = createTask(1, "mine", null);
++  const res = await call("PATCH", `/api/tasks/${task.id}`, 1, { title: "renamed" });
++  expect(res.status).toBe(200);
++  expect(((await res.json()) as { title: string }).title).toBe("renamed");
++});
++
++test("AC-3: another user's task is not found by id", async () => {
++  const task = createTask(1, "mine", null);
++  const read = await call("GET", `/api/tasks/${task.id}`, 2);
++  expect(read.status).toBe(404);
++  expect(await read.text()).not.toContain("mine");
++  expect((await call("PATCH", `/api/tasks/${task.id}`, 2, { title: "stolen" })).status).toBe(404);
++  expect(((await (await call("GET", `/api/tasks/${task.id}`, 1)).json()) as { title: string }).title).toBe("mine");
++});
++
++test("AC-4: a patch with an unknown field is rejected and changes nothing", async () => {
++  const task = createTask(1, "mine", null);
++  const res = await call("PATCH", `/api/tasks/${task.id}`, 1, { title: "renamed", ownerId: 2 });
++  expect(res.status).toBe(400);
++  const after = (await (await call("GET", `/api/tasks/${task.id}`, 1)).json()) as { title: string; ownerId: number };
++  expect(after).toMatchObject({ title: "mine", ownerId: 1 });
++});
+diff --git a/src/api/tasks.ts b/src/api/tasks.ts
+index 12ac42c..143d706 100644
+--- a/src/api/tasks.ts
++++ b/src/api/tasks.ts
+@@ -27,6 +27,18 @@ export function findTask(ownerId: number, id: number): Task | undefined {
+   return tasks.find((t) => t.ownerId === ownerId && t.id === id);
+ }
+ 
++/** Only title and due may change; any other field is rejected. */
++function parseTaskPatch(body: unknown): { title?: string; due?: string | null } | null {
++  if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
++  const patch: { title?: string; due?: string | null } = {};
++  for (const [key, value] of Object.entries(body)) {
++    if (key === "title" && typeof value === "string" && value.length > 0 && value.length <= 200) patch.title = value;
++    else if (key === "due" && (value === null || (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)))) patch.due = value;
++    else return null;
++  }
++  return patch;
++}
++
+ const json = (status: number, body: unknown): Response =>
+   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+ 
+@@ -34,5 +46,18 @@ export async function handle(req: Request, session: Session | null): Promise<Res
+   if (!session) return json(401, { error: "unauthenticated" });
+   const url = new URL(req.url);
+   if (req.method === "GET" && url.pathname === "/api/tasks") return json(200, listTasks(session.userId));
++  const match = /^\/api\/tasks\/(\d+)$/.exec(url.pathname);
++  if (match) {
++    const task = findTask(session.userId, Number(match[1]));
++    if (!task) return json(404, { error: "not found" });
++    if (req.method === "GET") return json(200, task);
++    if (req.method === "PATCH") {
++      const patch = parseTaskPatch(await req.json().catch(() => null));
++      if (!patch) return json(400, { error: "invalid body" });
++      if (patch.title !== undefined) task.title = patch.title;
++      if (patch.due !== undefined) task.due = patch.due;
++      return json(200, task);
++    }
++  }
+   return json(404, { error: "not found" });
+ }

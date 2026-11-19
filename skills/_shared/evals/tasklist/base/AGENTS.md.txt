@@ -1,0 +1,8 @@
+# Tasklist conventions
+
+- TypeScript, strict. No new dependencies without a spec that names them.
+- Tests live next to the code as `*.test.ts` and run with `bun test`.
+- Every read or write of a task takes the owner's user id; a task is never looked up by id alone.
+- Request bodies are parsed field by field; an unknown field is an error.
+- Schema changes are plain SQL files in `migrations/`, numbered, each with an `.up.sql` and a `.down.sql`.
+- The database is Postgres, and the app is deployed with old and new code overlapping, so a migration must work with the previous release's code.

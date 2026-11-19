@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-priority",
+  "mode": "build",
+  "round": 1,
+  "baseSha": "0000000000000000000000000000000000000000",
+  "status": "complete",
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/api/queries.test.ts",
+          "name": "AC-1: the list query selects priority and every column it selected before"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "AC-2",
+      "tag": "manual",
+      "implemented": true,
+      "tests": [],
+      "note": ""
+    }
+  ],
+  "reproduction": null,
+  "commands": [
+    {
+      "command": "bun test",
+      "exitCode": 0,
+      "summary": "6 pass, 0 fail."
+    }
+  ],
+  "filesChanged": [
+    "migrations/002_task_priority.up.sql",
+    "migrations/002_task_priority.down.sql",
+    "src/api/queries.ts",
+    "src/api/queries.test.ts"
+  ],
+  "existingTestsChanged": [],
+  "dependenciesAdded": [],
+  "deviations": [],
+  "findingsAddressed": [],
+  "blockers": [],
+  "notes": ""
+}

@@ -1,0 +1,19 @@
+import { expect, test } from "bun:test";
+import { formatDue, sortTasks, type Task } from "./sort";
+
+const task = (id: number, title: string, due: string | null = null): Task => ({ id, ownerId: 1, title, due });
+
+test("sorts by title ascending, ignoring case", () => {
+  const tasks = [task(1, "cherry"), task(2, "Banana"), task(3, "apple")];
+  expect(sortTasks(tasks, "title", "asc").map((t) => t.id)).toEqual([3, 2, 1]);
+});
+
+test("sorts by title descending, ignoring case", () => {
+  const tasks = [task(1, "cherry"), task(2, "Banana"), task(3, "apple")];
+  expect(sortTasks(tasks, "title", "desc").map((t) => t.id)).toEqual([1, 2, 3]);
+});
+
+test("formats a due date as day and month", () => {
+  expect(formatDue("2026-11-02")).toBe("2 Nov");
+  expect(formatDue(null)).toBe("");
+});
