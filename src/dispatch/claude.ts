@@ -132,8 +132,8 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
 
 function claudeUsage(result: Record<string, unknown>): ClaudeUsage | null {
   const modelUsage = result.modelUsage;
-  if (typeof result.total_cost_usd !== "number" || !isRecord(modelUsage)) return null;
-  const byModel: Record<string, ClaudeModelUsage> = {};
+  if (!isRecord(modelUsage)) return null;
+  const byModel: Record<string, ClaudeModelUsage> = Object.create(null);
   for (const [model, raw] of Object.entries(modelUsage)) {
     if (!isRecord(raw)) return null;
     const u = {
@@ -141,10 +141,13 @@ function claudeUsage(result: Record<string, unknown>): ClaudeUsage | null {
       outputTokens: raw.outputTokens,
       cacheReadInputTokens: raw.cacheReadInputTokens,
       cacheCreationInputTokens: raw.cacheCreationInputTokens,
-      costUsd: raw.costUSD,
     };
-    if (!Object.values(u).every((v) => typeof v === "number")) return null;
-    byModel[model] = u as ClaudeModelUsage;
+    if (!Object.values(u).every((v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0)) return null;
+    byModel[model] = { ...u, costUsd: usd(raw.costUSD) } as ClaudeModelUsage;
   }
-  return { harness: "claude", totalCostUsd: result.total_cost_usd, byModel };
+  return { harness: "claude", totalCostUsd: usd(result.total_cost_usd), byModel };
+}
+
+function usd(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }

@@ -149,7 +149,7 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
   return { threadId, succeeded: completed && !failed && accountingComplete, resultText, usage, diagnostics: sample.list(), diagnosticCount: sample.count };
 }
 
-function codexTurnUsage(raw: unknown): CodexUsage | null {
+export function codexTurnUsage(raw: unknown): CodexUsage | null {
   if (!isRecord(raw)) return null;
   const u = {
     inputTokens: raw.input_tokens,
@@ -158,7 +158,7 @@ function codexTurnUsage(raw: unknown): CodexUsage | null {
     outputTokens: raw.output_tokens,
     reasoningOutputTokens: raw.reasoning_output_tokens ?? 0,
   };
-  if (!Object.values(u).every((v) => typeof v === "number")) return null;
+  if (!Object.values(u).every((v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0)) return null;
   return { harness: "codex", ...(u as Omit<CodexUsage, "harness">) };
 }
 

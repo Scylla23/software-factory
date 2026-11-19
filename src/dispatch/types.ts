@@ -40,13 +40,13 @@ export interface ClaudeModelUsage {
   outputTokens: number;
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
-  costUsd: number;
+  costUsd: number | null;
 }
 
 export interface ClaudeUsage {
   harness: "claude";
   /** Claude's own API-equivalent estimate. */
-  totalCostUsd: number;
+  totalCostUsd: number | null;
   byModel: Record<string, ClaudeModelUsage>;
 }
 
