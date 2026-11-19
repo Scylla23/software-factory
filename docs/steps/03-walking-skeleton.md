@@ -151,7 +151,11 @@ SQLite gate row and transition (UTC)
 
 The controller left PR #5 open for the owner to merge.
 
-## Proposed design addition
+## Proposed owner commands
+
+At gate 1, the proposed `/respec <feedback>` command asks the spec lead to revise the current draft on the same PR.
+The new spec commit requires a fresh owner approval.
+This extends the design's use of `/respec` after an issue edit.
 
 The design specifies escalation after the repair budget is exhausted but leaves recovery from a defect in the factory verifier unspecified.
 For step 3, the proposed owner command is `/reverify <reviewed-head-sha>` on the same PR after the App reports the escalation.
