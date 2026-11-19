@@ -72,7 +72,8 @@ function totalsBy(db: Database, by: Dimension) {
       accumulate(by === "task" ? r.task : by === "stage" ? r.stage : project, capture.lines, capture.costUsd, capture.coverage, capture.reportedTotal);
     }
   }
-  return { groups, flags };
+  // audit.attempt is the primary key and both joins are one-to-one.
+  return { groups, flags, distinctAttempts: rows.length };
 }
 
 function signals(db: Database) {
@@ -93,8 +94,8 @@ function signals(db: Database) {
 }
 
 export function costReport(db: Database | null, by: Dimension) {
-  const { groups, flags } = db ? totalsBy(db, by) : { groups: new Map(), flags: [] };
-  return { by, costLabel: priceLabel, groups: Array.from(groups, ([key, totals]) => ({ [by]: key, ...totals })),
+  const { groups, flags, distinctAttempts } = db ? totalsBy(db, by) : { groups: new Map(), flags: [], distinctAttempts: 0 };
+  return { by, distinctAttempts, costLabel: priceLabel, groups: Array.from(groups, ([key, totals]) => ({ [by]: key, ...totals })),
     modelFlags: flags, signals: db ? signals(db) : { repeatedAttempts: [], escalations: [], ownerComments: [] } };
 }
 

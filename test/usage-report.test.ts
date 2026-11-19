@@ -76,7 +76,10 @@ test("partial sums, model breakdown, retry, escalation and owner feedback surviv
   expect(report.signals.escalations).toMatchObject([{ task:task.id, reason:"fixture" }]);
   expect(report.signals.ownerComments.map(r=>r.url)).toEqual(["https://github.com/Scylla23/factory-pilot/pull/22#issuecomment-45",
     "https://github.com/Scylla23/factory-pilot/pull/22#discussion_r99"]);
-  expect(costReport(store.db,"model").groups).toMatchObject([{model:"a",tokens:10,apiEquivalentUsd:0.1},{model:"b",tokens:10,apiEquivalentUsd:0.3},
+  const byModel = costReport(store.db,"model");
+  expect(byModel.distinctAttempts).toBe(2);
+  expect(byModel.groups.map(group => group.runs)).toEqual([1,1,1]);
+  expect(byModel.groups).toMatchObject([{model:"a",tokens:10,apiEquivalentUsd:0.1},{model:"b",tokens:10,apiEquivalentUsd:0.3},
     {model:"unknown",tokens:null,apiEquivalentUsd:null}]);
   expect(statusReport(store.db)[0]).toMatchObject({id:task.id,state:"escalated",tokens:20,apiEquivalentUsd:0.4,tokenCoverage:"partial"});
 });
