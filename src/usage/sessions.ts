@@ -50,7 +50,7 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
 
 async function codexResponses(root: string, session: string, lines: Map<string, Line>) {
   const path = await findCodexSessionFile(root, session);
-  if (!path || !safeFile(path)) return null;
+  if (!path) return null;
   const models = new Map<string, string>();
   let lastModel: string | null = null;
   let verified = false;
@@ -85,7 +85,8 @@ export async function captureRun(run: RunUsage, stateRoot: string) {
   const session = run.sessionId ?? (run.harness === "claude" ? run.runId : null);
   let observed = run.observedModel;
   const result = (capture: typeof direct) => ({ session, observed, capture });
-  if ((direct.lines.length && (observed || run.harness !== "codex")) || !session || !uuid.test(session)) return result(direct);
+  if ((direct.lines.length && (observed || run.harness !== "codex")) || !session || !uuid.test(session)
+      || (run.harness === "claude" && session !== run.runId)) return result(direct);
   const lines = new Map<string, Line>();
   try {
     const claude = run.harness === "claude";

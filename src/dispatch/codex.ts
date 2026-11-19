@@ -1,6 +1,6 @@
 import { Glob } from "bun";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { isUnder } from "./config";
 import type { SandboxPolicy } from "./policy";
@@ -179,8 +179,15 @@ const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 export async function findCodexSessionFile(sessionsRoot: string, threadId: string): Promise<string | null> {
   if (!THREAD_ID.test(threadId)) throw new Error(`not a Codex thread id: ${JSON.stringify(threadId.slice(0, 80))}`);
   const glob = new Glob(`*/*/*/rollout-*-${threadId}.jsonl`);
-  for await (const rel of glob.scan({ cwd: sessionsRoot, onlyFiles: true })) return `${sessionsRoot}/${rel}`;
-  return null;
+  if (!lstatSync(sessionsRoot, { throwIfNoEntry: false })?.isDirectory() || realpathSync(sessionsRoot) !== sessionsRoot) return null;
+  let found: string | null = null;
+  for await (const rel of glob.scan({ cwd: sessionsRoot, onlyFiles: true, followSymlinks: false })) {
+    const path = `${sessionsRoot}/${rel}`;
+    const st = lstatSync(path);
+    if (found || !st.isFile() || st.nlink !== 1 || realpathSync(path) !== path) return null;
+    found = path;
+  }
+  return found;
 }
 
 /** The model of the last `turn_context` record, which is what Codex actually ran. */
