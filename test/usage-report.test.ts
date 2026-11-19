@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../factory.config";
 import { Store, type Task } from "../src/factory/store";
+import { Uncertain } from "../src/factory/machine";
 import { dispatchWorker } from "../src/factory/worker";
 import { costReport, statusReport } from "../src/usage/report";
 import { recordFeedback } from "../src/usage/feedback";
@@ -107,4 +108,20 @@ test("readonly commands report a v1 database before and after atomic schema upgr
   store = new Store(join(root,"factory.sqlite"));
   expect(costReport(store.db,"task")).toEqual(expected);
   expect(store.db.query("SELECT model_flag FROM usage_captures").all()).toEqual([{ model_flag:"match" }]);
+});
+
+for (const [name, elapsed, pid, message] of [
+  ["timeout", 2_000_000, process.pid, "worker completion is uncertain"],
+  ["missing launcher", 5_001, undefined, "worker startup is uncertain"],
+  ["disappeared worker", 5_001, 2_147_483_647, "unsettled worker disappeared"],
+] as const) test("dispatch records uncertain usage for " + name, async () => {
+  const attempt = store.plan(task, "dispatch-spec", {});
+  const clock = spyOn(Date, "now").mockReturnValueOnce(1000).mockReturnValue(1000 + elapsed);
+  try {
+    const error = await dispatchWorker(store,task,attempt,"spec","probe",() => {},root,() => pid).catch(e => e);
+    expect(error).toBeInstanceOf(Uncertain);
+    expect(error.message).toContain(message);
+    expect(store.db.query("SELECT attempt,outcome FROM audit").all()).toEqual([{ attempt:attempt.id, outcome:"uncertain" }]);
+    expect(costReport(store.db,"task").groups).toMatchObject([{ tokens:null, tokenCoverage:"unknown", apiEquivalentUsd:null }]);
+  } finally { clock.mockRestore(); }
 });

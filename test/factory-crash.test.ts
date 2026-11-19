@@ -101,3 +101,17 @@ test("owner feedback returns a spec revision to the same high-effort lead before
     } finally { s.db.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("gate two persists both review and inline owner feedback while completing approval", async () => {
+  const root = mkdtempSync(join(tmpdir(),"factory-feedback-"));
+  try {
+    expect(await invoke(root,"feedback")).toBe(true);
+    const store = new Store(join(root,"state.sqlite"));
+    try {
+      expect(store.task(1).state).toBe("done");
+      expect(store.db.query("SELECT id,kind,body FROM owner_feedback ORDER BY id").all()).toEqual([
+        { id:21, kind:"review", body:"Review feedback" }, { id:22, kind:"inline", body:"Inline feedback" },
+      ]);
+    } finally { store.db.close(); }
+  } finally { rmSync(root,{ recursive:true, force:true }); }
+});

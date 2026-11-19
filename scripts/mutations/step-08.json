@@ -32,5 +32,10 @@
   ["usage/sessions", "usage", "Claude excludes synthetic", "model === \"<synthetic>\"", "false"],
   ["usage/sessions", "usage", "Claude refuses a hardlinked child", "if (!safeFile(path)) continue;", ""],
   ["usage/sessions", "usage", "Claude ignores the entire child", " || !safeFile(paths[0]!)", ""],
-  ["usage/sessions", "usage", "live Haiku child", "if (child && lines.has(id) && !localIds.has(id)) continue;", ""]
+  ["usage/sessions", "usage", "live Haiku child", "if (child && lines.has(id) && !localIds.has(id)) continue;", ""],
+  ["factory/worker", "usage-report", "dispatch records uncertain usage for timeout", "return interrupted(new Uncertain(`worker completion is uncertain for ${attempt.id}`))", "throw new Uncertain(`worker completion is uncertain for ${attempt.id}`)"],
+  ["factory/worker", "usage-report", "dispatch records uncertain usage for missing launcher", "return interrupted(new Uncertain(`worker startup is uncertain for ${attempt.id}`))", "throw new Uncertain(`worker startup is uncertain for ${attempt.id}`)"],
+  ["factory/worker", "usage-report", "dispatch records uncertain usage for disappeared worker", "return interrupted(new Uncertain(`unsettled worker disappeared: ${attempt.id}`))", "throw new Uncertain(`unsettled worker disappeared: ${attempt.id}`)"],
+  ["factory/run", "factory-crash", "gate two persists", "recordFeedback(store.db, task.id, \"review\", reviews);", ""],
+  ["factory/run", "factory-crash", "gate two persists", "recordFeedback(store.db, task.id, \"inline\", await git.pages(`/pulls/${task.pr}/comments`));", ""]
 ]

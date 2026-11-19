@@ -90,8 +90,10 @@ const git: Parameters<typeof runStages>[2]["git"] = {
   },
   summary: async () => remote("publish-evidence", { id: 20, htmlUrl: "summary", updated: false }),
   ready: async () => { remote("mark-ready", true); }, reviewBoundary: async () => when,
-  pages: async <T>() => [{ id: 21, user: { id: config.ownerId }, state: "APPROVED", commit_id: head,
-    submitted_at: "2026-01-02T00:00:00Z" } satisfies Review] as T[],
+  pages: async <T>(path: string) => path.endsWith("/comments")
+    ? [{ id: 22, user: { id: config.ownerId }, body: "Inline feedback", commit_id: head }] as T[]
+    : [{ body: "Review feedback", id: 21, user: { id: config.ownerId }, state: "APPROVED", commit_id: head,
+    submitted_at: "2026-01-02T00:00:00Z" } satisfies Review & { body:string }] as T[],
 };
 try {
   const final = await runStages(s, initial, {
