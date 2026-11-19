@@ -110,6 +110,51 @@ export class InstallationToken {
 
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
+/** Epoch milliseconds; injected so expiry is testable. */
+export type Clock = () => number;
+
+/**
+ * How long before its expiry a token stops being used. GitHub tokens last an hour; an operation started with less than
+ * this left could fail with a 401 halfway, so it gets a fresh token instead.
+ */
+export const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
+
+/** Throws unless `token` is valid for at least `marginMs` more. */
+export function assertFresh(token: InstallationToken, clock: Clock = Date.now, marginMs = TOKEN_REFRESH_MARGIN_MS): void {
+  const left = token.expiresAt.getTime() - clock();
+  if (left <= marginMs) throw new Error(`installation token ${left <= 0 ? "expired" : "expires within the refresh margin"} at ${token.expiresAt.toISOString()}`);
+}
+
+/**
+ * Hands out an installation token that is valid for at least the refresh margin, minting a new one when the current
+ * one gets close to expiry. Concurrent callers share one mint.
+ */
+export class TokenSource {
+  #current: InstallationToken | null = null;
+  #minting: Promise<InstallationToken> | null = null;
+  constructor(
+    private readonly mint: () => Promise<InstallationToken>,
+    private readonly clock: Clock = Date.now,
+    private readonly marginMs = TOKEN_REFRESH_MARGIN_MS,
+  ) {}
+
+  async get(): Promise<InstallationToken> {
+    const t = this.#current;
+    if (t && t.expiresAt.getTime() - this.clock() > this.marginMs) return t;
+    this.#minting ??= (async () => {
+      try {
+        const fresh = await this.mint();
+        assertFresh(fresh, this.clock, this.marginMs); // a fresh token this close to expiry means the clock is wrong
+        this.#current = fresh;
+        return fresh;
+      } finally {
+        this.#minting = null;
+      }
+    })();
+    return this.#minting;
+  }
+}
+
 /** A failed GitHub call: method, path, status, and GitHub's own message only. */
 export class GitHubError extends Error {
   constructor(message: string, readonly status: number | null) {
@@ -139,13 +184,13 @@ export interface TokenRequest {
  * Mints an installation token limited to the given repositories and permissions.
  * GitHub refuses a request for more than the installation has, so a narrower scope is never silently widened.
  */
-export async function mintInstallationToken(meta: AppMetadata, key: KeyObject, request: TokenRequest, fetchImpl: Fetch = fetch): Promise<InstallationToken> {
+export async function mintInstallationToken(meta: AppMetadata, key: KeyObject, request: TokenRequest, fetchImpl: Fetch = fetch, clock: Clock = Date.now): Promise<InstallationToken> {
   if (request.repositories.length === 0) throw new Error("an installation token must be limited to named repositories");
   for (const r of request.repositories) if (!/^[A-Za-z0-9._-]{1,100}$/.test(r)) throw new Error(`not a repository name: ${JSON.stringify(r)}`);
   const path = `/app/installations/${meta.installationId}/access_tokens`;
   const res = await fetchImpl(`${GITHUB_API}${path}`, {
     method: "POST",
-    headers: { ...baseHeaders(), Authorization: `Bearer ${appJwt(meta.appId, key)}` },
+    headers: { ...baseHeaders(), Authorization: `Bearer ${appJwt(meta.appId, key, Math.floor(clock() / 1000))}` },
     body: JSON.stringify({ repositories: request.repositories, permissions: request.permissions }),
     signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     redirect: "error",
@@ -157,6 +202,7 @@ export async function mintInstallationToken(meta: AppMetadata, key: KeyObject, r
   }
   const expiresAt = new Date(body.expires_at);
   if (!Number.isFinite(expiresAt.getTime())) throw new GitHubError(`POST ${path}: unreadable expires_at`, res.status);
+  if (expiresAt.getTime() <= clock()) throw new GitHubError(`POST ${path}: the new token already expired at ${body.expires_at}`, res.status);
   const permissions: Record<string, string> = {};
   if (isRecord(body.permissions)) for (const [k, v] of Object.entries(body.permissions)) if (typeof v === "string") permissions[k] = v;
   for (const [k, v] of Object.entries(request.permissions)) {

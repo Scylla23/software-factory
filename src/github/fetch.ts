@@ -1,4 +1,4 @@
-import type { InstallationToken } from "./app";
+import { assertFresh, type Clock, type InstallationToken } from "./app";
 
 const FETCH_TIMEOUT_MS = 120_000;
 const SHA = /^[0-9a-f]{40}$/;
@@ -9,7 +9,8 @@ const SHA = /^[0-9a-f]{40}$/;
  * The token reaches git only as an `http.extraHeader` in the child's environment (GIT_CONFIG_*), never in argv, the
  * remote URL, or any config file, so nothing on disk keeps it. No system or global config, prompts, or hooks apply.
  */
-export function fetchCommits(gitPath: string, repoDir: string, owner: string, repo: string, shas: readonly string[], token: InstallationToken): void {
+export function fetchCommits(gitPath: string, repoDir: string, owner: string, repo: string, shas: readonly string[], token: InstallationToken, clock: Clock = Date.now): void {
+  assertFresh(token, clock);
   for (const part of [owner, repo]) if (!/^[A-Za-z0-9._-]{1,100}$/.test(part)) throw new Error(`not a GitHub name: ${JSON.stringify(part)}`);
   if (shas.length === 0 || shas.some((s) => !SHA.test(s))) throw new Error("fetchCommits needs full commit ids");
   const basic = Buffer.from(`x-access-token:${token.secret()}`).toString("base64");

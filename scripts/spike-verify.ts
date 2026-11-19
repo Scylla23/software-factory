@@ -15,9 +15,9 @@ import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { loadDispatchConfig } from "../src/dispatch/config";
 import { RepoClient } from "../src/github/api";
-import { loadAppKey, loadAppMetadata, mintInstallationToken } from "../src/github/app";
+import { loadAppKey, loadAppMetadata, mintInstallationToken, TokenSource } from "../src/github/app";
 import { fetchCommits } from "../src/github/fetch";
-import { publishEvidence } from "../src/github/evidence";
+import { publishSummary } from "../src/github/summary";
 import { type VerificationBrowser, withVerificationProfile } from "../src/verify/browser";
 import { type EvidenceRecord, VIEWPORTS } from "../src/verify/evidence";
 import { loadVerifyConfig, type Preview, type ProjectCommands, startPreview } from "../src/verify/preview";
@@ -113,9 +113,8 @@ try {
     const afterRecords = await capture(p2, "after", after);
     log("### stop after preview:", await p2.stop());
     previews.pop();
-    const token = await mintInstallationToken(meta, key, { repositories: [REPO], permissions: { contents: "write", pull_requests: "write" } });
-    const head = (await new RepoClient(OWNER, REPO, token).request<{ head: { sha: string } }>("GET", `/repos/${OWNER}/${REPO}/pulls/${pr}`))!.head.sha;
-    log("### published", await publishEvidence(new RepoClient(OWNER, REPO, token), { pr, headSha: head, attemptId: store.attemptId, groups: [{ title: "Before", records: beforeA }, { title: "After", records: afterRecords }] }));
+    const tokens = new TokenSource(() => mintInstallationToken(meta, key, { repositories: [REPO], permissions: { pull_requests: "write" } }));
+    log("### published", await publishSummary(new RepoClient(OWNER, REPO, tokens), { pr, attemptId: store.attemptId, base: before, head: after, checks: [], captures: [...beforeA, ...afterRecords], evidenceDir: store.dir }, { botLogin: `${meta.slug}[bot]` }));
   });
 } finally {
   for (const p of previews) log("### stop (cleanup):", await p.stop());

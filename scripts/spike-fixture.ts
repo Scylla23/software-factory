@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { userInfo } from "node:os";
 import { RepoClient } from "../src/github/api";
-import { loadAppKey, loadAppMetadata, mintInstallationToken } from "../src/github/app";
+import { loadAppKey, loadAppMetadata, mintInstallationToken, TokenSource } from "../src/github/app";
 import { commitFiles } from "../src/github/commit";
 import { ensureDraftPullRequest } from "../src/github/pulls";
 
@@ -24,9 +24,11 @@ if (!v1Dir || !v2Dir) throw new Error("usage: spike-fixture.ts <v1 dir> <v2 dir>
 
 const stateRoot = join(userInfo().homedir, ".software-factory");
 const meta = loadAppMetadata(stateRoot);
-const token = await mintInstallationToken(meta, loadAppKey(meta), { repositories: [REPO], permissions: { contents: "write", pull_requests: "write" } });
+const key = loadAppKey(meta);
+const tokens = new TokenSource(() => mintInstallationToken(meta, key, { repositories: [REPO], permissions: { contents: "write", pull_requests: "write" } }));
+const token = await tokens.get();
 console.log(`token minted, expires ${token.expiresAt.toISOString()}, permissions ${JSON.stringify(token.permissions)}`);
-const client = new RepoClient(OWNER, REPO, token);
+const client = new RepoClient(OWNER, REPO, tokens);
 
 const main = await client.request<{ object: { sha: string } }>("GET", `${client.base}/git/ref/heads/main`);
 const mainSha = main!.object.sha;
