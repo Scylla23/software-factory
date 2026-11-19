@@ -1,0 +1,21 @@
+[
+  ["usage/sessions", "usage", "killed Claude dedupes", "lines.set(id,", "lines.set(id + lines.size,"],
+  ["usage/sessions", "usage", "killed Claude dedupes", "if (child && (e.isSidechain", "if (false && (e.isSidechain"],
+  ["usage/sessions", "usage", "killed Claude dedupes", "e.sessionId !== session", "false"],
+  ["usage/sessions", "usage", "killed Codex charges", "lines.set(p.response_id, line)", "lines.set(p.response_id + lines.size, line)"],
+  ["usage/sessions", "usage", "killed Codex charges", "p.thread_id !== session", "false"],
+  ["usage/sessions", "usage", "killed Codex charges", "p.session_id !== undefined && p.session_id !== session)\n      || typeof p.response_id", "false)\n      || typeof p.response_id"],
+  ["usage/capture", "usage", "Codex cached input", "input - cacheRead - cacheWrite", "input - cacheRead"],
+  ["usage/capture", "usage", "Codex cached input", "cacheRead + cacheWrite > input", "false"],
+  ["usage/prices", "usage", "Standard prices cover", "if (!p) return null", "if (!p) return 0"],
+  ["usage/prices", "usage", "Standard prices cover", "prices.get(observedModel ?? \"\") ?? null", "prices.get(observedModel ?? \"\") ?? prices.get(\"gpt-6.2-sol\")!"],
+  ["usage/prices", "usage", "Standard prices cover", "[\"claude-opus-5-5\"", "[\"missing-entry\""],
+  ["usage/prices", "usage", "Standard prices cover", "t.output * p.output", "(t.output + (t.reasoning ?? 0)) * p.output"],
+  ["usage/capture", "usage", "Claude keeps per-model", "const costUsd = total ??", "const costUsd ="],
+  ["usage/capture", "usage-report", "interruption, final receipt", "? lines.reduce((n, l) => n + l.costUsd!, 0) : null", "? lines.reduce((n, l) => n + l.costUsd!, 0) : 0"],
+  ["usage/capture", "usage", "codex result agrees", "(complete ? \"complete\" : \"partial\")", "\"complete\""],
+  ["usage/report", "usage-report", "partial sums", "return a === b ? a : \"partial\"", "return a === b ? a : \"complete\""],
+  ["usage/store", "usage-report", "interruption, final receipt", "WHERE audit.outcome='uncertain'", "WHERE 0"],
+  ["usage/feedback", "usage-report", "partial sums", "row.user.id !== config.ownerId", "false"],
+  ["usage/sessions", "usage-report", "interruption, final receipt", "primary(run.usage, run.observedModel, run.outcome)", "primary(run.usage, run.requestedModel, run.outcome)"]
+]
