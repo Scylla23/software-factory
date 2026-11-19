@@ -148,6 +148,20 @@ export class Store {
     return result.base === persisted.base && result.head === persisted.head && result.verdict === "approve";
   }
 
+  interrupted(task: Task) {
+    const saved = this.task(task.id);
+    if (saved.state !== "escalated" || saved.visit !== task.visit || saved.head !== task.head) return null;
+    const match = /^interrupted (project check|browser capture) ([0-9a-f-]{36})$/.exec(saved.reason);
+    if (!match) return null;
+    const row = this.db.query<{ id: string; action: string; state: State; reason: string }, [string, number, number]>(
+      "SELECT a.id,a.action,t.state,t.reason FROM attempts a JOIN transitions t USING(task,visit) " +
+      "WHERE a.id=? AND a.task=? AND a.visit=? AND a.result IS NULL").get(match[2]!, task.id, task.visit - 1);
+    if (!row) return null;
+    const valid = match[1] === "browser capture" ? row.action === "verify" && row.state === "verifying" :
+      (row.action === "base-reproduction" && row.state === "building") || (row.action === "head-checks" && row.state === "checks");
+    return valid ? row : null;
+  }
+
   requireSlot(issue: Issue) {
     const busy = this.db
       .query<{ id: number; state: State }, [string, number, number]>(
@@ -159,21 +173,20 @@ export class Store {
   }
 
   move(task: Task, state: State, update: Update = {}, approval?: Approval): Task {
-    const terminal = ["done", "failed"].includes(task.state) || (task.state === "escalated" && state !== "verifying");
-    if (terminal || (!(edges[task.state] as readonly State[]).includes(state) && state !== "escalated" && state !== "failed"))
+    const resume = task.state === "escalated" ? this.interrupted(task) : null;
+    const restoring = resume && state === resume.state && approval?.reason === `resume interrupted attempt ${resume.id}`;
+    if (["done", "failed"].includes(task.state) || (!restoring && (task.state === "escalated" ? state !== "verifying" :
+        !(edges[task.state] as readonly State[]).includes(state) && state !== "escalated" && state !== "failed")))
       throw new Error(`invalid transition ${task.state} -> ${state}`);
     return this.write(() => {
       if (task.state === "escalated") {
         if (
-          !this.canReverify(task) ||
+          (!restoring && (!this.canReverify(task) || approval?.reason !== "owner requested re-verification")) ||
+          (restoring && update.reason !== resume.reason) ||
           Object.keys(update).some((k) => k !== "reason") ||
-          approval?.kind !== "comment" ||
-          approval.actor !== config.ownerId ||
-          approval.sha !== task.head ||
-          approval.accepted ||
-          approval.reason !== "owner requested re-verification"
-        )
-          throw new Error("missing owner resolution for failed verification");
+          approval?.kind !== "comment" || approval.actor !== config.ownerId ||
+          approval.sha !== task.head || approval.accepted
+        ) throw new Error("missing owner resolution for failed verification or interrupted check");
       }
       if ((task.state === "awaiting_spec_approval" && state === "building") || state === "done") {
         const final = state === "done";
@@ -222,6 +235,15 @@ export class Store {
     const json = JSON.stringify(intent);
     return this.write(() => {
       if (this.task(task.id).visit !== task.visit) throw new Error("attempt on a stale transition");
+      // Only the base proof can interrupt a building visit after its builder already completed.
+      // Reuse that exact dispatch, including its original UUID and audit, across repeated owner-authorized restarts.
+      if (action === "dispatch-builder" && this.db.query("SELECT 1 FROM transitions WHERE task=? AND visit=? AND previous='escalated' AND state='building'").get(task.id, task.visit)) {
+        const saved = this.db.query<{ id: string; result: string; intent: string }, [number, number]>(
+          "SELECT id,result,intent FROM attempts WHERE task=? AND visit<? AND action='dispatch-builder' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1"
+        ).get(task.id, task.visit);
+        if (!saved || saved.intent !== json) throw new Error("interrupted base proof lost its completed builder");
+        return { id: saved.id, result: saved.result, action, fresh: false };
+      }
       const id = randomUUID();
       const fresh =
         this.db.run("INSERT OR IGNORE INTO attempts(id,task,visit,action,intent) VALUES(?,?,?,?,?)", [

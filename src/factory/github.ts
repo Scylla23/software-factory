@@ -222,7 +222,7 @@ export class Publisher {
   }
   async comments(number: number) {
     const comments = await listComments(this.read, number);
-    const commands = comments.filter((c) => /^\/(?:approve|respec|reverify)\b/.test(c.body));
+    const commands = comments.filter((c) => /^\/(?:approve|respec|reverify|resume)\b/.test(c.body));
     // REST timestamps have one-second resolution. An explicit null lastEditedAt also rules out a same-second edit.
     for (let i = 0; i < commands.length; i += 100) {
       const page = commands.slice(i, i + 100);

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { config } from "../factory.config";
-import { headDecision, pendingRevision, pendingReverification, pendingSpec, specDecision } from "../src/factory/gates";
+import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, specDecision } from "../src/factory/gates";
 import capturedInventory from "./fixtures/pilot-inventory-captures.json";
 import { issueNumber, readIssue } from "../src/factory/github";
 import { RepoClient } from "../src/github/api";
@@ -354,4 +354,35 @@ test("infrastructure failure escalates without consuming a code repair", async (
       attemptId: "fixture", checks: [{ name: "before teardown", pass: false, detail: "removed false" }] })).toThrow(Uncertain);
     expect(s.task(t.id).repairCount).toBe(0);
   } finally { s.db.close(); }
+});
+
+test("owner resume replaces only the interrupted read-only attempt and preserves builder, head and repair allowance", () => {
+  for (const action of ["base-reproduction", "head-checks", "verify"]) {
+    const s = new Store(":memory:");
+    try {
+      let t = s.move(spec(s), "building", { repairCount: 1, reason: "fix fixture" }, approved);
+      const builder = s.plan(t, "dispatch-builder", "intent");
+      s.finish(builder.id, ["original patch"]);
+      if (action !== "base-reproduction") t = s.move(t, "checks");
+      if (action === "verify") t = s.move(s.move(t, "code_review"), "verifying");
+      for (const n of [0, 1]) {
+        const before = t;
+        const attempt = s.plan(t, action, { head: current });
+        t = s.move(t, "escalated", { reason: `interrupted ${action === "verify" ? "browser capture" : "project check"} ${attempt.id}` });
+        const interrupted = s.interrupted(t)!;
+        expect(interrupted.id).toBe(attempt.id);
+        const ownerCommand = { ...comment(50 + n, current), body: `/resume ${attempt.id}` };
+        expect(pendingResume(s, t, [{ ...ownerCommand, id: 40+n, lastEditedAt: "2026-01-02" }], 35, attempt.id)).toBeNull();
+        const event = pendingResume(s, t, [ownerCommand], 35, attempt.id)!;
+        expect(() => s.move(t, before.state, { reason: before.reason, repairCount: 0 }, event)).toThrow();
+        expect(() => s.move(t, before.state, { reason: before.reason }, { ...event, actor: owner+1 })).toThrow();
+        t = s.move(t, before.state, { reason: before.reason }, event);
+        expect(t.head).toBe(before.head);
+        expect(t.repairCount).toBe(1);
+        expect(s.plan(t, action, { head: current }).id).not.toBe(attempt.id);
+        if (action === "base-reproduction") expect(s.plan(t, "dispatch-builder", "intent").id).toBe(builder.id);
+        expect(pendingResume(s, t, [ownerCommand], 35, attempt.id)).toBeNull();
+      }
+    } finally { s.db.close(); }
+  }
 });

@@ -164,6 +164,13 @@ The factory requires the owner's numeric user ID, checks its own recorded commen
 The repair count carries forward, and the normal GitHub review on the verified head remains required at gate 2.
 Failed evidence is retained alongside subsequent attempts.
 
+If a read-only check or browser capture stops before writing its receipt, the App reports the exact interrupted attempt on its PR.
+The proposed `/resume <attempt-id>` command records the owner's confirmation that the attempt's previews, port leases and browser profile have been torn down.
+Preview directory names are the phase-specific IDs found in `project-logs/<attempt-id>/`, and a new browser capture uses a profile labeled `factory-verify-<attempt-id>-<uuid>`.
+Before posting the command, stop the abandoned preview, remove its detached checkout and private preview home, release its lease, and close its isolated browser profile if one remains.
+The controller checks the PR head, the comment's owner and edit history, the escalation's exact attempt, and the absence of that attempt's preview directories and leases.
+It keeps the interrupted artifacts and the completed builder dispatch, then allocates a new UUID for the interrupted operation without consuming a repair or approving a gate.
+
 The pilot's verifier supports the registered inventory criterion for issue #4.
 General per-criterion evidence and screenshot publication belong in step 5 under Q56.
 The skeleton checks exact revisions and stops on base drift or an edited intake revision.

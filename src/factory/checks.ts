@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../factory.config";
 import { loadDispatchConfig } from "../dispatch";
@@ -32,6 +32,21 @@ export function junitReproduction(xml: string, base: boolean) {
   return result.exitCode === 0 && result.stdout.toString().trim() === "true";
 }
 
+export function previewId(attemptId: string, name: string) {
+  const hex = createHash("sha256").update(`${attemptId}/${name}`).digest("hex").slice(0, 32);
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+}
+
+export function checkAbandonedPreviews(root: string, attempt: string) {
+  const ids = ["test", "before", "after"].map((phase) => previewId(attempt, phase));
+  for (const id of ids) if (existsSync(join(root, "previews", id))) throw new Error(`preview ${id} still needs teardown`);
+  const ports = join(root, "ports");
+  if (existsSync(ports)) for (const file of readdirSync(ports).filter((f) => f.endsWith(".lease"))) {
+    const lease = JSON.parse(readFileSync(join(ports, file), "utf8"));
+    if (ids.includes(lease.attempt)) throw new Error(`preview lease ${file} still needs teardown`);
+  }
+}
+
 export class ProjectChecks {
   private runtime?: VerifyConfig;
   get verify() {
@@ -60,8 +75,7 @@ export class ProjectChecks {
   ) {
     const logDir = join(config.stateRoot, "project-logs", attemptId);
     mkdirSync(logDir, { mode: 0o700, recursive: true });
-    const hex = createHash("sha256").update(`${attemptId}/${name}`).digest("hex").slice(0, 32);
-    const id = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+    const id = previewId(attemptId, name);
     const p = await startPreview(
       {
         id,

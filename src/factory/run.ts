@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { config } from "../../factory.config";
 import { assertPrivateDir } from "../dispatch/config";
 import { Publisher, issueNumber } from "./github";
-import { headDecision, pendingRevision, pendingReverification, pendingSpec, type Review } from "./gates";
+import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, type Review } from "./gates";
 import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
-import { ProjectChecks, requireHealthyInfrastructure } from "./checks";
+import { checkAbandonedPreviews, ProjectChecks, requireHealthyInfrastructure } from "./checks";
 import { runGit } from "../dispatch/git";
 import { verdict, check, type Check } from "../verify/verdict";
 import { fenced, publishSummary, redact, type EvidenceSummary } from "../github/summary";
@@ -183,6 +183,19 @@ async function gateTwo(store: Store, git: Publisher, task: Task) {
 }
 
 async function resolveVerification(store: Store, git: Publisher, task: Task) {
+  const interrupted = store.interrupted(task);
+  if (interrupted) {
+    await git.boundPull(task);
+    const id = await effect(store, task, "report-interruption", { pr: task.pr, attempt: interrupted.id }, (a) =>
+      git.comment(task.pr, a.id, `Read-only attempt \`${interrupted.id}\` stopped without a receipt. Confirm its previews, leases and browser profile are closed, then post \`/resume ${interrupted.id}\` for a fresh attempt on this head.`));
+    store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [id, task.id]);
+    const comments = await git.comments(task.pr);
+    await git.boundPull(task);
+    const event = pendingResume(store, task, comments, id, interrupted.id);
+    if (!event) return null;
+    checkAbandonedPreviews(config.stateRoot, interrupted.id);
+    return store.move(task, interrupted.state, { reason: interrupted.reason }, event);
+  }
   if (!store.canReverify(task)) {
     if (task.pr) {
       const id = await effect(store, task, "report-escalation", { pr: task.pr, reason: task.reason }, (a) =>

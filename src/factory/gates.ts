@@ -41,6 +41,19 @@ export function pendingRevision(store: Store, task: Task, comments: IssueComment
   return null;
 }
 
+export function pendingResume(store: Store, task: Task, comments: IssueComment[], announcement: number, attempt: string) {
+  for (const c of comments) {
+    if (!c.body.startsWith("/resume") || store.db.query("SELECT 1 FROM approvals WHERE kind='comment' AND id=?").get(c.id)) continue;
+    const own = !!store.db.query("SELECT 1 FROM factory_comments WHERE id=?").get(c.id);
+    const refusal = commandRefusal(c, own) ?? (c.id <= announcement || c.body !== `/resume ${attempt}` ? "stale resume command" : null);
+    const event: Approval = { kind: "comment", id: c.id, actor: c.authorId ?? 0, sha: task.head, accepted: false,
+      reason: refusal ?? `resume interrupted attempt ${attempt}` };
+    if (!refusal) return event;
+    store.record(task.id, event);
+  }
+  return null;
+}
+
 export function pendingReverification(store: Store, task: Task, comments: IssueComment[], announcement: number, prHead: string) {
   if (!store.canReverify(task) || prHead !== task.head) return null;
   let resolution: Approval | null = null;

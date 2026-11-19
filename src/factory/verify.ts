@@ -52,7 +52,7 @@ export async function verifyPilot(
   const captures: EvidenceRecord[] = [];
   try {
     await withVerificationProfile(
-      { orcaPath: project.verify.executables.orca, worktree: `path:${config.pilot.path}` },
+      { attemptId: attempt.id, orcaPath: project.verify.executables.orca, worktree: `path:${config.pilot.path}` },
       async (browser) => {
         const session = await browser.sessionAt(`https://github.com/${config.pilot.owner}/${config.pilot.repo}/pull/${task.pr}`);
         checks.push(check("verification profile signed out", !session.signedIn));
