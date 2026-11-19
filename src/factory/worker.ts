@@ -117,6 +117,23 @@ async function work(id: string) {
   }
 }
 
+function launchSupervisor(dir: string, id: string, stateRoot: string) {
+  const fd = openSync(join(dir, "supervisor.log"), "a", 0o600);
+  try {
+    const owner = userInfo();
+    // Concurrent launchers may race to claim the job, but the exclusive claim admits only one harness.
+    const proc = spawn(process.execPath, [import.meta.path, id], {
+      detached: true, cwd: stateRoot,
+      env: { PATH: "/usr/bin:/bin", HOME: owner.homedir, USER: owner.username, LOGNAME: owner.username },
+      stdio: ["ignore", fd, fd],
+    });
+    proc.unref();
+    return proc.pid;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export class WorkerLoginError extends Error {}
 export async function dispatchWorker(
   store: Store,
@@ -126,13 +143,14 @@ export async function dispatchWorker(
   prompt: string,
   observe: (event: string, id: string) => void,
   stateRoot = config.stateRoot,
+  launch = launchSupervisor,
 ): Promise<WorkerOutput> {
   const dir = jobDir(attempt.id, stateRoot);
   const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role] };
   const claim = join(dir, "claim");
   const receipt = join(dir, "result.json");
   if (!attempt.fresh) observe("recover-worker", attempt.id);
-  let launcher: ReturnType<typeof spawn> | undefined;
+  let launcherPid: number | undefined;
   if (!existsSync(claim) && !existsSync(receipt)) {
     mkdirSync(dir, { mode: 0o700, recursive: true });
     const path = join(dir, "job.json");
@@ -145,17 +163,7 @@ export async function dispatchWorker(
       if (published.base !== job.base || published.head !== job.head || published.prompt !== prompt || published.role !== role)
         throw new Uncertain("worker job identity changed");
     }
-    const fd = openSync(join(dir, "supervisor.log"), "a", 0o600);
-    try {
-      const owner = userInfo();
-      // Concurrent launchers may race to claim the job, but the exclusive claim admits only one harness.
-      launcher = spawn(process.execPath, [import.meta.path, attempt.id], {
-        detached: true, cwd: stateRoot,
-        env: { PATH: "/usr/bin:/bin", HOME: owner.homedir, USER: owner.username, LOGNAME: owner.username },
-        stdio: ["ignore", fd, fd],
-      });
-      launcher.unref();
-    } finally { closeSync(fd); }
+    launcherPid = launch(dir, attempt.id, stateRoot);
   }
   const start = Date.now();
   const timeout = config.agents[role].timeoutMs + 120_000;
@@ -169,7 +177,8 @@ export async function dispatchWorker(
     if (existsSync(join(dir, "result.json"))) break;
     if (Date.now() - start > timeout) throw new Uncertain(`worker completion is uncertain for ${attempt.id}`);
     if (Date.now() - start > 5000) {
-      const pid = existsSync(claim) ? Number(readFileSync(claim, "utf8")) : launcher?.pid;
+      const claimedPid = existsSync(claim) ? Number(readFileSync(claim, "utf8")) : 0;
+      const pid = claimedPid > 1 ? claimedPid : launcherPid;
       if (!pid || pid <= 1) throw new Uncertain(`worker startup is uncertain for ${attempt.id}`);
       try {
         process.kill(pid, 0);

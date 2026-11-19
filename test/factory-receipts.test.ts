@@ -55,3 +55,30 @@ test("worker, project check and capture receipts are adopted only for the intend
     expect(() => checkAbandonedPreviews(root, crypto.randomUUID())).not.toThrow();
   } finally { project.close(); store.db.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test("a live launcher can take longer than five seconds to claim its attempt", async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-late-claim-"));
+  const s = new Store(":memory:");
+  let child: Bun.Subprocess<"ignore", "ignore", "ignore"> | undefined;
+  try {
+    const t = s.intake({ source: "github", repoId: 1, issueId: 2, number: 4, title: "stock", body: "", sender: config.ownerId, revision: "r", url: "fixture" }, "a".repeat(40));
+    const a = s.plan(t, "dispatch-spec", {});
+    const result = await dispatchWorker(s, t, a, "spec", "prompt", () => {}, root, (dir, id) => {
+      const output = { result: { runId: id, sessionId: "delayed", requestedModel: "fixture", observedModel: "fixture",
+        outcome: "completed", resultText: "AC-1", usage: null }, files: [] };
+      child = Bun.spawn([process.execPath, "-e", `
+        await Bun.sleep(5500);
+        await Bun.write("claim", String(process.pid));
+        await Bun.write("result.tmp", process.argv[1]);
+        require("node:fs").renameSync("result.tmp","result.json");
+      `, JSON.stringify({ output })], { cwd: dir, stdout: "ignore", stderr: "ignore" });
+      return child.pid;
+    });
+    expect(result.result.sessionId).toBe("delayed");
+    expect(await child!.exited).toBe(0);
+  } finally {
+    if (child && child.exitCode === null) { child.kill(); await child.exited; }
+    s.db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 15_000);
