@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { config } from "../factory.config";
 import { createAttempt, checkoutSnapshot } from "../src/dispatch/attempt";
+import { claudeWrites } from "../src/dispatch/claude-writes";
+import { outputDigest } from "../src/dispatch/output";
 import { claudeArgs } from "../src/dispatch/claude";
 import { loadDispatchConfig, managedSettingsProblems } from "../src/dispatch/config";
 import { runGit } from "../src/dispatch/git";
@@ -18,7 +20,7 @@ const exe = dispatch.executables.claude;
 if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "2.1.325 (Claude Code)" || managedSettingsProblems(dispatch).length)
   throw new Error("wrong Claude binary or managed settings present");
 
-function arm(control: boolean) {
+async function arm(control: boolean) {
   const root = mkdtempSync(join(dispatch.accountHome, ".factory-proof-"));
   try {
     const make = (name: string) => { const p = join(root, name); mkdirSync(p, { mode: 0o700 }); return p; };
@@ -46,7 +48,7 @@ function arm(control: boolean) {
       D2: `Use Read to read ${file} and report its contents.`,
       write: `Using Write, create ${output} with exactly PROOF and one newline.`,
       A1: "Start exactly one general-purpose subagent. Ask it to reply MAPLE. Report when it completes or if the tool is unavailable.",
-      A2: "Start probe-member, then try the unlisted probe-other and each built-in subagent type. Report their replies.",
+      A2: control ? "Start probe-other and report its reply." : "Request probe-member, probe-other, Explore, Plan, general-purpose, and fork, each by name, to return MAPLE. Report which requests were available.",
       A3: "Start probe-member and ask it to start one general-purpose child to return MAPLE.",
     };
     const args = claudeArgs({ prompt: prompts[selected as keyof typeof prompts], model: "haiku", effort: "low", sessionId: id, policy,
@@ -56,7 +58,7 @@ function arm(control: boolean) {
       const definitions = {
         "spec-lead": { description: "Factory probe lead", prompt: "The spec-lead marker is " + marker,
           tools: [control && selected === "A2" ? "Agent" : "Agent(probe-member)", "Read", "Write"], model: "haiku", effort: "low" },
-        "probe-member": { description: "Factory probe member", prompt: "Return " + childMarker,
+        "probe-member": { description: "Factory probe member", prompt: selected === "A3" ? "Ask one general-purpose subagent to reply MAPLE if you have the Agent tool. Then report your result." : "Return " + childMarker,
           tools: selected === "A3" && control ? ["Read", "Agent"] : ["Read"], model: "haiku", effort: "low" },
         "probe-other": { description: "Unlisted proof member", prompt: "Return FIR", tools: ["Read"], model: "haiku", effort: "low" },
       };
@@ -79,7 +81,8 @@ function arm(control: boolean) {
     const events = result.stdout.trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
     const init = events.find(e => e.type === "system" && e.subtype === "init" && e.session_id === id);
     const final = events.find(e => e.type === "result" && e.session_id === id && !e.is_error && e.subtype === "success");
-    const tools = init?.tools ?? [];
+    const tools: string[] = init?.tools ?? [];
+    const agentTool = tools.some(name => /^(Agent|Task)(?:\(|$)/.test(name));
     const uses = events.flatMap(e => e.type === "assistant" && Array.isArray(e.message?.content) ?
       e.message.content.filter((c: { type: string }) => c.type === "tool_use") : []);
     const read = uses.find(c => c.name === "Read" && c.input.file_path === file);
@@ -95,20 +98,34 @@ function arm(control: boolean) {
       return { agent: lines.find(l => l.agentId)?.agentId ?? null, model: lines.find(l => l.type === "assistant")?.message?.model,
         memberMarker: lines.some(l => l.type === "assistant" && JSON.stringify(l.message.content).includes(childMarker)) };
     });
-    const checks = { D1: String(final?.result).includes(marker),
-      D2: Boolean(readResult) && String(final?.result).includes(marker), write: Boolean(written),
-      A1: Array.isArray(init?.tools) && tools.includes("Agent") === control && children.length === (control ? 1 : 0),
+    const roots = [...new Bun.Glob(`projects/*/${id}.jsonl`).scanSync(harnessHome)];
+    const parent = roots.length === 1 ? readFileSync(join(harnessHome, roots[0]!), "utf8").trim().split("\n").map(l => JSON.parse(l)) : [];
+    const starts = parent.filter(e => e.sessionId === id && e.type === "user" && e.toolUseResult?.agentId && e.toolUseResult?.agentType)
+      .map(e => ({ role: e.toolUseResult.agentType, id: e.toolUseResult.agentId }));
+    const childTools = childTranscripts.flatMap(path => readFileSync(join(harnessHome, path), "utf8").trim().split("\n").map(l => JSON.parse(l))
+      .filter(e => e.type === "api-request-shape" && Array.isArray(e.shape?.tools)).map(e => e.shape.tools.map((t: {name: string}) => t.name)));
+    const matched = starts.every(start => children.some(child => child.agent === start.id));
+    const digests = selected === "write" ? await claudeWrites({ taskId: "probe", attemptId: id, sessionId: id, role: dirs.role },
+      shared ? dispatch.stateRoot : root, harnessHome, dirs.outDir) : [];
+    const digestMatched = digests.length === 1 && digests[0]?.sha256 === outputDigest(Buffer.from("PROOF\n"));
+    const checks = { D1: parent.some(e => e.type === "api-request-shape" && JSON.stringify(e.shape?.system).includes(marker)) && String(final?.result).includes(marker),
+      D2: Boolean(readResult) && String(final?.result).includes(marker), write: Boolean(written) && digestMatched,
+      A1: Array.isArray(init?.tools) && agentTool === control && children.length === (control ? 1 : 0),
       // A requested start is insufficient to prove absence or the child's effective tools.
-      A2: false, A3: false };
+      A2: control ? matched && starts.some(s => s.role === "probe-other") :
+        matched && starts.length === 1 && children.length === 1 && starts[0]?.role === "probe-member" &&
+        ["probe-other", "Explore", "Plan", "general-purpose", "fork"].every(name => types.includes(name)),
+      A3: matched && starts.some(s => s.role === "probe-member") && (control ? children.length > 1 :
+        children.length === 1 && childTools.length > 0 && childTools.every(ts => !ts.some((name: string) => /^(Task|Agent)$/.test(name)))) };
     const passed = Boolean(result.status === 0 && init && /haiku/i.test(init.model) && final && checks[selected as keyof typeof checks]);
     console.log(JSON.stringify({ test: selected, control, factoryLogin: shared, id, status: result.status, observedModel: init?.model,
-      toolAgent: tools.includes("Agent"), types, children, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), written: Boolean(written), passed }));
+      toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
     return passed;
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 try {
   let passed = true;
-  for (const control of selected.startsWith("A") ? [true, false] : [false]) if (!arm(control)) passed = false;
+  for (const control of selected.startsWith("A") ? [true, false] : [false]) if (!await arm(control)) passed = false;
   process.exitCode = passed ? 0 : 1;
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Claude proof failed");
