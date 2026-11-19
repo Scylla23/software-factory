@@ -60,6 +60,7 @@ export async function readIssue(client: RepoClient, number: number): Promise<Iss
     authorization?.event !== "labeled" ||
     authorization.actor?.id !== config.ownerId ||
     !Number.isFinite(Date.parse(authorization.created_at)) ||
+    events.some((e) => e.event === "renamed" && !(Date.parse(e.created_at) < Date.parse(authorization.created_at))) ||
     (issue.lastEditedAt !== null && !(Date.parse(issue.lastEditedAt) < Date.parse(authorization.created_at)))
   ) {
     throw new Error("the owner must reapply the factory label to authorize this issue revision");

@@ -88,6 +88,11 @@ test("GitHub intake authorizes the owner and the last factory label event for th
     events = [label, invalid];
     await expect(readIssue(client, 4)).rejects.toThrow("reapply");
   }
+  const rename = { ...label, event: "renamed", created_at: "2026-01-03T00:00:00Z" };
+  events = [label, rename];
+  await expect(readIssue(client, 4)).rejects.toThrow("reapply");
+  events = [rename, { ...label, created_at: "2026-01-04T00:00:00Z" }];
+  expect((await readIssue(client, 4)).sender).toBe(owner);
   events = [label];
   raw.lastEditedAt = "2026-01-03T00:00:00Z";
   await expect(readIssue(client, 4)).rejects.toThrow("reapply");
