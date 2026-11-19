@@ -342,6 +342,11 @@ export const LSOF_TIMEOUT_MS = 10_000;
 export interface SweepOptions extends TerminateOptions {
   lsofPath: string;
   lsofTimeoutMs?: number;
+  /**
+   * Processes still in use, such as a running preview server, that are left alone with all their descendants.
+   * Matched by identity, so a recycled pid is not spared.
+   */
+  spare?: readonly ProcIdentity[];
 }
 
 export interface SweepResult {
@@ -382,11 +387,22 @@ export function scanWorktree(worktree: string, opts: SweepOptions): ProcIdentity
     else if (line.startsWith("n") && pid > 0 && isUnderPath(line.slice(1), worktree)) inWorktree.add(pid);
   }
   inWorktree.delete(process.pid);
+  const spared = new Set<number>();
+  for (const id of opts.spare ?? []) if (snap.get(id.pid)?.start === id.start) spared.add(id.pid);
+  for (let grew = spared.size > 0; grew; ) {
+    grew = false;
+    for (const row of snap.values()) {
+      if (!spared.has(row.pid) && spared.has(row.ppid)) {
+        spared.add(row.pid);
+        grew = true;
+      }
+    }
+  }
   const tops = new Set([1, process.pid]);
   const found: ProcIdentity[] = [];
   for (const p of inWorktree) {
     const row = snap.get(p);
-    if (!row || row.zombie) continue; // started after the snapshot, or already gone
+    if (!row || row.zombie || spared.has(p)) continue; // started after the snapshot, already gone, or still in use
     let ok = true;
     for (let cur = row, steps = 0; !tops.has(cur.ppid); steps++) {
       const parent = snap.get(cur.ppid);
@@ -431,6 +447,26 @@ export async function sweepWorktree(worktree: string, opts: SweepOptions): Promi
   } finally {
     done = true;
   }
+}
+
+export interface CleanupAssessment {
+  /** True when no process the factory knows of outlived the run (see RunResult.noKnownSurvivors). */
+  noKnownSurvivors: boolean;
+  /** Why the worktree must be quarantined; empty when it may be reused or removed. */
+  quarantineReasons: string[];
+}
+
+/** Combines supervision's unverified reasons with the worktree sweep into one verdict, shared by every spawned run. */
+export function assessCleanup(unverified: readonly string[], sweep: SweepResult): CleanupAssessment {
+  const quarantineReasons = [...unverified];
+  if (sweep.scanError) quarantineReasons.push(`worktree scan failed: ${sweep.scanError}`);
+  if (sweep.found.length > 0) quarantineReasons.push(`${sweep.found.length} processes were still running in the worktree after the run: ${sweep.found.map((p) => p.pid).join(", ")}`);
+  const sweepClean = !sweep.cleanup || (sweep.cleanup.survivors.length === 0 && sweep.cleanup.errors.length === 0);
+  if (sweep.cleanup) {
+    quarantineReasons.push(...sweep.cleanup.errors.map((e) => `worktree sweep: ${e}`));
+    if (sweep.cleanup.survivors.length > 0) quarantineReasons.push(`worktree sweep could not kill: ${sweep.cleanup.survivors.map((p) => p.pid).join(", ")}`);
+  }
+  return { noKnownSurvivors: unverified.length === 0 && sweep.scanError === null && sweepClean, quarantineReasons };
 }
 
 function isUnderPath(path: string, root: string): boolean {

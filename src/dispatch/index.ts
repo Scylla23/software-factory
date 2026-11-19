@@ -8,7 +8,7 @@ import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
 import { gitWriteProtectedPaths } from "./git";
 import { agentEnv, assertPolicySound, assertWorktreeWritable, effectiveDenyRead, type PolicyContext, type SandboxPolicy } from "./policy";
-import { type AgentProcess, spawnAgentProcess, superviseRun, sweepWorktree } from "./process";
+import { type AgentProcess, assessCleanup, spawnAgentProcess, superviseRun, sweepWorktree } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
 
 export { loadDispatchConfig, type DispatchConfig } from "./config";
@@ -84,14 +84,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (status?.error) diagnostics.push(`spawn failed: ${status.error}`);
   // Anything still running in the worktree now outlived the run, wherever it sits in the process tree.
   const sweep = await sweepWorktree(worktree, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
-  const quarantineReasons = [...unverified];
-  if (sweep.scanError) quarantineReasons.push(`worktree scan failed: ${sweep.scanError}`);
-  if (sweep.found.length > 0) quarantineReasons.push(`${sweep.found.length} processes were still running in the worktree after the run: ${sweep.found.map((p) => p.pid).join(", ")}`);
-  const sweepClean = !sweep.cleanup || (sweep.cleanup.survivors.length === 0 && sweep.cleanup.errors.length === 0);
-  if (sweep.cleanup) {
-    quarantineReasons.push(...sweep.cleanup.errors.map((e) => `worktree sweep: ${e}`));
-    if (sweep.cleanup.survivors.length > 0) quarantineReasons.push(`worktree sweep could not kill: ${sweep.cleanup.survivors.map((p) => p.pid).join(", ")}`);
-  }
+  const { noKnownSurvivors, quarantineReasons } = assessCleanup(unverified, sweep);
   diagnostics.push(...quarantineReasons.map((r) => `quarantine: ${r}`));
   const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
@@ -104,7 +97,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     stderrPath: logs.stderrPath,
     instructionsPath,
     cleanup,
-    noKnownSurvivors: unverified.length === 0 && sweep.scanError === null && sweepClean,
+    noKnownSurvivors,
     quarantineWorktree: quarantineReasons.length > 0,
     quarantineReasons,
   };
