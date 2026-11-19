@@ -42,6 +42,13 @@ function jobDir(id: string) {
   return join(config.stateRoot, "jobs", id);
 }
 
+/** The pilot's test discovery, executable scripts, dependencies and static-analysis policy are owner-controlled. */
+export function protectsChecks(path: string) {
+  const name = path.split("/").at(-1)!.toLowerCase();
+  return /^(package\.json|bun\.lockb?|bunfig\.toml|tsconfig[^/]*\.json|biome\.jsonc?|eslint\.config\..+|\.eslintrc.*|\.eslintignore|\.gitignore)$/.test(name)
+    || path.toLowerCase().split("/").includes("node_modules");
+}
+
 export function changes(path: string): WorkerOutput["files"] {
   const list = (...args: string[]) => runGit("/usr/bin/git", path, args).toString().split("\0").filter(Boolean);
   if (list("diff", "--diff-filter=D", "--name-only", "-z", "HEAD").length) throw new Uncertain("builder deleted a tracked file");
@@ -52,6 +59,7 @@ export function changes(path: string): WorkerOutput["files"] {
   let size = 0;
   return paths.map((name) => {
     assertRepoPath(name);
+    if (protectsChecks(name)) throw new Uncertain(`builder changed check configuration: ${name}`);
     if (
       name.split("/").some((p) => p.startsWith(".")) ||
       name.startsWith("docs/specs/") ||

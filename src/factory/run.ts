@@ -11,7 +11,7 @@ import { verdict, check, type Check } from "../verify/verdict";
 import { publishSummary, type EvidenceSummary } from "../github/summary";
 import { verifyPilot } from "./verify";
 import { Store, type Task } from "./store";
-import { dispatchWorker, WorkerLoginError } from "./worker";
+import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
 
 import { drive, effect } from "./machine";
 
@@ -32,6 +32,8 @@ async function build(store: Store, git: Publisher, task: Task, project: ProjectC
     await git.fetch(task.head);
     return (await dispatchWorker(store, task, a, "builder", prompt, observe)).files;
   });
+  const protectedFile = files.find((f) => protectsChecks(f.path));
+  if (protectedFile) return store.move(task, "escalated", { reason: `builder changed check configuration: ${protectedFile.path}` });
   const repro = files.find((f) => f.path === "repro.test.ts");
   if ((!repro || files.length === 0) && !task.repairCount)
     return store.move(task, "failed", { reason: "builder omitted repro.test.ts" });

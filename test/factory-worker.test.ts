@@ -24,3 +24,13 @@ test("deleting a tracked file requests escalation", () => withRepo((dir) => {
   rmSync(join(dir, "app.ts"));
   expect(() => changes(dir)).toThrow(Uncertain);
 }));
+
+test("builder changes to commands, test discovery, compiler or lint configuration escalate", () => withRepo((dir) => {
+  for (const name of ["package.json", "bunfig.toml", "tsconfig.build.json", "biome.jsonc", ".eslintrc.json", "bun.lock"]) {
+    writeFileSync(join(dir, name), "{}");
+    expect(() => changes(dir)).toThrow(Uncertain);
+    rmSync(join(dir, name));
+  }
+  writeFileSync(join(dir, "app.ts"), "fixed");
+  expect(changes(dir).map((f) => f.path)).toEqual(["app.ts"]);
+}));
