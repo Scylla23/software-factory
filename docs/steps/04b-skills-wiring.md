@@ -117,7 +117,8 @@ Both documents pass the verdict schema.
 The collector accepts the authentic bytes and rejects the replacement against the authentic receipt.
 This is a factory-side control.
 The live R3 positive control on `sort-fix-skips-ac3.patch` passed seven head tests in the disposable checkout, submitted the bound changes verdict with a native tool and archived its exact bytes in SQLite.
-The pinned sessions were Claude `0bdd0c36-fd9b-475d-9311-10643d7e6a13` and Codex `01a1f5c3-c36d-7623-8ad7-c9fff65b21ca`, both on head `1b17905ed9ee1e412a87c9e53d63110989b05983`.
+The pinned sessions were Claude `e993d543-79f6-4e7d-a541-152877192737` and Codex `01a1f5c9-5aac-7460-910b-14ff8afbbee0`, both on head `c41a03ec494ed12d87940348b86ee4eb20470d7c`.
+Both preserved the staged input hash, every tracked snapshot file and the clean snapshot HEAD through process cleanup.
 Replacing the verdict from the host with the schema-valid approve fixture caused collection to reject the replacement and left zero approvals.
 A separate Codex run used shell output and correctly failed the native receipt check.
 The project-command substitution arm remains open.
@@ -146,6 +147,8 @@ The 20-run final sequence awaits finished integration.
 | Database auditor | Pending verified dispatch |
 | Verifier | Pending verified dispatch |
 
+The named spec lead evaluation path selects `--agent spec-lead` even when the case has an empty specialist team.
+The empty definition retains the lead skill and exposes no subagent tool.
 The blind input preflight staged 44 variants across all 12 skill catalogs.
 Twenty-four variants use the pinned tasklist fixture repository, nine are self-contained, and eleven require a matching planted pilot.
 The preflight stages only declared inputs, substitutes the selected SHAs, computes the spec and plan digests from the staged bytes and preserves deliberately stale evidence.

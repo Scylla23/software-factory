@@ -48,6 +48,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const skill = spec.skill;
   if (skill) {
     if (skill.dirs.worktree !== worktree || basename(skill.dirs.root) !== spec.runId) throw new Error("skill attempt or worktree mismatch");
+    if (skill.namedLeadEvaluation && (spec.harness !== "claude" || skill.dirs.role !== "spec-lead")) throw new Error("named lead evaluation requires a Claude spec lead");
     requireSkillProofs(spec.harness, skill.dirs.role, skill.members);
   }
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
@@ -77,7 +78,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: path, accountHome: config.accountHome });
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
-  const team = skill && brief && skill.members.length ? publishTeam(skill, brief, projectInstructions, fileToolsOnly) : undefined;
+  const team = skill && brief && (skill.members.length || skill.namedLeadEvaluation) ? publishTeam(skill, brief, projectInstructions, fileToolsOnly) : undefined;
   const promptRevision = createHash("sha256").update(JSON.stringify([prompt, instructions, team?.revision ?? null])).digest("hex");
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =

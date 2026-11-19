@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { cpSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../factory.config";
+import { claudeArgs } from "../src/dispatch/claude";
 import { createAttempt } from "../src/dispatch/attempt";
 import { briefPrompt, claudeDefinitions, requiredMembers, runBrief, type BriefInput } from "../src/dispatch/brief";
 import { makeSandbox, type Sandbox } from "./helpers";
@@ -40,6 +41,13 @@ test("the brief contains one block and every selected specialist has its own aut
       if (team.length === 1) expect(child.reads).toEqual([join(dirs.outDir, "team-brief.md")]);
     }
   }
+  const disabled = claudeDefinitions(runBrief(dirs,data),[],null);
+  expect(Object.keys(disabled)).toEqual(["spec-lead"]);
+  expect(disabled["spec-lead"]!.tools.some(tool => tool.startsWith("Agent"))).toBe(false);
+  const argv = claudeArgs({sessionId:brief.attemptId,prompt:briefPrompt(brief),model:"haiku",effort:"low",
+    policy:{readable:[],denyRead:[],denyWrite:[]},team:{file:"lead.json",members:[]},fileToolsOnly:true});
+  expect(argv[argv.indexOf("--agent") + 1]).toBe("spec-lead");
+  expect(argv[argv.indexOf("--tools") + 1]!.split(",")).not.toContain("Agent");
   expect(() => claudeDefinitions(runBrief(dirs, data), ["architect"], null)).toThrow("team-enabled");
   expect(() => runBrief(dirs, { ...data, baseSha: "HEAD" })).toThrow("identity");
 });

@@ -11,6 +11,8 @@ import { codexWrites } from "../src/dispatch/codex-writes";
 import { loadDispatchConfig, managedSettingsProblems } from "../src/dispatch/config";
 import { runGit } from "../src/dispatch/git";
 import { readJsonl } from "../src/dispatch/jsonl";
+import { outputDigest } from "../src/dispatch/output";
+import { readRegularFile } from "../src/dispatch/regular-file";
 import { agentEnv, effectiveDenyRead } from "../src/dispatch/policy";
 import { assessCleanup, spawnAgentProcess, superviseRun, sweepWorktree } from "../src/dispatch/process";
 import { skillPolicy } from "../src/dispatch/skill-policy";
@@ -40,6 +42,9 @@ try {
     stateRoot:state,runRoot:join(root,"runs"),attemptId:id});
   for (const cwd of [dirs.worktree,dirs.scratchRepo!]) checkoutSnapshot(git,project,refs.head,cwd);
   const trial = prepareVerdict(git,factory,pin,dirs,refs,String(task.id));
+  const tracked = runGit(git, project, ["ls-tree","-r","-z","--name-only",refs.head]).toString().split("\0").filter(Boolean);
+  const snapshotHash = () => outputDigest(Buffer.from(JSON.stringify(tracked.map(path => [path,outputDigest(readRegularFile(join(dirs.worktree,path),1024*1024))]))));
+  const originalInputs = bundleDigest(dirs.taskDir), originalSnapshot = snapshotHash();
   const broker = prepareBroker(dirs,{...dispatch,stateRoot:state},state,refs.base,refs.head);
   const server = JSON.parse(readFileSync(broker.mcpPath,"utf8")).mcpServers.factory;
   const messages = [
@@ -84,8 +89,10 @@ try {
   if (!session) throw new Error("missing session");
   const receipts = await (harness === "codex" ? codexWrites : claudeWrites)(
     {attemptId:id,taskId:trial.taskId,role:dirs.role,sessionId:session},dispatch.stateRoot,home,dirs.outDir);
+  if (originalInputs !== bundleDigest(dirs.taskDir) || originalSnapshot !== snapshotHash() ||
+      runGit(git,dirs.worktree,["status","--porcelain"]).length || runGit(git,dirs.worktree,["rev-parse","HEAD"]).toString().trim() !== refs.head) throw new Error("protected inputs or snapshot changed");
   if (bundleDigest(dirs.skillsDir) !== bundle) throw new Error("pinned bundle changed");
   const archived = verifyVerdict(dirs,trial,session,receipts,store,bundle);
   if (!archived) throw new Error("archive or substitution failure");
-  console.log(JSON.stringify({harness,version,model,session,id,...refs,headTests:7,archived,hostSubstitutionRejected:true}));
+  console.log(JSON.stringify({harness,version,model,session,id,...refs,headTests:7,inputsIntact:true,snapshotIntact:true,archived,hostSubstitutionRejected:true}));
 } finally { store.db.close(); rmSync(root,{recursive:true,force:true}); }

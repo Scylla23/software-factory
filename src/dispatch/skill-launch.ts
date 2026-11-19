@@ -5,6 +5,8 @@ import type { Harness } from "./types";
 export interface SkillLaunch {
   dirs: AttemptDirectories;
   brief: BriefInput;
+  /** Measure the named Claude lead even when the eval case has no team. */
+  namedLeadEvaluation?: true;
   members: ReturnType<typeof requiredMembers>;
   toolDirs: readonly string[];
   factoryRepo: string;

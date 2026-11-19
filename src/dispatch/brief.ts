@@ -52,8 +52,8 @@ export function requiredMembers(tier: "S" | "M" | "L", security: boolean, newPro
 export function claudeDefinitions(
   brief: ReturnType<typeof runBrief>, members: readonly Member[], projectInstructions: string | null,
 ) {
-  if (brief.role !== "spec-lead" || !brief.teamEnabled || !members.length || new Set(members).size !== members.length)
-    throw new Error("definitions require a team-enabled spec lead and distinct members");
+  if (brief.role !== "spec-lead" || brief.teamEnabled !== (members.length > 0) || new Set(members).size !== members.length)
+    throw new Error("definitions require a matching team-enabled state and distinct members");
   const file = join(brief.skillsDir, "spec-lead/team.json");
   const team = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularFile(file, 32 * 1024)));
   if (team.lead !== "spec-lead" || !Array.isArray(team.members)) throw new Error("invalid spec team definition");
@@ -61,7 +61,7 @@ export function claudeDefinitions(
     "spec-lead": {
       description: "Factory spec lead for this attempt",
       prompt: composeInstructions(brief.skillsDir, "spec-lead", projectInstructions),
-      tools: [`Agent(${members.join(", ")})`, "Bash", "Read", "Edit", "Write", "Glob", "Grep"],
+      tools: [...(members.length ? [`Agent(${members.join(", ")})`] : []), "Bash", "Read", "Edit", "Write", "Glob", "Grep"],
       model: config.agents.spec.model, effort: config.agents.spec.effort,
     },
   };
