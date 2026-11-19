@@ -83,11 +83,14 @@ export interface RunResult {
   /** Set when the run was cancelled or timed out; survivors are owned processes that could not be killed. */
   cleanup: TerminationReport | null;
   /**
-   * True only when it is proven that no process the run owned is still alive: the root exited and termination (if
-   * any) left no survivor and hit no error, or a root that exited by itself left nothing in its group.
-   * A descendant that detached with setsid() before it was seen is outside what can be proven (see process.ts).
+   * True when no process the factory knows of outlived the run: the root exited, termination (if any) left no survivor
+   * and hit no error, a root that exited by itself left nothing in its group, and the worktree sweep succeeded and
+   * killed everything it found. Never proof of absence: a detached process that changed its cwd out of the worktree
+   * cannot be found (see process.ts).
    */
-  cleanupVerified: boolean;
-  /** Set whenever cleanup is unverified: the worktree may still be in use and must not be reused or removed yet. */
+  noKnownSurvivors: boolean;
+  /** Set when any of `quarantineReasons` applies: the worktree may still be in use and must not be reused or removed yet. */
   quarantineWorktree: boolean;
+  /** Why the worktree is quarantined: survivors, cleanup errors, processes found in it after the run, or a failed scan. */
+  quarantineReasons: string[];
 }

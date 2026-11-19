@@ -7,7 +7,7 @@ import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
 import { agentEnv, assertPolicySound, effectiveDenyRead, type PolicyContext, type SandboxPolicy } from "./policy";
-import { type AgentProcess, spawnAgentProcess, superviseRun } from "./process";
+import { type AgentProcess, spawnAgentProcess, superviseRun, sweepWorktree } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
 
 export { loadDispatchConfig, type DispatchConfig } from "./config";
@@ -73,9 +73,20 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const { status, stopped, cleanup, unverified } = await superviseRun(proc, { timeoutMs: spec.timeoutMs, signal: spec.signal, psPath: config.executables.ps });
 
   const diagnostics: string[] = [];
+  // The monitor closes first: its tab is the owner's, not the run's, though the sweep would skip it anyway.
   if (monitor) diagnostics.push(...(await monitor.close()).map((d) => `monitor: ${d}`));
   if (status?.error) diagnostics.push(`spawn failed: ${status.error}`);
-  diagnostics.push(...unverified.map((u) => `cleanup unverified: ${u}`));
+  // Anything still running in the worktree now outlived the run, wherever it sits in the process tree.
+  const sweep = await sweepWorktree(worktree, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
+  const quarantineReasons = [...unverified];
+  if (sweep.scanError) quarantineReasons.push(`worktree scan failed: ${sweep.scanError}`);
+  if (sweep.found.length > 0) quarantineReasons.push(`${sweep.found.length} processes were still running in the worktree after the run: ${sweep.found.map((p) => p.pid).join(", ")}`);
+  const sweepClean = !sweep.cleanup || (sweep.cleanup.survivors.length === 0 && sweep.cleanup.errors.length === 0);
+  if (sweep.cleanup) {
+    quarantineReasons.push(...sweep.cleanup.errors.map((e) => `worktree sweep: ${e}`));
+    if (sweep.cleanup.survivors.length > 0) quarantineReasons.push(`worktree sweep could not kill: ${sweep.cleanup.survivors.map((p) => p.pid).join(", ")}`);
+  }
+  diagnostics.push(...quarantineReasons.map((r) => `quarantine: ${r}`));
   const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
     harness: spec.harness,
@@ -87,8 +98,9 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     stderrPath: logs.stderrPath,
     instructionsPath,
     cleanup,
-    cleanupVerified: unverified.length === 0,
-    quarantineWorktree: unverified.length > 0,
+    noKnownSurvivors: unverified.length === 0 && sweep.scanError === null && sweepClean,
+    quarantineWorktree: quarantineReasons.length > 0,
+    quarantineReasons,
   };
 
   if (spec.harness === "claude") {

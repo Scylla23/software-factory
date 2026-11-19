@@ -1,9 +1,10 @@
+import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { expandHome, MANDATORY_DENY_READ } from "../src/dispatch/policy";
-import { type ProcRow, type Snapshot, snapshot, spawnAgentProcess, superviseRun, terminateTree, verifyGone, Tracker } from "../src/dispatch/process";
+import { type ProcRow, type Snapshot, scanWorktree, snapshot, spawnAgentProcess, superviseRun, sweepWorktree, terminateTree, verifyGone, Tracker } from "../src/dispatch/process";
 import { alive, FIXTURES, fixture, gone, makeSandbox, readPid, type Sandbox, writeLines } from "./helpers";
 
 let sb: Sandbox;
@@ -335,9 +336,9 @@ describe("cleanup verification", () => {
 
   test("a clean run and a cleanly stopped run are verified, and the worktree is not quarantined", async () => {
     const done = await runAgent(spec("claude", `replay:${fixture("claude-headless.stream.jsonl")}`), sb.config);
-    expect(done).toMatchObject({ outcome: "completed", cleanupVerified: true, quarantineWorktree: false });
+    expect(done).toMatchObject({ outcome: "completed", noKnownSurvivors: true, quarantineWorktree: false, quarantineReasons: [] });
     const stopped = await runAgent({ ...spec("claude", `hang:${join(sb.worktree, "c.pid")}`), timeoutMs: 300 }, sb.config);
-    expect(stopped).toMatchObject({ outcome: "timed_out", cleanupVerified: true, quarantineWorktree: false });
+    expect(stopped).toMatchObject({ outcome: "timed_out", noKnownSurvivors: true, quarantineWorktree: false, quarantineReasons: [] });
   });
 
   test("a root that exits leaving a process in its group is unverified", async () => {
@@ -364,8 +365,8 @@ describe("cleanup verification", () => {
     const childFile = join(sb.worktree, "q.pid");
     try {
       const run = await runAgent({ ...spec("claude", `hang:${childFile}`), timeoutMs: 300 }, config);
-      expect(run).toMatchObject({ outcome: "timed_out", cleanupVerified: false, quarantineWorktree: true });
-      expect(run.diagnostics).toContainEqual(expect.stringMatching(/^cleanup unverified: termination: process snapshot failed/));
+      expect(run).toMatchObject({ outcome: "timed_out", noKnownSurvivors: false, quarantineWorktree: true });
+      expect(run.diagnostics).toContainEqual(expect.stringMatching(/^quarantine: termination: process snapshot failed/));
       // The flag is truthful: without ps the fake's background child was never found, so it is still alive.
       expect(alive(await readPid(childFile))).toBe(true);
     } finally {
@@ -381,6 +382,84 @@ test("verifyGone: survivors of termination make cleanup unverified", () => {
   expect(verifyGone(root, exited, { survivors: [survivor], errors: [] }, { psPath: "/bin/ps" })).toEqual(["1 owned processes survived termination: 4242"]);
   expect(verifyGone(root, exited, { survivors: [], errors: [] }, { psPath: "/bin/ps" })).toEqual([]);
   expect(verifyGone(root, { code: null, signal: null, error: "ENOENT" }, null, { psPath: "/nonexistent" })).toEqual([]);
+});
+
+describe("worktree sweep", () => {
+  test("a detached child left in the worktree after the CLI exits is found, killed, and quarantines the worktree", async () => {
+    const pidFile = join(sb.stateRoot, "detached.pid");
+    const r = await runAgent(spec("claude", `detach:${pidFile}`), sb.config);
+    const pid = await readPid(pidFile);
+    try {
+      expect(r.outcome).toBe("completed");
+      expect(r).toMatchObject({ noKnownSurvivors: true, quarantineWorktree: true });
+      expect(r.quarantineReasons).toEqual([`1 processes were still running in the worktree after the run: ${pid}`]);
+      expect(await gone(pid)).toBe(true);
+    } finally {
+      if (alive(pid)) process.kill(pid, "SIGKILL");
+    }
+  });
+
+  test("the detached child really is outside the run's group and reparented, which supervision alone cannot see", async () => {
+    const pidFile = join(sb.stateRoot, "detached.pid");
+    const o = openSync(join(sb.stateRoot, "out"), "w");
+    const root = spawnAgentProcess({ executable: sb.config.executables.claude, args: [`detach:${pidFile}`], cwd: sb.worktree, env: { PATH: "/usr/bin:/bin" }, stdoutFd: o, stderrFd: o, psPath: "/bin/ps" });
+    closeSync(o);
+    const supervised = await superviseRun(root, { timeoutMs: 30_000, psPath: "/bin/ps" });
+    const pid = await readPid(pidFile);
+    try {
+      const row = snapshot("/bin/ps", [pid]).get(pid)!;
+      expect(row.ppid).toBe(1);
+      expect(row.pgid).not.toBe(root.pid);
+      expect(supervised.unverified).toEqual([]);
+      expect(scanWorktree(realpathSync(sb.worktree), { psPath: "/bin/ps", lsofPath: "/usr/sbin/lsof" })).toEqual([{ pid, start: row.start }]);
+    } finally {
+      process.kill(pid, "SIGKILL");
+    }
+  });
+
+  test("a detached process in a subdirectory of the worktree is found too", async () => {
+    const sub = join(sb.worktree, "deep", "er");
+    mkdirSync(sub, { recursive: true });
+    const pidFile = join(sb.stateRoot, "sub.pid");
+    Bun.spawnSync(["/usr/bin/perl", "-MPOSIX", "-e", 'exit 0 if fork; POSIX::setsid(); exit 0 if fork; open(my $f, ">", $ARGV[0]); print $f $$; close $f; exec "/bin/sleep", "306"', pidFile], { cwd: sub });
+    const pid = await readPid(pidFile);
+    try {
+      expect(scanWorktree(realpathSync(sb.worktree), { psPath: "/bin/ps", lsofPath: "/usr/sbin/lsof" }).map((p) => p.pid)).toEqual([pid]);
+    } finally {
+      process.kill(pid, "SIGKILL");
+    }
+  });
+
+  test("a process in the worktree under a live parent outside it (an Orca terminal shell) is not the run's", async () => {
+    const pidFile = join(sb.stateRoot, "shell-child.pid");
+    const o = openSync(join(sb.stateRoot, "out"), "w");
+    const shell = spawn("/bin/sh", ["-c", `(cd '${sb.worktree}' && exec /bin/sleep 305) & echo $! > '${pidFile}'; wait`], { cwd: sb.stateRoot, stdio: ["ignore", o, o] });
+    closeSync(o);
+    const pid = await readPid(pidFile);
+    try {
+      for (let i = 0; i < 100 && !Bun.spawnSync(["/usr/sbin/lsof", "-a", "-p", String(pid), "-d", "cwd", "-Fn"]).stdout.toString().includes(realpathSync(sb.worktree)); i++) await Bun.sleep(20);
+      expect(scanWorktree(realpathSync(sb.worktree), { psPath: "/bin/ps", lsofPath: "/usr/sbin/lsof" })).toEqual([]);
+    } finally {
+      process.kill(pid, "SIGKILL");
+      shell.kill("SIGKILL");
+    }
+  });
+
+  test("a failing or hanging scan quarantines the worktree", async () => {
+    const failing = join(sb.bin, "failing-lsof");
+    writeFileSync(failing, "#!/bin/sh\necho broken >&2\nexit 1\n");
+    chmodSync(failing, 0o755);
+    const config = { ...sb.config, executables: { ...sb.config.executables, lsof: failing } };
+    const r = await runAgent(spec("claude", `replay:${fixture("claude-headless.stream.jsonl")}`), config);
+    expect(r).toMatchObject({ outcome: "completed", noKnownSurvivors: false, quarantineWorktree: true, quarantineReasons: ["worktree scan failed: lsof exited 1: broken"] });
+
+    const hanging = join(sb.bin, "hanging-lsof");
+    writeFileSync(hanging, "#!/bin/sh\nexec /bin/sleep 30\n");
+    chmodSync(hanging, 0o755);
+    const started = Date.now();
+    expect(await sweepWorktree(sb.worktree, { psPath: "/bin/ps", lsofPath: hanging, lsofTimeoutMs: 200 })).toEqual({ found: [], cleanup: null, scanError: "lsof gave no answer within 200ms" });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
 });
 
 describe("Tracker identity", () => {
