@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-task-by-id",
+  "taskRevision": 1,
+  "tier": "M",
+  "tierReasons": [
+    {
+      "signal": "api change",
+      "evidence": "Two new routes in src/api/tasks.ts; no schema or auth mechanism change."
+    }
+  ],
+  "riskFlags": {
+    "security": {
+      "value": true,
+      "reason": "New routes read and write per-user data by id and parse a request body."
+    },
+    "migration": {
+      "value": false,
+      "reason": "No persisted shape change."
+    },
+    "newProject": {
+      "value": false,
+      "reason": "project.isNew is false."
+    }
+  },
+  "areas": [
+    "src/api/tasks.ts",
+    "src/api/tasks.test.ts"
+  ],
+  "confidence": "high",
+  "kindCheck": {
+    "declared": "feature",
+    "assessed": "feature",
+    "note": ""
+  },
+  "clarifyingQuestions": [],
+  "injectionSuspected": false
+}

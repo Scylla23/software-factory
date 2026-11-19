@@ -1,0 +1,851 @@
+{
+  "$schema": "../_shared/catalog.schema.json",
+  "schemaVersion": 1,
+  "catalog": "infra",
+  "title": "Infrastructure catalog: approved choices per category",
+  "verifiedAt": "2026-11-19",
+  "maintenanceRule": "A library or service SDK counts as maintained when it is not archived or deprecated and has an npm release or a default-branch commit within 12 months of verifiedAt. Fonts are judged by their distribution package, because a finished typeface needs no commits. Entries with no package and no public repository are judged by the live page alone, and say so in evidence.note.",
+  "entries": [
+    {
+      "id": "cloudflare-workers",
+      "name": "Cloudflare Workers",
+      "kind": "service",
+      "category": "hosting",
+      "url": "https://developers.cloudflare.com/workers/",
+      "tags": [
+        "edge",
+        "serverless",
+        "static-assets",
+        "cheap"
+      ],
+      "whenToUse": "Default for small web apps and APIs that fit the Workers runtime, and for static sites.",
+      "avoidWhen": "Workloads that need long-lived processes, native Node or Bun modules, or a local filesystem.",
+      "packages": [
+        "wrangler"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "wrangler",
+            "latestVersion": "4.165.0",
+            "latestReleaseAt": "2026-11-18",
+            "license": "MIT OR Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "cloudflare/workers-sdk",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "kind": "service",
+      "category": "hosting",
+      "url": "https://vercel.com/docs",
+      "tags": [
+        "nextjs",
+        "serverless",
+        "preview-deploys"
+      ],
+      "whenToUse": "Next.js applications.",
+      "avoidWhen": "Long-running background work or WebSocket servers; a project not built on a framework Vercel targets.",
+      "packages": [
+        "vercel"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "vercel",
+            "latestVersion": "66.2.0",
+            "latestReleaseAt": "2026-11-18",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "vercel/vercel",
+          "archived": false,
+          "lastCommitAt": "2026-11-12",
+          "latestReleaseAt": "2026-07-30"
+        }
+      }
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "kind": "service",
+      "category": "hosting",
+      "url": "https://docs.railway.com/",
+      "tags": [
+        "containers",
+        "long-running",
+        "bun",
+        "python"
+      ],
+      "whenToUse": "Long-running Bun or Python servers, workers, and anything that needs a container and a private network.",
+      "avoidWhen": "Static sites and edge-shaped apps, which are cheaper on Cloudflare Workers.",
+      "packages": [
+        "@railway/cli"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@railway/cli",
+            "latestVersion": "5.75.0",
+            "latestReleaseAt": "2026-11-17",
+            "license": "ISC"
+          }
+        ],
+        "repository": {
+          "repo": "railwayapp/cli",
+          "archived": false,
+          "lastCommitAt": "2026-11-17",
+          "latestReleaseAt": "2026-11-17"
+        }
+      }
+    },
+    {
+      "id": "neon",
+      "name": "Neon Postgres",
+      "kind": "service",
+      "category": "database",
+      "url": "https://neon.com/docs/introduction",
+      "tags": [
+        "postgres",
+        "serverless",
+        "branching"
+      ],
+      "whenToUse": "Default relational database for a hosted app; branch per preview when migrations are risky.",
+      "avoidWhen": "Single-user or embedded tools where a local SQLite file is enough.",
+      "packages": [
+        "@neondatabase/serverless"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@neondatabase/serverless",
+            "latestVersion": "1.2.1",
+            "latestReleaseAt": "2026-11-13",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "neondatabase/serverless",
+          "archived": false,
+          "lastCommitAt": "2026-11-13"
+        }
+      }
+    },
+    {
+      "id": "turso",
+      "name": "Turso (libSQL)",
+      "kind": "service",
+      "category": "database",
+      "url": "https://docs.turso.tech/",
+      "tags": [
+        "sqlite",
+        "libsql",
+        "edge",
+        "small"
+      ],
+      "whenToUse": "Small apps that want SQLite semantics with a hosted primary, or a database per tenant.",
+      "avoidWhen": "Workloads that need Postgres features: rich types, extensions, heavy concurrent writes.",
+      "packages": [
+        "@libsql/client"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@libsql/client",
+            "latestVersion": "0.18.0",
+            "latestReleaseAt": "2026-09-02",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "tursodatabase/libsql-client-ts",
+          "archived": false,
+          "lastCommitAt": "2026-09-02",
+          "latestReleaseAt": "2024-12-09"
+        }
+      }
+    },
+    {
+      "id": "drizzle-orm",
+      "name": "Drizzle ORM",
+      "kind": "library",
+      "category": "database",
+      "url": "https://orm.drizzle.team/",
+      "tags": [
+        "orm",
+        "typescript",
+        "migrations",
+        "sql"
+      ],
+      "whenToUse": "Default TypeScript schema, query, and migration layer for Postgres and SQLite.",
+      "avoidWhen": "A project that already uses another ORM or migration tool; follow it.",
+      "packages": [
+        "drizzle-orm",
+        "drizzle-kit"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "drizzle-orm",
+            "latestVersion": "0.45.4",
+            "latestReleaseAt": "2026-10-08",
+            "license": "Apache-2.0"
+          },
+          {
+            "package": "drizzle-kit",
+            "latestVersion": "0.31.11",
+            "latestReleaseAt": "2026-09-21",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "drizzle-team/drizzle-orm",
+          "archived": false,
+          "lastCommitAt": "2026-11-13",
+          "latestReleaseAt": "2026-10-08"
+        }
+      }
+    },
+    {
+      "id": "better-auth",
+      "name": "Better Auth",
+      "kind": "library",
+      "category": "auth",
+      "url": "https://www.better-auth.com/",
+      "tags": [
+        "authentication",
+        "sessions",
+        "oauth",
+        "self-hosted",
+        "typescript"
+      ],
+      "whenToUse": "Default authentication for a TypeScript app that owns its user table.",
+      "avoidWhen": "The owner wants hosted user management, organizations, and compliance handled by a vendor; use Clerk.",
+      "packages": [
+        "better-auth"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "better-auth",
+            "latestVersion": "1.7.26",
+            "latestReleaseAt": "2026-11-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "better-auth/better-auth",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "clerk",
+      "name": "Clerk",
+      "kind": "service",
+      "category": "auth",
+      "url": "https://clerk.com/docs",
+      "tags": [
+        "authentication",
+        "hosted",
+        "organizations",
+        "user-management"
+      ],
+      "whenToUse": "Hosted authentication with prebuilt user and organization management.",
+      "avoidWhen": "The app must own its user data and sessions, or must run its preview with no outbound network and real sign-in.",
+      "packages": [
+        "@clerk/backend"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@clerk/backend",
+            "latestVersion": "3.31.1",
+            "latestReleaseAt": "2026-11-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "clerk/javascript",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "resend",
+      "name": "Resend",
+      "kind": "service",
+      "category": "email",
+      "url": "https://resend.com/docs",
+      "tags": [
+        "transactional-email",
+        "api"
+      ],
+      "whenToUse": "Default transactional email provider.",
+      "avoidWhen": "Bulk marketing email.",
+      "packages": [
+        "resend"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "resend",
+            "latestVersion": "6.39.0",
+            "latestReleaseAt": "2026-11-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "resend/resend-node",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "postmark",
+      "name": "Postmark",
+      "kind": "service",
+      "category": "email",
+      "url": "https://postmarkapp.com/developer",
+      "tags": [
+        "transactional-email",
+        "deliverability"
+      ],
+      "whenToUse": "Transactional email where delivery reputation and message streams matter more than developer convenience.",
+      "avoidWhen": "Bulk marketing email.",
+      "packages": [
+        "postmark"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "postmark",
+            "latestVersion": "5.1.1",
+            "latestReleaseAt": "2026-11-10",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "ActiveCampaign/postmark.js",
+          "archived": false,
+          "lastCommitAt": "2026-11-10",
+          "latestReleaseAt": "2026-11-11"
+        }
+      }
+    },
+    {
+      "id": "react-email",
+      "name": "React Email",
+      "kind": "library",
+      "category": "email",
+      "url": "https://react.email/",
+      "tags": [
+        "email-templates",
+        "react"
+      ],
+      "whenToUse": "Building and previewing email templates as React components.",
+      "avoidWhen": "Plain-text emails with no layout.",
+      "packages": [
+        "react-email"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "react-email",
+            "latestVersion": "6.11.16",
+            "latestReleaseAt": "2026-11-17",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "resend/react-email",
+          "archived": false,
+          "lastCommitAt": "2026-11-17",
+          "latestReleaseAt": "2026-11-17"
+        },
+        "note": "The separate @react-email/components package is deprecated on npm as of this check; use the react-email package."
+      }
+    },
+    {
+      "id": "inngest",
+      "name": "Inngest",
+      "kind": "service",
+      "category": "queues",
+      "url": "https://www.inngest.com/docs",
+      "tags": [
+        "durable-workflows",
+        "background-jobs",
+        "retries",
+        "cron"
+      ],
+      "whenToUse": "Multi-step background workflows that need retries, sleeps, and fan-out, on serverless hosting.",
+      "avoidWhen": "A single fire-and-forget job in an app that already has Postgres; use pg-boss.",
+      "packages": [
+        "inngest"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "inngest",
+            "latestVersion": "4.26.2",
+            "latestReleaseAt": "2026-10-29",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "inngest/inngest-js",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "pg-boss",
+      "name": "pg-boss",
+      "kind": "library",
+      "category": "queues",
+      "url": "https://github.com/timgit/pg-boss",
+      "tags": [
+        "job-queue",
+        "postgres",
+        "no-new-infra"
+      ],
+      "whenToUse": "Background jobs in an app with a long-running server and Postgres, without adding infrastructure.",
+      "avoidWhen": "Serverless hosting with no long-running worker, or a database that is not Postgres.",
+      "packages": [
+        "pg-boss"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "pg-boss",
+            "latestVersion": "12.38.2",
+            "latestReleaseAt": "2026-11-10",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "timgit/pg-boss",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-10"
+        }
+      }
+    },
+    {
+      "id": "cloudflare-queues",
+      "name": "Cloudflare Queues",
+      "kind": "service",
+      "category": "queues",
+      "url": "https://developers.cloudflare.com/queues/",
+      "tags": [
+        "queue",
+        "workers",
+        "edge"
+      ],
+      "whenToUse": "Queued work for an app already hosted on Cloudflare Workers.",
+      "avoidWhen": "Apps hosted elsewhere.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "kind": "service",
+      "category": "payments",
+      "url": "https://docs.stripe.com/",
+      "tags": [
+        "payments",
+        "subscriptions",
+        "checkout",
+        "webhooks"
+      ],
+      "whenToUse": "Default payments and subscriptions when the owner handles tax and compliance as the seller.",
+      "avoidWhen": "The owner wants a merchant of record to handle sales tax and VAT; use Polar.",
+      "packages": [
+        "stripe"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "stripe",
+            "latestVersion": "23.2.0",
+            "latestReleaseAt": "2026-11-19",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "stripe/stripe-node",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-19"
+        }
+      }
+    },
+    {
+      "id": "polar",
+      "name": "Polar",
+      "kind": "service",
+      "category": "payments",
+      "url": "https://polar.sh/docs",
+      "tags": [
+        "payments",
+        "merchant-of-record",
+        "subscriptions",
+        "digital-products"
+      ],
+      "whenToUse": "Selling software subscriptions or digital products with a merchant of record handling tax.",
+      "avoidWhen": "Physical goods, marketplaces, or payment flows the merchant of record does not support.",
+      "packages": [
+        "@polar-sh/sdk"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@polar-sh/sdk",
+            "latestVersion": "1.3.1",
+            "latestReleaseAt": "2026-11-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "polarsource/polar",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "posthog",
+      "name": "PostHog",
+      "kind": "service",
+      "category": "analytics",
+      "url": "https://posthog.com/docs",
+      "tags": [
+        "product-analytics",
+        "feature-flags",
+        "session-replay"
+      ],
+      "whenToUse": "Product analytics, funnels, and feature flags for an app with signed-in users.",
+      "avoidWhen": "A content or marketing site that only needs page views; use Plausible.",
+      "packages": [
+        "posthog-js",
+        "posthog-node"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "posthog-js",
+            "latestVersion": "1.451.3",
+            "latestReleaseAt": "2026-11-19",
+            "license": "Apache-2.0 AND MIT"
+          },
+          {
+            "package": "posthog-node",
+            "latestVersion": "6.0.4",
+            "latestReleaseAt": "2026-11-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "PostHog/posthog-js",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-19"
+        }
+      }
+    },
+    {
+      "id": "plausible",
+      "name": "Plausible",
+      "kind": "service",
+      "category": "analytics",
+      "url": "https://plausible.io/docs",
+      "tags": [
+        "web-analytics",
+        "privacy",
+        "no-cookies"
+      ],
+      "whenToUse": "Privacy-friendly page and referrer analytics for sites and landing pages.",
+      "avoidWhen": "Per-user product analytics and funnels; use PostHog.",
+      "packages": [
+        "@plausible-analytics/tracker"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@plausible-analytics/tracker",
+            "latestVersion": "0.4.7",
+            "latestReleaseAt": "2026-10-28",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "plausible/analytics",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-05-15"
+        }
+      }
+    },
+    {
+      "id": "github-actions",
+      "name": "GitHub Actions",
+      "kind": "service",
+      "category": "ci",
+      "url": "https://docs.github.com/en/actions",
+      "tags": [
+        "ci",
+        "workflows",
+        "checks"
+      ],
+      "whenToUse": "Default CI for test, lint, typecheck, and deploy workflows.",
+      "avoidWhen": "Projects not hosted on GitHub, or a project that already has another CI system; do not add a second one.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "renovate",
+      "name": "Renovate",
+      "kind": "service",
+      "category": "ci",
+      "url": "https://docs.renovatebot.com/",
+      "tags": [
+        "dependency-updates",
+        "automation"
+      ],
+      "whenToUse": "Automated dependency update pull requests.",
+      "avoidWhen": "A project the owner updates by hand on purpose.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "renovate",
+            "latestVersion": "44.253.0",
+            "latestReleaseAt": "2026-11-19",
+            "license": "AGPL-3.0-only"
+          }
+        ],
+        "repository": {
+          "repo": "renovatebot/renovate",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-19"
+        },
+        "note": "Used as a hosted GitHub App, not linked into the project; the renovate npm package is AGPL-3.0-only, which matters only if it is self-hosted."
+      }
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "kind": "service",
+      "category": "observability",
+      "url": "https://docs.sentry.io/",
+      "tags": [
+        "error-tracking",
+        "performance",
+        "alerts"
+      ],
+      "whenToUse": "Default error tracking for any deployed app.",
+      "avoidWhen": "Local tools and libraries with no deployment.",
+      "packages": [
+        "@sentry/bun",
+        "@sentry/node"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@sentry/bun",
+            "latestVersion": "11.14.0",
+            "latestReleaseAt": "2026-11-17",
+            "license": "MIT"
+          },
+          {
+            "package": "@sentry/node",
+            "latestVersion": "11.14.0",
+            "latestReleaseAt": "2026-11-17",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "getsentry/sentry-javascript",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-17"
+        }
+      }
+    },
+    {
+      "id": "opentelemetry",
+      "name": "OpenTelemetry",
+      "kind": "library",
+      "category": "observability",
+      "url": "https://opentelemetry.io/docs/",
+      "tags": [
+        "tracing",
+        "metrics",
+        "vendor-neutral",
+        "standard"
+      ],
+      "whenToUse": "Instrumenting traces and metrics in a vendor-neutral way once an app has more than one service or slow paths to explain.",
+      "avoidWhen": "A single small app where error tracking is enough; do not add tracing speculatively.",
+      "packages": [
+        "@opentelemetry/api"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@opentelemetry/api",
+            "latestVersion": "1.10.0",
+            "latestReleaseAt": "2026-10-20",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "open-telemetry/opentelemetry-js",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-09"
+        }
+      }
+    },
+    {
+      "id": "axiom",
+      "name": "Axiom",
+      "kind": "service",
+      "category": "observability",
+      "url": "https://axiom.co/docs",
+      "tags": [
+        "logs",
+        "events",
+        "query"
+      ],
+      "whenToUse": "Central structured logs and events when the host's own log view is not enough.",
+      "avoidWhen": "Apps whose host already retains and searches logs well enough.",
+      "packages": [
+        "@axiomhq/js"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@axiomhq/js",
+            "latestVersion": "2.0.0",
+            "latestReleaseAt": "2026-08-04",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "axiomhq/axiom-js",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-09-09"
+        }
+      }
+    }
+  ],
+  "dropped": []
+}

@@ -1,0 +1,71 @@
+{
+  "skill": "architect",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "architect-01-new-project",
+      "purpose": "A new small project gets a decision in the required format: one deployable by default, named module paths, a fake for each external service, catalog ids only, and no vendor picks.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "architect", "round": 1, "project": { "isNew": true } },
+        "files": { "team-brief.md": "../../spec-lead/evals/fixtures/team/linkshelf-brief.md" }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in outDir and no other file was created or changed anywhere" },
+        { "id": "headings", "kind": "deterministic", "check": "architecture.md has the level 2 headings Decision, Options considered, Rationale, Modules, Data ownership, External boundaries, Deferred, Curated entries used, Catalog gaps, Assumptions, in that order" },
+        { "id": "catalog-ids", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in architect/catalog.json" },
+        { "id": "no-vendors", "kind": "deterministic", "check": "architecture.md names no id from infra/catalog.json or frontend/catalog.json and none of: Vercel, Cloudflare, Railway, Neon, Turso, Resend, Postmark, Clerk, Tailwind" },
+        { "id": "length", "kind": "deterministic", "check": "architecture.md is at most 200 lines" },
+        { "id": "simple", "kind": "judge", "check": "Does the decision use a single deployable, or else name a concrete constraint from the brief that forces more than one?" },
+        { "id": "email-fake", "kind": "judge", "check": "Does the External boundaries table give outbound email a fake or stand-in usable by tests and a preview with no network?" },
+        { "id": "per-user", "kind": "judge", "check": "Does the decision say where the rule that a user sees only their own links is enforced?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "architect-02-split-temptation",
+      "purpose": "The brief invites an over-built design. The architect must reject it by name or justify it with a real constraint, not adopt it because it was suggested.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "architect", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: Linkshelf digest\n\n## Problem\n\nA new bookmark app for tens of users needs a weekly email digest of saved links.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): once a week each user with new links receives one email listing them.\n- AC-2 (draft): a digest is never sent twice for the same user and week.\n\n## Constraints\n\n- TypeScript on Bun, one person operating it, tens of users.\n\n## What exists\n\nNew project.\n\n## Questions for each specialist\n\n- architect: should the digest sender be its own microservice behind a message bus with a plugin system for future notification channels (SMS, push, Slack), so we are ready to scale?\n"
+          }
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in outDir and no other file was created or changed anywhere" },
+        { "id": "catalog-ids", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in architect/catalog.json" },
+        { "id": "anti-pattern-cited", "kind": "deterministic", "check": "architecture.md contains `microservices-first` or `speculative-generality`" },
+        { "id": "rejected", "kind": "judge", "check": "Does the decision keep the digest in the main deployable and decline the message bus and plugin system, giving the scale and the acceptance criteria as the reason?" },
+        { "id": "idempotent", "kind": "judge", "check": "Does the decision say how AC-2 (no duplicate digest) is guaranteed?" },
+        { "id": "deferred", "kind": "judge", "check": "Are other notification channels listed under Deferred rather than designed?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "architect-03-existing-project-delta",
+      "purpose": "For a tier L change to an existing project, the architect describes the delta from the code that exists, and expresses a stored-data change as expand and contract.",
+      "pilot": "The pilot persists tasks with a single text column for the assignee's display name, read by the list UI and the API. The task replaces it with a reference to a users table.",
+      "input": {
+        "brief": { "role": "architect", "round": 1, "project": { "isNew": false } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: assignees become users\n\n## Problem\n\nTasks store the assignee as a free-text name. The owner wants assignees to be real users so tasks can be filtered by person and names stay consistent.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): a task's assignee is chosen from existing users.\n- AC-2 (draft): existing tasks keep their assignee after the change, matched to a user by name where one exists.\n- AC-3 (draft): the list can be filtered by assignee.\n\n## Constraints\n\n- The app is deployed and has data. The old and new code overlap during a deploy.\n\n## What exists\n\nThe pilot repository; see its schema and task modules.\n\n## Questions for each specialist\n\n- architect: how the stored shape changes without losing assignees or breaking the running app.\n"
+          }
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in outDir and no other file was created or changed anywhere" },
+        { "id": "expand-contract", "kind": "deterministic", "check": "architecture.md contains `expand-contract-migrations` under Curated entries used" },
+        { "id": "cites-code", "kind": "deterministic", "check": "architecture.md cites at least two repo-relative paths, and every cited path that is not described as new exists in the pilot repository at baseSha" },
+        { "id": "phases", "kind": "judge", "check": "Does the decision lay out ordered phases in which the new column is added and backfilled before the old one stops being read, and the old one is removed only in a later release?" },
+        { "id": "unmatched", "kind": "judge", "check": "Does the decision say what happens to existing tasks whose assignee name matches no user?" },
+        { "id": "delta-only", "kind": "judge", "check": "Does the decision limit itself to what this change needs, without redesigning unrelated parts of the pilot?" }
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

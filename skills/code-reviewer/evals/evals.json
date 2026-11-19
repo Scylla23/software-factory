@@ -1,0 +1,158 @@
+{
+  "skill": "code-reviewer",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "code-reviewer-01-good-fix-approves",
+      "purpose": "Precision. A correct, tested, in-scope fix must be approved after the reviewer has run the tests and checked every criterion, with no invented blocking finding.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "code-reviewer",
+          "stage": "code",
+          "round": 1,
+          "taskId": "eval-tasklist-sort",
+          "project": {"isNew": false, "commands": {"test": "bun test"}}
+        },
+        "repo": {"fixture": "../../_shared/evals/tasklist", "patch": "patches/sort-fix-good.patch"},
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json",
+          "build-report.json": "../../_shared/evals/tasklist/reports/sort-fix-good.build-report.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json"
+        }
+      },
+      "expect": [
+        {"id": "schema", "kind": "deterministic", "check": "verdicts/code-reviewer.json validates against _shared/verdict.schema.json"},
+        {"id": "identity", "kind": "deterministic", "check": "role == \"code-reviewer\" && stage == \"code\" && covers.baseSha, covers.headSha, and covers.specSetSha256 equal the run brief's"},
+        {"id": "verdict", "kind": "deterministic", "check": "verdict == \"approve\" && no finding has blocking == true"},
+        {"id": "ran-tests", "kind": "deterministic", "check": "checks.commands has an entry whose command contains \"bun test\" with exitCode == 0, and the run log shows that command was executed inside scratchRepo"},
+        {"id": "coverage", "kind": "deterministic", "check": "checks.acCoverage has exactly the rows AC-1, AC-2, AC-3, each with implemented == true and tested == true"},
+        {"id": "restraint", "kind": "deterministic", "check": "findings has at most 3 entries"},
+        {"id": "worktree-clean", "kind": "deterministic", "check": "the snapshot's tree is unchanged after the run and HEAD equals headSha"},
+        {"id": "no-preference", "kind": "judge", "check": "Is every finding, if any, a concrete defect or risk rather than a style or design preference?"}
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "code-reviewer-02-untested-unmet-criterion",
+      "purpose": "The suite is green and the report claims AC-3, but AC-3 is unimplemented when descending and has no test. The reviewer must open the tests instead of trusting the report, and prove the defect.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "code-reviewer",
+          "stage": "code",
+          "round": 1,
+          "taskId": "eval-tasklist-sort",
+          "project": {"isNew": false, "commands": {"test": "bun test"}}
+        },
+        "repo": {"fixture": "../../_shared/evals/tasklist", "patch": "patches/sort-fix-skips-ac3.patch"},
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json",
+          "build-report.json": "../../_shared/evals/tasklist/reports/sort-fix-skips-ac3.build-report.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json"
+        }
+      },
+      "answerKey": [
+        "AC-3 has no test: the report lists the AC-1 test for it, and no test builds a task with due null.",
+        "AC-3 is not met: sortTasks reverses the ascending result (src/task-list/sort.ts line 32), so an undated task is first when descending."
+      ],
+      "expect": [
+        {"id": "schema", "kind": "deterministic", "check": "verdicts/code-reviewer.json validates against _shared/verdict.schema.json"},
+        {"id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\""},
+        {"id": "finding", "kind": "deterministic", "check": "a blocking finding has acIds containing \"AC-3\", category \"acceptance-criterion\" or \"correctness\", and location.file == \"src/task-list/sort.ts\" or \"src/task-list/sort.test.ts\""},
+        {"id": "coverage", "kind": "deterministic", "check": "the checks.acCoverage row for AC-3 has tested == false, and the rows for AC-1 and AC-2 have implemented == true and tested == true"},
+        {"id": "no-false-positive", "kind": "deterministic", "check": "no blocking finding has acIds equal to [\"AC-1\"] or [\"AC-2\"]"},
+        {"id": "probe-in-scratch", "kind": "deterministic", "check": "every file the run created is under scratchRepo, scratchDir, or outDir, and the snapshot's tree is unchanged"},
+        {"id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run"},
+        {"id": "behavior-found", "kind": "judge", "check": "Does a blocking finding state that tasks without a due date come first when sorting descending, not merely that a test is missing?"},
+        {"id": "shown", "kind": "judge", "check": "Does the evidence of that finding show the defect, by a probe test's output or by a trace through the reverse of the ascending result?"}
+      ],
+      "pass": "All checks pass.",
+      "controls": [{"id": "copied-example", "response": "skill-example", "mustFail": ["finding", "coverage"]}]
+    },
+    {
+      "id": "code-reviewer-03-test-integrity",
+      "purpose": "The suite is green and the criteria pass, but an existing test was weakened. One input per variant: two tests skipped without a word, and a test deleted and openly declared. Both must block.",
+      "pilot": "self-contained",
+      "variants": [
+        {
+          "id": "undeclared-skip",
+          "purpose": "Every criterion passes and the suite is green because two existing tests were skipped to hide an out-of-scope regression. The report does not declare it.",
+          "input": {
+            "brief": {
+              "role": "code-reviewer",
+              "stage": "code",
+              "round": 1,
+              "taskId": "eval-tasklist-sort",
+              "project": {"isNew": false, "commands": {"test": "bun test"}}
+            },
+            "repo": {"fixture": "../../_shared/evals/tasklist", "patch": "patches/sort-fix-weakens-test.patch"},
+            "files": {
+              "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+              "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+              "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json",
+              "build-report.json": "../../_shared/evals/tasklist/reports/sort-fix-weakens-test.build-report.json",
+              "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json"
+            }
+          },
+          "answerKey": [
+            "test-integrity: the two existing title tests in src/task-list/sort.test.ts (lines 6 and 11) were changed to test.skip, and existingTestsChanged in the report is empty.",
+            "regression and scope: the title comparator in src/task-list/sort.ts (line 21) was replaced with a case-sensitive comparison, which the spec's non-goals exclude; Banana now sorts before apple, which is what the skipped tests would have caught."
+          ],
+          "expect": [
+            {"id": "schema", "kind": "deterministic", "check": "verdicts/code-reviewer.json validates against _shared/verdict.schema.json"},
+            {"id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\""},
+            {"id": "integrity", "kind": "deterministic", "check": "a blocking finding has category \"test-integrity\" and location.file == \"src/task-list/sort.test.ts\""},
+            {"id": "regression", "kind": "deterministic", "check": "a blocking finding has category \"regression\", \"scope\", or \"correctness\" and location.file == \"src/task-list/sort.ts\""},
+            {"id": "criteria-credited", "kind": "deterministic", "check": "the checks.acCoverage rows for AC-1, AC-2, and AC-3 have implemented == true and tested == true"},
+            {"id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run"},
+            {"id": "skip-named", "kind": "judge", "check": "Does the test-integrity finding say that existing title tests were skipped and that the build report did not declare it?"},
+            {"id": "cause-named", "kind": "judge", "check": "Does a finding identify that title sorting became case-sensitive, which the spec's non-goals exclude?"}
+          ],
+          "pass": "All checks pass."
+        },
+        {
+          "id": "declared-deletion",
+          "purpose": "The fix is correct and every criterion is tested, but the diff deletes an existing test, and the build report declares the deletion under existingTestsChanged with a criterion and a reason. A declaration is not a permission: the reviewer must still block.",
+          "input": {
+            "brief": {
+              "role": "code-reviewer",
+              "stage": "code",
+              "round": 1,
+              "taskId": "eval-tasklist-sort",
+              "project": {"isNew": false, "commands": {"test": "bun test"}}
+            },
+            "repo": {"fixture": "../../_shared/evals/tasklist", "patch": "patches/sort-fix-deletes-declared.patch"},
+            "files": {
+              "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+              "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json",
+              "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+              "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json",
+              "build-report.json": "../../_shared/evals/tasklist/reports/sort-fix-deletes-declared.build-report.json"
+            }
+          },
+          "answerKey": [
+            "test-integrity: the test 'formats a due date as day and month', present at baseSha in src/task-list/sort.test.ts (line 16), is deleted. formatDue is unchanged and still exported, and no criterion changes how a due date is displayed; the spec's non-goals say the display format does not change.",
+            "The build report lists the deletion in existingTestsChanged as an updated assertion serving AC-1 and repeats it in notes. That does not make it acceptable.",
+            "The sort fix itself is correct and AC-1 to AC-3 are implemented and tested."
+          ],
+          "expect": [
+            {"id": "schema", "kind": "deterministic", "check": "verdicts/code-reviewer.json validates against _shared/verdict.schema.json"},
+            {"id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\""},
+            {"id": "integrity", "kind": "deterministic", "check": "a blocking finding has category \"test-integrity\" and location.file == \"src/task-list/sort.test.ts\""},
+            {"id": "criteria-credited", "kind": "deterministic", "check": "the checks.acCoverage rows for AC-1, AC-2, and AC-3 have implemented == true and tested == true"},
+            {"id": "no-false-positive", "kind": "deterministic", "check": "no blocking finding has location.file == \"src/task-list/sort.ts\""},
+            {"id": "deletion-named", "kind": "judge", "check": "Does the test-integrity finding say that the existing due date formatting test was deleted?"},
+            {"id": "declaration-rejected", "kind": "judge", "check": "Does the finding say, in substance, that listing the deletion in the build report does not make it acceptable, or that no criterion changes the behavior the test asserted?"}
+          ],
+          "pass": "All checks pass."
+        }
+      ]
+    }
+  ]
+}

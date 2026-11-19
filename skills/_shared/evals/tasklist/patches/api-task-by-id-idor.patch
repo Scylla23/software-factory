@@ -1,0 +1,42 @@
+diff --git a/src/api/tasks.test.ts b/src/api/tasks.test.ts
+index eae410e..19c5761 100644
+--- a/src/api/tasks.test.ts
++++ b/src/api/tasks.test.ts
+@@ -21,3 +21,17 @@ test("lists only the caller's tasks", async () => {
+ test("rejects a request with no session", async () => {
+   expect((await call("GET", "/api/tasks", null)).status).toBe(401);
+ });
++
++test("AC-1: returns one of the caller's tasks by id", async () => {
++  const task = createTask(1, "mine", null);
++  const res = await call("GET", `/api/tasks/${task.id}`, 1);
++  expect(res.status).toBe(200);
++  expect(((await res.json()) as { title: string }).title).toBe("mine");
++});
++
++test("AC-2: updates the title of one of the caller's tasks", async () => {
++  const task = createTask(1, "mine", null);
++  const res = await call("PATCH", `/api/tasks/${task.id}`, 1, { title: "renamed" });
++  expect(res.status).toBe(200);
++  expect(((await res.json()) as { title: string }).title).toBe("renamed");
++});
+diff --git a/src/api/tasks.ts b/src/api/tasks.ts
+index 12ac42c..ab15697 100644
+--- a/src/api/tasks.ts
++++ b/src/api/tasks.ts
+@@ -34,5 +34,15 @@ export async function handle(req: Request, session: Session | null): Promise<Res
+   if (!session) return json(401, { error: "unauthenticated" });
+   const url = new URL(req.url);
+   if (req.method === "GET" && url.pathname === "/api/tasks") return json(200, listTasks(session.userId));
++  const match = /^\/api\/tasks\/(\d+)$/.exec(url.pathname);
++  if (match) {
++    const task = tasks.find((t) => t.id === Number(match[1]));
++    if (!task) return json(404, { error: "not found" });
++    if (req.method === "GET") return json(200, task);
++    if (req.method === "PATCH") {
++      Object.assign(task, await req.json());
++      return json(200, task);
++    }
++  }
+   return json(404, { error: "not found" });
+ }

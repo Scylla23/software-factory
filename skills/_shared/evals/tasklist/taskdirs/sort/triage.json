@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-sort",
+  "taskRevision": 1,
+  "tier": "S",
+  "tierReasons": [
+    {
+      "signal": "single area",
+      "evidence": "The due comparator lives in src/task-list/sort.ts and nothing else orders tasks."
+    }
+  ],
+  "riskFlags": {
+    "security": {
+      "value": false,
+      "reason": "No auth, session, or input parsing change."
+    },
+    "migration": {
+      "value": false,
+      "reason": "No persisted shape change."
+    },
+    "newProject": {
+      "value": false,
+      "reason": "project.isNew is false."
+    }
+  },
+  "areas": [
+    "src/task-list/sort.ts",
+    "src/task-list/sort.test.ts"
+  ],
+  "confidence": "high",
+  "kindCheck": {
+    "declared": "bug",
+    "assessed": "bug",
+    "note": ""
+  },
+  "clarifyingQuestions": [],
+  "injectionSuspected": false
+}

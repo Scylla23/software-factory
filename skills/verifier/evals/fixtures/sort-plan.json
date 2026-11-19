@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-sort",
+  "round": 1,
+  "baseSha": "0000000000000000000000000000000000000000",
+  "headSha": "1111111111111111111111111111111111111111",
+  "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "criteria": [
+    {
+      "acId": "AC-1",
+      "tag": "test",
+      "method": "test",
+      "tests": [
+        {
+          "id": "t1",
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-1: sorting by due date ascending is chronological",
+          "reproduction": true
+        }
+      ]
+    },
+    {
+      "acId": "AC-2",
+      "tag": "test",
+      "method": "test",
+      "tests": [
+        {
+          "id": "t2",
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-2: sorting by due date descending is reverse chronological",
+          "reproduction": false
+        }
+      ]
+    },
+    {
+      "acId": "AC-3",
+      "tag": "test",
+      "method": "test",
+      "tests": [
+        {
+          "id": "t3",
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-3: tasks without a due date sort last in both directions",
+          "reproduction": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "source": "github",
+  "externalId": "Scylla23/factory-pilot#101",
+  "project": "factory-pilot",
+  "kind": "bug",
+  "title": "Task list sorts by due date as text, so 10 Nov comes before 2 Nov",
+  "body": "Sort the task list by due date. The rows sort as strings instead of dates. Expected: ascending by date, and tasks with no due date at the end. Only the list sorting is affected; tasks already carry ISO dates.",
+  "attachments": [],
+  "sender": "owner",
+  "thread": null,
+  "revision": 1,
+  "replyTo": null
+}

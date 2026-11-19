@@ -1,0 +1,13 @@
+{
+  "source": "github",
+  "externalId": "Scylla23/factory-pilot#102",
+  "project": "factory-pilot",
+  "kind": "feature",
+  "title": "Read and update a single task through the API",
+  "body": "The client needs to fetch one task and to edit its title and due date. Add GET /api/tasks/:id and PATCH /api/tasks/:id. A user must only ever see or change their own tasks, and the patch must not be able to change anything except the title and the due date.",
+  "attachments": [],
+  "sender": "owner",
+  "thread": null,
+  "revision": 1,
+  "replyTo": null
+}

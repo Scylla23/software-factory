@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-task-by-id",
+  "mode": "build",
+  "round": 1,
+  "baseSha": "0000000000000000000000000000000000000000",
+  "inputSha": "0000000000000000000000000000000000000000",
+  "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "status": "complete",
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/api/tasks.test.ts",
+          "name": "AC-1: returns one of the caller's tasks by id"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "AC-2",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/api/tasks.test.ts",
+          "name": "AC-2: updates the title of one of the caller's tasks"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "AC-3",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/api/tasks.test.ts",
+          "name": "AC-1: returns one of the caller's tasks by id"
+        }
+      ],
+      "note": "Unknown ids return 404."
+    },
+    {
+      "id": "AC-4",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/api/tasks.test.ts",
+          "name": "AC-2: updates the title of one of the caller's tasks"
+        }
+      ],
+      "note": ""
+    }
+  ],
+  "reproduction": null,
+  "commands": [
+    {
+      "command": "bun test",
+      "exitCode": 0,
+      "summary": "7 pass, 0 fail."
+    }
+  ],
+  "filesChanged": [
+    "src/api/tasks.ts",
+    "src/api/tasks.test.ts"
+  ],
+  "existingTestsChanged": [],
+  "dependenciesAdded": [],
+  "deviations": [],
+  "findingsAddressed": [],
+  "blockers": [],
+  "notes": ""
+}

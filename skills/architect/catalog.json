@@ -1,0 +1,296 @@
+{
+  "$schema": "../_shared/catalog.schema.json",
+  "schemaVersion": 1,
+  "catalog": "architecture",
+  "title": "Architecture catalog: preferred patterns and anti-patterns",
+  "verifiedAt": "2026-11-19",
+  "maintenanceRule": "A library or service SDK counts as maintained when it is not archived or deprecated and has an npm release or a default-branch commit within 12 months of verifiedAt. Fonts are judged by their distribution package, because a finished typeface needs no commits. Entries with no package and no public repository are judged by the live page alone, and say so in evidence.note.",
+  "entries": [
+    {
+      "id": "modular-monolith-first",
+      "name": "Monolith first, with module boundaries",
+      "kind": "pattern",
+      "category": "structure",
+      "url": "https://martinfowler.com/bliki/MonolithFirst.html",
+      "tags": [
+        "monolith",
+        "modules",
+        "deployment"
+      ],
+      "whenToUse": "Default shape for every new project: one deployable, internal modules with explicit interfaces.",
+      "avoidWhen": "A hard constraint forces a separate deployable: a different runtime, isolation requirement, or scaling profile.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "vertical-slices",
+      "name": "Vertical slices by feature",
+      "kind": "pattern",
+      "category": "structure",
+      "url": "https://www.jimmybogard.com/vertical-slice-architecture/",
+      "tags": [
+        "feature-folders",
+        "cohesion"
+      ],
+      "whenToUse": "Organizing application code so one feature's route, logic, data access, and tests live together.",
+      "avoidWhen": "Shared infrastructure code (database client, auth, logging), which belongs in its own module.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "functional-core-imperative-shell",
+      "name": "Functional core, imperative shell",
+      "kind": "pattern",
+      "category": "structure",
+      "url": "https://www.destroyallsoftware.com/screencasts/catalog/functional-core-imperative-shell",
+      "tags": [
+        "pure-functions",
+        "testability",
+        "side-effects"
+      ],
+      "whenToUse": "Business rules that deserve fast, exhaustive tests: keep decisions pure and push I/O to a thin shell.",
+      "avoidWhen": "Code that is almost all I/O glue; forcing a pure core there adds ceremony without tests worth having.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "parse-dont-validate",
+      "name": "Parse, don't validate",
+      "kind": "pattern",
+      "category": "boundaries",
+      "url": "https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/",
+      "tags": [
+        "types",
+        "trust-boundary",
+        "input"
+      ],
+      "whenToUse": "Every trust boundary: turn untrusted input into a typed value once, and pass only the typed value inward.",
+      "avoidWhen": "Never at a trust boundary. Inside the core, do not re-check what the type already guarantees.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "ports-and-adapters",
+      "name": "Ports and adapters at external boundaries",
+      "kind": "pattern",
+      "category": "boundaries",
+      "url": "https://alistair.cockburn.us/hexagonal-architecture/",
+      "tags": [
+        "hexagonal",
+        "adapters",
+        "third-party",
+        "fakes"
+      ],
+      "whenToUse": "Each external service (payments, email, model providers): a small interface the app owns, a real adapter, and a fake for tests and the preview.",
+      "avoidWhen": "Internal modules and the project's own database; an interface with one implementation and no fake is speculative.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "expand-contract-migrations",
+      "name": "Expand and contract (parallel change)",
+      "kind": "pattern",
+      "category": "data",
+      "url": "https://martinfowler.com/bliki/ParallelChange.html",
+      "tags": [
+        "migrations",
+        "zero-downtime",
+        "backward-compatible"
+      ],
+      "whenToUse": "Any change to a schema or interface that live code or stored data depends on: add the new shape, migrate, then remove the old shape in a later release.",
+      "avoidWhen": "A brand-new table or interface with no consumers and no data yet.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "transactional-outbox",
+      "name": "Transactional outbox",
+      "kind": "pattern",
+      "category": "reliability",
+      "url": "https://microservices.io/patterns/data/transactional-outbox.html",
+      "tags": [
+        "messaging",
+        "consistency",
+        "events"
+      ],
+      "whenToUse": "A database change must reliably trigger an external effect (email, webhook, queue message).",
+      "avoidWhen": "The effect is safe to lose or to run inside the request; do not add an outbox for best-effort notifications.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "idempotency-keys",
+      "name": "Idempotency keys for retried effects",
+      "kind": "pattern",
+      "category": "reliability",
+      "url": "https://brandur.org/idempotency-keys",
+      "tags": [
+        "retries",
+        "payments",
+        "webhooks",
+        "exactly-once"
+      ],
+      "whenToUse": "Any operation a client, queue, or webhook may deliver more than once and that must take effect once.",
+      "avoidWhen": "Naturally idempotent operations such as setting a field to a value.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "twelve-factor-config",
+      "name": "Config in the environment",
+      "kind": "pattern",
+      "category": "config",
+      "url": "https://12factor.net/config",
+      "tags": [
+        "environment",
+        "secrets",
+        "deploys"
+      ],
+      "whenToUse": "Everything that differs between local, preview, and production, and every secret.",
+      "avoidWhen": "Constants that never vary by deploy; keep those in code.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "strangler-fig",
+      "name": "Strangler fig replacement",
+      "kind": "pattern",
+      "category": "evolution",
+      "url": "https://martinfowler.com/bliki/StranglerFigApplication.html",
+      "tags": [
+        "incremental",
+        "rewrite",
+        "legacy"
+      ],
+      "whenToUse": "Replacing a subsystem in an existing project: route slices to the new implementation one at a time behind a stable interface.",
+      "avoidWhen": "Small modules that can be replaced in one reviewed change.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "choose-boring-technology",
+      "name": "Choose boring technology",
+      "kind": "pattern",
+      "category": "technology-choice",
+      "url": "https://mcfunley.com/choose-boring-technology",
+      "tags": [
+        "innovation-tokens",
+        "operability"
+      ],
+      "whenToUse": "Every technology pick: prefer what the project and the catalog already use, and justify each new moving part.",
+      "avoidWhen": "Never; a new technology is allowed, but only with a stated reason the boring option cannot meet.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "microservices-first",
+      "name": "Microservices first",
+      "kind": "anti-pattern",
+      "category": "structure",
+      "url": "https://martinfowler.com/bliki/MicroservicePremium.html",
+      "tags": [
+        "distributed",
+        "premature",
+        "operations"
+      ],
+      "whenToUse": "Cite when a design splits a new or small system into separately deployed services.",
+      "avoidWhen": "The split is forced by a real constraint, which the decision must name.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "speculative-generality",
+      "name": "Building for imagined futures (YAGNI)",
+      "kind": "anti-pattern",
+      "category": "structure",
+      "url": "https://martinfowler.com/bliki/Yagni.html",
+      "tags": [
+        "yagni",
+        "over-engineering",
+        "scope"
+      ],
+      "whenToUse": "Cite when a design adds extension points, config, or abstractions no acceptance criterion needs.",
+      "avoidWhen": "The capability is required by a criterion in this task.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "wrong-abstraction",
+      "name": "The wrong abstraction",
+      "kind": "anti-pattern",
+      "category": "structure",
+      "url": "https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction",
+      "tags": [
+        "duplication",
+        "abstraction",
+        "coupling"
+      ],
+      "whenToUse": "Cite when a design merges code paths that only look alike, or keeps bending a shared helper with flags.",
+      "avoidWhen": "The cases share one reason to change.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "dual-writes",
+      "name": "Dual writes without atomicity",
+      "kind": "anti-pattern",
+      "category": "data",
+      "url": "https://www.confluent.io/blog/dual-write-problem/",
+      "tags": [
+        "consistency",
+        "messaging",
+        "partial-failure"
+      ],
+      "whenToUse": "Cite when code writes to the database and to another system in sequence and assumes both succeed.",
+      "avoidWhen": "The second write is best-effort by design and its loss is acceptable and stated.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    }
+  ],
+  "dropped": []
+}

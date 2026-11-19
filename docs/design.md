@@ -89,7 +89,7 @@ Crash recovery is tested with a fake dispatcher that kills the process at every 
 
 Every verdict, check result, and verification result records the base and head SHAs it covers.
 After any repair or rebase, the factory recomputes the diff, re-selects auditors, re-reviews the delta, and reruns checks and verification.
-The base branch is checked for drift before verification; the builder rebases once, and a conflict escalates.
+The factory checks the base branch for drift before verification, rebases once if needed, and escalates a conflict.
 
 ## The team
 

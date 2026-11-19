@@ -1,0 +1,30 @@
+diff --git a/migrations/002_task_priority.up.sql b/migrations/002_task_priority.up.sql
+new file mode 100644
+index 0000000..145a887
+--- /dev/null
++++ b/migrations/002_task_priority.up.sql
+@@ -0,0 +1,4 @@
++ALTER TABLE tasks RENAME COLUMN assignee TO assignee_name;
++ALTER TABLE tasks ADD COLUMN priority text NOT NULL;
++ALTER TABLE tasks DROP COLUMN legacy_notes;
++CREATE INDEX tasks_priority_idx ON tasks (priority);
+diff --git a/src/api/queries.test.ts b/src/api/queries.test.ts
+new file mode 100644
+index 0000000..caf233a
+--- /dev/null
++++ b/src/api/queries.test.ts
+@@ -0,0 +1,6 @@
++import { expect, test } from "bun:test";
++import { LIST_TASKS } from "./queries";
++
++test("AC-1: the list query selects priority", () => {
++  expect(LIST_TASKS).toContain("priority");
++});
+diff --git a/src/api/queries.ts b/src/api/queries.ts
+index 0b4a211..e21d47b 100644
+--- a/src/api/queries.ts
++++ b/src/api/queries.ts
+@@ -1,2 +1,2 @@
+ /** SQL the running release sends to Postgres. */
+-export const LIST_TASKS = "SELECT id, owner_id, title, due, assignee, legacy_notes FROM tasks WHERE owner_id = $1 ORDER BY id";
++export const LIST_TASKS = "SELECT id, owner_id, title, due, assignee_name, priority FROM tasks WHERE owner_id = $1 ORDER BY id";

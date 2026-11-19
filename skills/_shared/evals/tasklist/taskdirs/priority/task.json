@@ -1,0 +1,13 @@
+{
+  "source": "github",
+  "externalId": "Scylla23/factory-pilot#103",
+  "project": "factory-pilot",
+  "kind": "feature",
+  "title": "Give tasks a priority",
+  "body": "Add a priority (low, normal, high) to tasks. Existing tasks should count as normal. Just the data for now; the UI comes later.",
+  "attachments": [],
+  "sender": "owner",
+  "thread": null,
+  "revision": 1,
+  "replyTo": null
+}

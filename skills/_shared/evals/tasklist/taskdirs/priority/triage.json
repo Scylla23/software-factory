@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-priority",
+  "taskRevision": 1,
+  "tier": "L",
+  "tierReasons": [
+    {
+      "signal": "schema change",
+      "evidence": "A new column on the tasks table created by migrations/001_create_tasks.up.sql."
+    }
+  ],
+  "riskFlags": {
+    "security": {
+      "value": false,
+      "reason": "No auth, session, or input parsing change."
+    },
+    "migration": {
+      "value": true,
+      "reason": "Adds a column to the tasks table."
+    },
+    "newProject": {
+      "value": false,
+      "reason": "project.isNew is false."
+    }
+  },
+  "areas": [
+    "migrations",
+    "src/api/queries.ts"
+  ],
+  "confidence": "high",
+  "kindCheck": {
+    "declared": "feature",
+    "assessed": "feature",
+    "note": ""
+  },
+  "clarifyingQuestions": [],
+  "injectionSuspected": false
+}

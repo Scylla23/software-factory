@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "role": "spec-reviewer",
+  "stage": "spec",
+  "taskId": "eval-tasklist-task-by-id",
+  "round": 1,
+  "covers": {
+    "baseSha": "0000000000000000000000000000000000000000",
+    "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "verdict": "approve",
+  "summary": "Both routes have observable criteria and the plan explicitly creates a new test file beside the existing API tests.",
+  "findings": [],
+  "checks": {
+    "grounding": {
+      "pathsChecked": 2,
+      "missingPaths": [],
+      "newPaths": [
+        "src/api/task-by-id.test.ts"
+      ]
+    },
+    "tier": {
+      "specTier": "M",
+      "assessedTier": "M",
+      "reason": "Two new API routes in one module, no schema change and no new dependency; the security flag is set."
+    }
+  }
+}

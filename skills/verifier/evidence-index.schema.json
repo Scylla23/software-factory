@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/evidence-index.schema.json",
+  "title": "Evidence index",
+  "description": "Written by the factory, never by an agent, as verification/evidence/index.json after it has executed a verification plan. It is the verifier's only view of what happened: the factory validates it, redacts every text field, verifies each screenshot's bytes against its hash, and stages it with the screenshots into the task folder for the judge run. Raw logs are never staged. Owner decision Q56 lets a hosted model see this evidence and lets the factory publish it to the private pull request; nothing here is ever committed. Capture fields mirror EvidenceRecord in src/verify/evidence.ts. Every string that came from a page, a test, or a command is redacted and still untrusted data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "attemptId", "baseSha", "headSha", "planSha256", "textRedacted", "testRuns", "captures", "notExecuted"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "attemptId": { "description": "The capture attempt naming the immutable evidence store, reused on judge retries.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "baseSha": { "$ref": "#/$defs/sha" },
+    "headSha": { "$ref": "#/$defs/sha" },
+    "planSha256": { "description": "SHA-256 of the plan.json that was executed.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "textRedacted": { "description": "The factory ran its redactor over every text field before staging. An index without this is not staged.", "const": true },
+    "testRuns": {
+      "description": "One run per side the plan needs: head always, and base-with-head-tests when the plan has a reproduction test.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["side", "commitSha", "testFilesSha", "command", "exitCode", "stopped", "tests", "logTail"],
+        "properties": {
+          "side": { "description": "head: the head commit as built. base-with-head-tests: the base commit's code with the head's test files, run for reproduction tests.", "enum": ["head", "base-with-head-tests"] },
+          "commitSha": { "description": "The commit whose code ran: headSha for head, baseSha for base-with-head-tests.", "$ref": "#/$defs/sha" },
+          "testFilesSha": { "description": "The commit the test files came from: always headSha.", "$ref": "#/$defs/sha" },
+          "command": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "exitCode": { "description": "null when the command was killed.", "type": ["integer", "null"] },
+          "stopped": { "description": "Why the factory stopped the command, such as a timeout. null when it ran to completion.", "type": ["string", "null"] },
+          "tests": {
+            "description": "Per-test results from the runner's machine-readable report. null when the factory could not obtain one.",
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["file", "name", "status"],
+                  "properties": {
+                    "planId": { "description": "The id of the planned test this result is for. Absent for a test the plan does not name.", "type": "string", "pattern": "^t[1-9][0-9]{0,3}$" },
+                    "file": { "type": "string", "minLength": 1 },
+                    "name": { "type": "string", "minLength": 1 },
+                    "status": { "enum": ["pass", "fail", "skip"] },
+                    "failure": {
+                      "description": "For status fail: how the runner reported it. kind is assertion when an expectation of the test failed, and error for anything else (an import or syntax error, a thrown exception outside an expectation, a timeout). excerpt is the redacted report, untrusted.",
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["kind", "excerpt", "truncated"],
+                      "properties": {
+                        "kind": { "enum": ["assertion", "error"] },
+                        "excerpt": { "type": "string", "maxLength": 1200 },
+                        "truncated": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "logTail": { "description": "Redacted log tail, or the literal [withheld] when safe redaction is impossible.", "type": "string", "maxLength": 8000 }
+        }
+      }
+    },
+    "captures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["planId", "side", "acId", "name", "commitSha", "url", "origin", "browserEgress", "externalOrigins", "viewport", "screenshotFile", "screenshotSha256", "consoleErrors", "networkFailures", "pageText", "truncated", "stabilized", "capturedAt"],
+        "properties": {
+          "planId": { "description": "The id of the planned capture this record executes.", "type": "string", "pattern": "^c[1-9][0-9]{0,3}$" },
+          "side": { "enum": ["base", "head"] },
+          "acId": { "$ref": "#/$defs/acId" },
+          "name": { "description": "The planned capture name with the side and viewport appended.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,79}$" },
+          "commitSha": { "$ref": "#/$defs/sha" },
+          "url": { "type": "string" },
+          "origin": { "description": "The preview origin the capture was bound to.", "type": "string" },
+          "browserEgress": { "description": "The browser cannot restrict a page's requests to the preview origin.", "const": "unrestricted" },
+          "externalOrigins": { "description": "Origins other than the preview's that the page requested.", "type": "array", "items": { "type": "string" } },
+          "viewport": {
+            "type": "object",
+            "required": ["name", "width", "height"],
+            "properties": {
+              "name": { "enum": ["desktop", "mobile"] },
+              "width": { "type": "integer" },
+              "height": { "type": "integer" }
+            }
+          },
+          "screenshotFile": { "description": "File name of the PNG beside index.json.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,79}\\.png$" },
+          "screenshotSha256": { "description": "SHA-256 of the PNG's bytes, which the factory verified when it staged the file.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "consoleErrors": { "type": "array", "items": { "type": "string" } },
+          "networkFailures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["url", "method", "status"],
+              "properties": {
+                "url": { "type": "string" },
+                "method": { "type": "string" },
+                "status": { "type": ["integer", "null"] }
+              }
+            }
+          },
+          "pageText": { "description": "Redacted page text, or the literal [withheld] with truncated.pageText true when safe redaction is impossible.", "type": "string" },
+          "truncated": {
+            "type": "object",
+            "required": ["console", "network", "pageText"],
+            "properties": {
+              "console": { "type": "boolean" },
+              "network": { "type": "boolean" },
+              "pageText": { "type": "boolean" }
+            }
+          },
+          "stabilized": { "description": "What stabilization saw before the screenshot, or null when it was skipped.", "type": ["object", "null"] },
+          "capturedAt": { "type": "string" }
+        }
+      }
+    },
+    "notExecuted": {
+      "description": "Planned tests and captures the factory could not execute, such as a preview that did not start or a page that left the preview origin.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["planId", "reason"],
+        "properties": {
+          "planId": { "type": "string", "pattern": "^[ct][1-9][0-9]{0,3}$" },
+          "side": { "enum": ["base", "head", "base-with-head-tests"] },
+          "viewport": { "enum": ["desktop", "mobile"] },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" }
+  }
+}

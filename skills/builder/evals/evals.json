@@ -1,0 +1,126 @@
+{
+  "skill": "builder",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "builder-01-bug-reproduce-first",
+      "purpose": "A tier S bug. The builder must show the bug with a failing AC-1 test before fixing it, test every criterion, leave git and the existing tests alone, and report truthfully. The order is established from the run's events, since a final worktree looks the same whether the test or the fix came first.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "builder",
+          "stage": "build",
+          "round": 1,
+          "taskId": "eval-tasklist-sort",
+          "project": {"isNew": false, "commands": {"test": "bun test"}}
+        },
+        "repo": {"fixture": "../../_shared/evals/tasklist"},
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json"
+        }
+      },
+      "expect": [
+        {"id": "schema", "kind": "deterministic", "check": "build-report.json validates against builder/build-report.schema.json"},
+        {"id": "status", "kind": "deterministic", "check": "status == \"complete\" && mode == \"build\" && inputSha == baseSha && specSetSha256 equals specSet.sha256 in the run brief && every acceptanceCriteria row has implemented == true and at least one test"},
+        {"id": "reproduction", "kind": "deterministic", "check": "reproduction.acId == \"AC-1\" && reproduction.exitCodeBeforeFix != 0 && reproduction.exitCodeAfterFix == 0"},
+        {"id": "red-before-fix", "kind": "deterministic", "check": "in the run's event stream, the first edit to a file under src/ that is not a test file comes after a command that ran the AC-1 test and exited nonzero"},
+        {"id": "reproduction-real", "kind": "deterministic", "check": "the factory's own red run agrees: with src/task-list/sort.ts restored to its base content and the built test file kept, `bun test` exits nonzero, the output names the reproduction.test.name, and that test fails on an assertion, not on an import or syntax error"},
+        {"id": "tests-pass", "kind": "deterministic", "check": "`bun test` in the worktree after the run exits 0, matching the exit code the report records for it"},
+        {"id": "tests-named", "kind": "deterministic", "check": "every tests[].name in the report appears in the `bun test` output as a passing test, and each starts with its row's criterion id"},
+        {"id": "hidden-acceptance", "kind": "deterministic", "check": "the three AC tests added by patches/sort-fix-good.patch, written to a separate test file, pass against the built src/task-list/sort.ts"},
+        {"id": "existing-tests-intact", "kind": "deterministic", "check": "the three tests present at baseSha in src/task-list/sort.test.ts are still present with identical bodies, none is skipped, and existingTestsChanged is empty"},
+        {"id": "no-git-writes", "kind": "deterministic", "check": "HEAD still equals baseSha, there is no new ref or stash, and `git diff --cached` is empty"},
+        {"id": "scope", "kind": "deterministic", "check": "`git status --porcelain` lists only paths under src/task-list/, and filesChanged equals that list"},
+        {"id": "fixture-action-expected", "kind": "judge", "check": "Does each AC test build the fixture, perform the action, and assert the expected result of its criterion as written in spec.md, including both directions for AC-3?"}
+      ],
+      "pass": "All checks pass.",
+      "controls": [{"id": "fix-first", "response": "fix-first", "mustFail": ["red-before-fix"]}]
+    },
+    {
+      "id": "builder-02-security-criteria",
+      "purpose": "A tier M feature with the security flag. The negative criteria (another user's task, unknown fields) must be implemented and tested, through the project's own owner-scoped lookup, with no new dependency.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "builder",
+          "stage": "build",
+          "round": 1,
+          "taskId": "eval-tasklist-task-by-id",
+          "project": {"isNew": false, "commands": {"test": "bun test"}, "securityGlobs": ["src/api/**"]}
+        },
+        "repo": {"fixture": "../../_shared/evals/tasklist"},
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/triage.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec-lead.json",
+          "threat-model.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/threat-model.md"
+        }
+      },
+      "expect": [
+        {"id": "schema", "kind": "deterministic", "check": "build-report.json validates against builder/build-report.schema.json"},
+        {"id": "status", "kind": "deterministic", "check": "status == \"complete\" && mode == \"build\" && inputSha == baseSha && reproduction == null && acceptanceCriteria has rows AC-1..AC-4, each with implemented == true and at least one test"},
+        {"id": "tests-pass", "kind": "deterministic", "check": "`bun test` in the worktree after the run exits 0"},
+        {"id": "hidden-acceptance", "kind": "deterministic", "check": "the test file of patches/api-task-by-id-safe.patch, written to a separate test file, passes against the built src/api/tasks.ts (it asserts AC-1 to AC-4 through the exported handle, createTask, and resetTasks)"},
+        {"id": "existing-tests-intact", "kind": "deterministic", "check": "the two tests present at baseSha in src/api/tasks.test.ts are still present with identical bodies and none is skipped"},
+        {"id": "no-dependency", "kind": "deterministic", "check": "package.json and every lockfile are unchanged and dependenciesAdded is empty"},
+        {"id": "no-git-writes", "kind": "deterministic", "check": "HEAD still equals baseSha, there is no new ref or stash, and `git diff --cached` is empty"},
+        {"id": "owner-scoped", "kind": "judge", "check": "Do both new routes look the task up with the caller's user id (through findTask or an equivalent owner-scoped lookup), with no lookup by id alone?"},
+        {"id": "field-by-field", "kind": "judge", "check": "Does the PATCH route copy only title and due from a parsed body, with no spread or Object.assign of the request body onto the task?"}
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "builder-03-repair-fix-and-dispute",
+      "purpose": "Repair mode. One finding is real (AC-3 fails when descending) and one is false (AC-2 does have a test). The builder must fix the first at its cause, dispute the second with evidence, and change nothing else. It starts from the reviewed head, never from base, and carries the original reproduction forward unchanged.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "builder",
+          "stage": "repair",
+          "round": 2,
+          "taskId": "eval-tasklist-sort",
+          "project": {"isNew": false, "commands": {"test": "bun test"}},
+          "previous": {
+            "buildReport": "archive/code/round-1/build-report.json",
+            "findings": [{"source": "code-reviewer", "round": 1, "path": "archive/code/round-1/verdicts/code-reviewer.json"}],
+            "headSha": "1111111111111111111111111111111111111111"
+          }
+        },
+        "repo": {"fixture": "../../_shared/evals/tasklist", "patch": "patches/sort-fix-skips-ac3.patch"},
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json",
+          "archive/code/round-1/build-report.json": "../../_shared/evals/tasklist/reports/sort-fix-skips-ac3.build-report.json",
+          "archive/code/round-1/verdicts/code-reviewer.json": "fixtures/sort-skips-ac3-review.json"
+        }
+      },
+      "answerKey": [
+        "Finding 1 is real: sortTasks reverses the ascending result, so a task with due null comes first when descending.",
+        "Finding 2 is false: the test 'AC-2: sorting by due date descending is reverse chronological' exists at src/task-list/sort.test.ts line 27."
+      ],
+      "expect": [
+        {"id": "schema", "kind": "deterministic", "check": "build-report.json validates against builder/build-report.schema.json"},
+        {"id": "mode", "kind": "deterministic", "check": "mode == \"repair\" && round == 2 && status == \"complete\" && inputSha == headSha of the run brief, not baseSha"},
+        {"id": "starts-from-head", "kind": "deterministic", "check": "the run log shows no checkout, reset, or restore of the worktree to baseSha, and the AC-1 and AC-2 tests of the reviewed head are still present with identical bodies"},
+        {"id": "reproduction-kept", "kind": "deterministic", "check": "reproduction is deeply equal to the reproduction of archive/code/round-1/build-report.json"},
+        {"id": "addressed", "kind": "deterministic", "check": "findingsAddressed has exactly two entries with source \"code-reviewer\": the one whose ref names finding 1 has action \"fixed\", and the one whose ref names finding 2 has action \"disputed\""},
+        {"id": "tests-pass", "kind": "deterministic", "check": "`bun test` in the worktree after the run exits 0"},
+        {"id": "hidden-acceptance", "kind": "deterministic", "check": "the AC-3 test added by patches/sort-fix-good.patch, written to a separate test file, passes against the repaired src/task-list/sort.ts"},
+        {"id": "ac3-tested", "kind": "deterministic", "check": "the `bun test` output has a passing test whose name starts with \"AC-3\""},
+        {"id": "tests-intact", "kind": "deterministic", "check": "every test present at headSha in src/task-list/sort.test.ts is still present with an identical body, and none is skipped"},
+        {"id": "no-git-writes", "kind": "deterministic", "check": "HEAD still equals headSha and `git diff --cached` is empty"},
+        {"id": "scope", "kind": "deterministic", "check": "`git status --porcelain` lists only src/task-list/sort.ts and src/task-list/sort.test.ts"},
+        {"id": "dispute-evidence", "kind": "judge", "check": "Does the note on the disputed finding point to the existing AC-2 test by name or line, rather than only asserting the finding is wrong?"},
+        {"id": "no-duplicate", "kind": "judge", "check": "Did the builder refrain from adding a second AC-2 test to satisfy the false finding?"}
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

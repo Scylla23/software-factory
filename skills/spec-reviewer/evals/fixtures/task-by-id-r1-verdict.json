@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "role": "spec-reviewer",
+  "stage": "spec",
+  "taskId": "eval-tasklist-task-by-id",
+  "round": 1,
+  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "verdict": "changes",
+  "summary": "The spec is grounded and correctly tiered, but the criterion that guards against cross-user access has no observable expected result.",
+  "findings": [
+    {
+      "n": 1,
+      "severity": "high",
+      "blocking": true,
+      "category": "untestable",
+      "title": "AC-3 expected result is not observable",
+      "location": {"file": "spec.md", "section": "Acceptance criteria", "line": 39},
+      "acIds": ["AC-3"],
+      "detail": "The Expected line does not say what the second user receives or what must remain unchanged, so a test cannot assert it and a lookup by id alone could pass.",
+      "evidence": "spec.md line 39: '- Expected: the other user's task is handled securely.'",
+      "requiredChange": "State the status code the second user receives for the read and for the patch, that no task data is returned, and that the task is unchanged for its owner."
+    }
+  ],
+  "checks": {
+    "grounding": {"pathsChecked": 2, "missingPaths": [], "newPaths": []},
+    "tier": {
+      "specTier": "M",
+      "assessedTier": "M",
+      "reason": "Two new API routes in one module, no schema change and no new dependency; the security flag is set."
+    }
+  }
+}

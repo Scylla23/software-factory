@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/verification-plan.schema.json",
+  "title": "Verification plan",
+  "description": "Written by the verifier in mode plan, before any evidence exists. The factory joins it to the approved spec (one entry per criterion, in order, with the spec's tags; unique ids and names; confined test paths) and only then executes it: it runs the tests, starts the preview, and takes the captures. Expectations are committed here so the judgment cannot be fitted to the evidence afterwards.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "specSetSha256", "criteria"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "round": { "type": "integer", "minimum": 1 },
+    "baseSha": { "$ref": "#/$defs/sha" },
+    "headSha": { "$ref": "#/$defs/sha" },
+    "specSetSha256": { "description": "specSet.sha256 from the run brief: the approved spec file set the plan was written against.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "criteria": {
+      "description": "One entry per criterion in spec.md, in order. None may be left out.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/criterion" }
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acId", "tag", "method"],
+      "properties": {
+        "acId": { "$ref": "#/$defs/acId" },
+        "tag": { "description": "Copied from the spec.", "enum": ["test", "browser", "computer-use", "manual"] },
+        "method": {
+          "description": "test: named tests the factory runs. capture: page captures the factory takes. manual: an owner checklist item. unsupported: the factory has no way to observe this criterion.",
+          "enum": ["test", "capture", "manual", "unsupported"]
+        },
+        "tests": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/test" } },
+        "captures": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/capture" } },
+        "manual": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["instruction", "expected"],
+          "properties": {
+            "instruction": { "description": "What the owner does, as one instruction.", "type": "string", "minLength": 1, "maxLength": 600 },
+            "expected": { "description": "What the owner should observe.", "type": "string", "minLength": 1, "maxLength": 600 }
+          }
+        },
+        "reason": { "description": "For unsupported: why no test or capture can observe the criterion.", "type": "string", "minLength": 1, "maxLength": 600 }
+      },
+      "allOf": [
+        { "if": { "properties": { "method": { "const": "test" } } }, "then": { "required": ["tests"], "not": { "anyOf": [{ "required": ["captures"] }, { "required": ["manual"] }] } } },
+        { "if": { "properties": { "method": { "const": "capture" } } }, "then": { "required": ["captures"], "not": { "anyOf": [{ "required": ["tests"] }, { "required": ["manual"] }] } } },
+        { "if": { "properties": { "method": { "const": "manual" } } }, "then": { "required": ["manual"], "not": { "anyOf": [{ "required": ["tests"] }, { "required": ["captures"] }] } } },
+        { "if": { "properties": { "method": { "const": "unsupported" } } }, "then": { "required": ["reason"], "not": { "anyOf": [{ "required": ["tests"] }, { "required": ["captures"] }, { "required": ["manual"] }] } } },
+        { "if": { "properties": { "tag": { "const": "test" } } }, "then": { "properties": { "method": { "enum": ["test", "unsupported"] } } } },
+        { "if": { "properties": { "tag": { "const": "browser" } } }, "then": { "properties": { "method": { "enum": ["capture", "unsupported"] } } } },
+        { "if": { "properties": { "tag": { "const": "manual" } } }, "then": { "properties": { "method": { "const": "manual" } } } },
+        { "if": { "properties": { "tag": { "const": "computer-use" } } }, "then": { "properties": { "method": { "const": "unsupported" } } } }
+      ]
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "file", "name", "reproduction"],
+      "properties": {
+        "id": { "description": "Unique in the plan: t1, t2, and so on.", "type": "string", "pattern": "^t[1-9][0-9]{0,3}$" },
+        "file": { "description": "Repo-relative path of the test file at headSha. The factory runs a test only by a path that is confined to the repository and tracked at headSha.", "$ref": "#/$defs/repoPath" },
+        "name": { "description": "The full test name as the runner prints it.", "type": "string", "minLength": 1, "maxLength": 300 },
+        "reproduction": { "description": "True for the AC-1 test of a bug: the factory also runs it with the head's test files on the base's code, where it must fail by the assertion the criterion describes.", "type": "boolean" }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "route", "fixture", "viewports", "sides", "expect"],
+      "properties": {
+        "id": { "description": "Unique in the plan: c1, c2, and so on.", "type": "string", "pattern": "^c[1-9][0-9]{0,3}$" },
+        "name": { "description": "Unique in the plan. The factory appends the side and the viewport to name each record and screenshot.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,50}$" },
+        "route": { "description": "Path, query, and fragment only. The factory joins it to the preview's own origin; a capture that leaves that origin fails.", "type": "string", "pattern": "^/(?!/)[^\\s\\\\]*$", "maxLength": 500 },
+        "fixture": { "description": "A fixture name from project.fixtures, or none when the project declares no fixtures.", "type": "string", "minLength": 1, "maxLength": 100 },
+        "viewports": {
+          "description": "Both fixed viewports, always: desktop is 1440x900 and mobile is 390x844.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "enum": ["desktop", "mobile"] }
+        },
+        "sides": {
+          "description": "base and head for a before and after pair. head alone only when the route does not exist at baseSha.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "contains": { "const": "head" },
+          "items": { "enum": ["base", "head"] }
+        },
+        "expect": {
+          "description": "What the head capture must show, committed before any capture is taken.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["headText", "headTextAbsent", "headTextInOrder", "differsFromBase", "allowedConsoleErrors", "visible"],
+          "properties": {
+            "headText": { "description": "Strings that must each appear in the head page text.", "type": "array", "items": { "$ref": "#/$defs/snippet" } },
+            "headTextAbsent": { "description": "Strings that must not appear in the head page text.", "type": "array", "items": { "$ref": "#/$defs/snippet" } },
+            "headTextInOrder": { "description": "Strings that must appear in the head page text in this order. Empty when order does not matter.", "type": "array", "items": { "$ref": "#/$defs/snippet" } },
+            "differsFromBase": { "description": "True when the head screenshot must differ from the base screenshot at the same viewport. null when sides has no base.", "type": ["boolean", "null"] },
+            "allowedConsoleErrors": { "description": "Substrings of console errors the criterion itself expects. Usually empty.", "type": "array", "items": { "$ref": "#/$defs/snippet" } },
+            "visible": { "description": "What must be visible in the screenshot, in plain words, for the judge to check against the pixels.", "type": "string", "minLength": 1, "maxLength": 600 }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sides": { "contains": { "const": "base" } } } },
+          "then": { "properties": { "expect": { "properties": { "differsFromBase": { "type": "boolean" } } } } },
+          "else": { "properties": { "expect": { "properties": { "differsFromBase": { "type": "null" } } } } }
+        }
+      ]
+    },
+    "snippet": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "repoPath": { "description": "A relative path with forward slashes and no . or .. segment.", "type": "string", "minLength": 1, "maxLength": 400, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$" }
+  }
+}

@@ -1,0 +1,273 @@
+{
+  "description": "Mutation cases for the output schemas. Each case takes a valid base document, applies its ops, and names what must happen to the result. Paths are relative to skills/. Nothing here is placed in a skill bundle.",
+  "ops": "Each op has a JSON Pointer path. set replaces the value at the path, or adds the member when it is absent. remove deletes it; removing an array item shifts the later ones.",
+  "placeholders": "Forty zeros and forty ones stand for baseSha and headSha, and sixty-four zeros for specSetSha256 and planSha256, as in _shared/evals.md.",
+  "bases": {
+    "review-approve": {
+      "schema": "_shared/verdict.schema.json",
+      "inline": {
+        "schemaVersion": 1,
+        "role": "code-reviewer",
+        "stage": "code",
+        "taskId": "eval-tasklist-sort",
+        "round": 1,
+        "covers": {
+          "baseSha": "0000000000000000000000000000000000000000",
+          "headSha": "1111111111111111111111111111111111111111",
+          "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "verdict": "approve",
+        "summary": "The due column now sorts by date in both directions with undated tasks last, and each criterion has a test that fails without the fix.",
+        "findings": [],
+        "checks": {
+          "commands": [{"command": "bun test", "exitCode": 0, "summary": "8 pass, 0 fail."}],
+          "acCoverage": [
+            {"acId": "AC-1", "implemented": true, "tested": true, "note": ""},
+            {"acId": "AC-2", "implemented": true, "tested": true, "note": ""},
+            {"acId": "AC-3", "implemented": true, "tested": true, "note": ""}
+          ]
+        }
+      }
+    },
+    "audit-approve": {
+      "schema": "_shared/verdict.schema.json",
+      "inline": {
+        "schemaVersion": 1,
+        "role": "security-auditor",
+        "stage": "code",
+        "taskId": "eval-tasklist-task-by-id",
+        "round": 1,
+        "covers": {
+          "baseSha": "0000000000000000000000000000000000000000",
+          "headSha": "1111111111111111111111111111111111111111",
+          "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "verdict": "approve",
+        "summary": "Both routes look the task up by owner and id together, and the update accepts only the title and the due date.",
+        "findings": [],
+        "checks": {
+          "commands": [{"command": "bun test", "exitCode": 0, "summary": "9 pass, 0 fail."}],
+          "threatModel": {"present": true, "threatsChecked": 4, "unmitigated": []}
+        }
+      }
+    },
+    "spec-review-changes": {"schema": "_shared/verdict.schema.json", "file": "spec-reviewer/evals/fixtures/task-by-id-r1-verdict.json"},
+    "build-report": {"schema": "builder/build-report.schema.json", "file": "_shared/evals/tasklist/reports/sort-fix-good.build-report.json"},
+    "build-report-declared-deletion": {"schema": "builder/build-report.schema.json", "file": "_shared/evals/tasklist/reports/sort-fix-deletes-declared.build-report.json"},
+    "plan": {"schema": "verifier/plan.schema.json", "file": "verifier/evals/fixtures/sort-plan.json"},
+    "evidence": {"schema": "verifier/evidence-index.schema.json", "file": "verifier/evals/fixtures/sort-evidence-sound.json"},
+    "results": {
+      "schema": "verifier/results.schema.json",
+      "inline": {
+        "schemaVersion": 1,
+        "taskId": "eval-tasklist-sort",
+        "round": 1,
+        "baseSha": "0000000000000000000000000000000000000000",
+        "headSha": "1111111111111111111111111111111111111111",
+        "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "attemptId": "68b72d13-b426-4956-a790-548c5f36d616",
+        "captureAttemptId": "0b9f4c1e-6a57-4d0e-9c53-2f7a1d8e4b60",
+        "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "overall": "pass",
+        "rows": [
+          {
+            "acId": "AC-1",
+            "tag": "test",
+            "method": "test",
+            "fixture": "three tasks due 2026-11-20, 2026-11-10, and 2026-11-02, in that order.",
+            "action": "call `sortTasks` with column `due` and direction `asc`.",
+            "expected": "the due dates come back as 2026-11-02, 2026-11-10, 2026-11-20; on base the test fails because 2026-11-10 sorts first.",
+            "observed": "The planned test passed on head, and failed on base on its assertion about the order.",
+            "proof": [
+              {
+                "kind": "test",
+                "planId": "t1",
+                "ref": "AC-1: sorting by due date ascending is chronological",
+                "file": "src/task-list/sort.test.ts",
+                "side": "head",
+                "status": "pass"
+              },
+              {
+                "kind": "test",
+                "planId": "t1",
+                "ref": "AC-1: sorting by due date ascending is chronological",
+                "file": "src/task-list/sort.test.ts",
+                "side": "base-with-head-tests",
+                "status": "fail"
+              }
+            ],
+            "commit": "1111111111111111111111111111111111111111",
+            "verdict": "pass",
+            "rubric": []
+          },
+          {
+            "acId": "AC-2",
+            "tag": "test",
+            "method": "test",
+            "fixture": "the same three tasks.",
+            "action": "call `sortTasks` with column `due` and direction `desc`.",
+            "expected": "the due dates come back as 2026-11-20, 2026-11-10, 2026-11-02.",
+            "observed": "The planned test passed on head.",
+            "proof": [
+              {
+                "kind": "test",
+                "planId": "t2",
+                "ref": "AC-2: sorting by due date descending is reverse chronological",
+                "file": "src/task-list/sort.test.ts",
+                "side": "head",
+                "status": "pass"
+              }
+            ],
+            "commit": "1111111111111111111111111111111111111111",
+            "verdict": "pass",
+            "rubric": []
+          },
+          {
+            "acId": "AC-3",
+            "tag": "test",
+            "method": "test",
+            "fixture": "the same three tasks plus one with `due: null`.",
+            "action": "call `sortTasks` with column `due`, direction `asc`, then direction `desc`.",
+            "expected": "the task with no due date is the last element in both results.",
+            "observed": "The planned test passed on head.",
+            "proof": [
+              {
+                "kind": "test",
+                "planId": "t3",
+                "ref": "AC-3: tasks without a due date sort last in both directions",
+                "file": "src/task-list/sort.test.ts",
+                "side": "head",
+                "status": "pass"
+              }
+            ],
+            "commit": "1111111111111111111111111111111111111111",
+            "verdict": "pass",
+            "rubric": []
+          }
+        ],
+        "ownerChecklist": [],
+        "untrustedTextFlagged": false,
+        "notes": ""
+      }
+    },
+    "results-browser": {"schema": "verifier/results.schema.json", "file": "verifier/evals/fixtures/swatch/results.json"},
+    "swatch-evidence": {"schema": "verifier/evidence-index.schema.json", "file": "verifier/evals/fixtures/swatch/index.json"},
+    "swatch-plan": {"schema": "verifier/plan.schema.json", "file": "verifier/evals/fixtures/swatch/plan.json"},
+    "inherited-lead": {"schema": "spec-lead/spec-lead.schema.json", "file": "spec-lead/evals/fixtures/revision/inherited-lead.json"},
+    "spec-lead": {"schema": "spec-lead/spec-lead.schema.json", "file": "_shared/evals/tasklist/taskdirs/task-by-id/spec-lead.json"}
+  },
+  "schemaRejects": {
+    "expect": "The base validates against its schema, and the mutated document does not.",
+    "cases": [
+      {"id": "results-missing-capture-id", "base": "results", "ops": [{"op": "remove", "path": "/captureAttemptId"}], "why": "A dispatch-only result loses its capture identity."},
+      {"id": "review-approve-without-commands", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/commands", "value": []}], "why": "An approval that ran nothing. Accepted by the round 1 schema."},
+      {"id": "review-approve-without-coverage", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/acCoverage", "value": []}], "why": "An approval that covers no criterion. Accepted by the round 1 schema."},
+      {"id": "review-approve-unimplemented-criterion", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/acCoverage/0/implemented", "value": false}], "why": "An approval of a criterion the reviewer found unimplemented."},
+      {"id": "review-approve-untested-criterion", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/acCoverage/1/tested", "value": false}], "why": "An approval of a criterion the reviewer found untested."},
+      {"id": "review-without-spec-set", "base": "review-approve", "ops": [{"op": "remove", "path": "/covers/specSetSha256"}], "why": "A verdict bound to no revision of the spec file set."},
+      {"id": "review-code-without-head", "base": "review-approve", "ops": [{"op": "remove", "path": "/covers/headSha"}], "why": "A code verdict bound to no commit."},
+      {"id": "audit-code-without-commands", "base": "audit-approve", "ops": [{"op": "set", "path": "/checks/commands", "value": []}], "why": "A code-stage audit that ran nothing."},
+      {"id": "audit-without-threat-model-check", "base": "audit-approve", "ops": [{"op": "remove", "path": "/checks/threatModel"}], "why": "A security audit that does not say how it used the threat model."},
+      {"id": "spec-review-approve-with-blocking-finding", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/verdict", "value": "approve"}], "why": "An approval that carries a blocking finding."},
+      {"id": "spec-review-low-severity-blocking", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/findings/0/severity", "value": "low"}], "why": "A low finding marked blocking."},
+      {"id": "spec-review-blocking-without-required-change", "base": "spec-review-changes", "ops": [{"op": "remove", "path": "/findings/0/requiredChange"}], "why": "A blocking finding that does not say what would resolve it."},
+      {"id": "spec-review-round-2-without-resolutions", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/round", "value": 2}], "why": "A re-review that does not answer the previous round."},
+      {"id": "spec-review-without-tier-check", "base": "spec-review-changes", "ops": [{"op": "remove", "path": "/checks/tier"}], "why": "A spec review that did not re-derive the tier."},
+      {"id": "spec-review-without-new-paths", "base": "spec-review-changes", "ops": [{"op": "remove", "path": "/checks/grounding/newPaths"}], "why": "A spec review that does not separate creation targets from claimed reuse."},
+      {"id": "spec-review-at-code-stage", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/stage", "value": "code"}], "why": "A spec reviewer verdict on code."},
+      {"id": "spec-review-with-head", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/covers/headSha", "value": "1111111111111111111111111111111111111111"}], "why": "A spec-stage verdict that claims a head commit."},
+      {"id": "finding-path-escapes", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/findings/0/location/file", "value": "../../etc/passwd"}], "why": "A finding located outside the repository and the task folder."},
+      {"id": "finding-path-absolute", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/findings/0/location/file", "value": "/etc/passwd"}], "why": "A finding located by an absolute path."},
+      {"id": "report-declares-removed-test", "base": "build-report", "ops": [{"op": "set", "path": "/existingTestsChanged", "value": [{"test": {"file": "src/task-list/sort.test.ts", "name": "formats a due date as day and month"}, "acIds": ["AC-1"], "reason": "The display test was judged redundant.", "nowAsserts": "Nothing; the test is gone.", "change": "removed"}]}], "why": "A complete report that declares a removed test. Accepted by the round 1 schema."},
+      {"id": "report-declares-skipped-test", "base": "build-report", "ops": [{"op": "set", "path": "/existingTestsChanged", "value": [{"test": {"file": "src/task-list/sort.test.ts", "name": "formats a due date as day and month"}, "acIds": ["AC-1"], "reason": "The display test was judged redundant.", "nowAsserts": "Nothing; the test is skipped.", "change": "skipped"}]}], "why": "A complete report that declares a skipped test."},
+      {"id": "report-changed-test-without-new-assertion", "base": "build-report", "ops": [{"op": "set", "path": "/existingTestsChanged", "value": [{"test": {"file": "src/task-list/sort.test.ts", "name": "formats a due date as day and month"}, "acIds": ["AC-1"], "reason": "The display test was judged redundant.", "change": "assertion-updated"}]}], "why": "A changed test that does not say what it asserts now."},
+      {"id": "report-without-input-sha", "base": "build-report", "ops": [{"op": "remove", "path": "/inputSha"}], "why": "A report not bound to the commit the run started from."},
+      {"id": "report-without-spec-set", "base": "build-report", "ops": [{"op": "remove", "path": "/specSetSha256"}], "why": "A report not bound to the approved spec file set."},
+      {"id": "report-complete-with-failing-command", "base": "build-report", "ops": [{"op": "set", "path": "/commands/0/exitCode", "value": 1}], "why": "A complete report whose own test run failed."},
+      {"id": "report-test-criterion-without-test", "base": "build-report", "ops": [{"op": "set", "path": "/acceptanceCriteria/0/tests", "value": []}], "why": "A test criterion reported implemented with no test."},
+      {"id": "report-reproduction-passed-before-fix", "base": "build-report", "ops": [{"op": "set", "path": "/reproduction/exitCodeBeforeFix", "value": 0}], "why": "A reproduction that never failed."},
+      {"id": "report-complete-with-uninstalled-dependency", "base": "build-report", "ops": [{"op": "set", "path": "/dependenciesAdded", "value": [{"name": "zod", "catalogEntry": "zod", "specReference": "Design choices", "installed": false}]}], "why": "A complete report that still asks the factory to install a package."},
+      {"id": "report-test-path-escapes", "base": "build-report", "ops": [{"op": "set", "path": "/acceptanceCriteria/0/tests/0/file", "value": "../outside/sort.test.ts"}], "why": "A test file outside the worktree."},
+      {"id": "report-changed-path-absolute", "base": "build-report", "ops": [{"op": "set", "path": "/filesChanged/0", "value": "/etc/hosts"}], "why": "A changed file given by an absolute path."},
+      {"id": "report-repair-without-findings", "base": "build-report", "ops": [{"op": "set", "path": "/mode", "value": "repair"}, {"op": "set", "path": "/round", "value": 2}, {"op": "set", "path": "/inputSha", "value": "1111111111111111111111111111111111111111"}], "why": "A repair that answers no finding."},
+      {"id": "report-build-with-findings", "base": "build-report", "ops": [{"op": "set", "path": "/findingsAddressed", "value": [{"source": "code-reviewer", "ref": "round 1 finding 1", "action": "fixed", "note": "Undated tasks now sort last in both directions."}]}], "why": "A first build that claims to answer findings."},
+      {"id": "plan-test-criterion-made-manual", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0", "value": {"acId": "AC-1", "tag": "test", "method": "manual", "manual": {"instruction": "Sort the list by due date.", "expected": "The tasks are in date order."}}}], "why": "A test criterion downgraded to an owner check."},
+      {"id": "plan-capture-route-full-url", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0", "value": {"acId": "AC-1", "tag": "browser", "method": "capture", "captures": [{"id": "c1", "name": "list-sorted-by-due", "route": "/tasks?sort=due&dir=asc", "fixture": "seeded-tasks", "viewports": ["desktop", "mobile"], "sides": ["base", "head"], "expect": {"headText": [], "headTextAbsent": [], "headTextInOrder": [], "differsFromBase": true, "allowedConsoleErrors": [], "visible": "The tasks in due date order."}}]}}, {"op": "set", "path": "/criteria/0/captures/0/route", "value": "https://example.invalid/tasks"}], "why": "A capture that leaves the preview's origin."},
+      {"id": "plan-capture-route-protocol-relative", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0", "value": {"acId": "AC-1", "tag": "browser", "method": "capture", "captures": [{"id": "c1", "name": "list-sorted-by-due", "route": "/tasks?sort=due&dir=asc", "fixture": "seeded-tasks", "viewports": ["desktop", "mobile"], "sides": ["base", "head"], "expect": {"headText": [], "headTextAbsent": [], "headTextInOrder": [], "differsFromBase": true, "allowedConsoleErrors": [], "visible": "The tasks in due date order."}}]}}, {"op": "set", "path": "/criteria/0/captures/0/route", "value": "//example.invalid/tasks"}], "why": "A capture that leaves the preview's origin without naming a scheme."},
+      {"id": "plan-capture-one-viewport", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0", "value": {"acId": "AC-1", "tag": "browser", "method": "capture", "captures": [{"id": "c1", "name": "list-sorted-by-due", "route": "/tasks?sort=due&dir=asc", "fixture": "seeded-tasks", "viewports": ["desktop", "mobile"], "sides": ["base", "head"], "expect": {"headText": [], "headTextAbsent": [], "headTextInOrder": [], "differsFromBase": true, "allowedConsoleErrors": [], "visible": "The tasks in due date order."}}]}}, {"op": "set", "path": "/criteria/0/captures/0/viewports", "value": ["desktop"]}], "why": "A browser criterion captured at one viewport."},
+      {"id": "plan-test-path-escapes", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0/tests/0/file", "value": "../../outside.test.ts"}], "why": "A planned test the factory would run from outside the worktree."},
+      {"id": "plan-test-path-absolute", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0/tests/0/file", "value": "/tmp/x.test.ts"}], "why": "A planned test given by an absolute path."},
+      {"id": "plan-without-spec-set", "base": "plan", "ops": [{"op": "remove", "path": "/specSetSha256"}], "why": "A plan not bound to the approved spec file set."},
+      {"id": "evidence-not-redacted", "base": "evidence", "ops": [{"op": "set", "path": "/textRedacted", "value": false}], "why": "An index whose text did not go through the redactor must never reach the judge."},
+      {"id": "evidence-run-without-test-files-commit", "base": "evidence", "ops": [{"op": "remove", "path": "/testRuns/0/testFilesSha"}], "why": "A test run that does not say which commit its test files came from."},
+      {"id": "evidence-run-without-commit", "base": "evidence", "ops": [{"op": "remove", "path": "/testRuns/1/commitSha"}], "why": "A test run that does not say which commit's code ran."},
+      {"id": "evidence-failure-without-kind", "base": "evidence", "ops": [{"op": "remove", "path": "/testRuns/1/tests/0/failure/kind"}], "why": "A failure that does not say whether an assertion or an error caused it."},
+      {"id": "results-pass-on-base-failure-alone", "base": "results", "ops": [{"op": "set", "path": "/rows/0/proof", "value": [{"kind": "test", "planId": "t1", "ref": "AC-1: sorting by due date ascending is chronological", "file": "src/task-list/sort.test.ts", "side": "base-with-head-tests", "status": "fail"}]}], "why": "A pass whose only proof is a failing base run. Accepted by the round 1 schema."},
+      {"id": "results-pass-with-failing-head-proof", "base": "results", "ops": [{"op": "set", "path": "/rows/0/proof/0/status", "value": "fail"}], "why": "A pass that cites a failing head result."},
+      {"id": "results-pass-with-skipped-head-proof", "base": "results", "ops": [{"op": "set", "path": "/rows/1/proof/0/status", "value": "skip"}], "why": "A pass that cites a skipped test."},
+      {"id": "results-pass-with-passing-base-proof", "base": "results", "ops": [{"op": "set", "path": "/rows/0/proof/1/status", "value": "pass"}], "why": "A reproduction cited as proof although it passed on base."},
+      {"id": "results-pass-without-proof", "base": "results", "ops": [{"op": "set", "path": "/rows/1/proof", "value": []}], "why": "A pass with nothing behind it."},
+      {"id": "results-unsupported-as-pass", "base": "results", "ops": [{"op": "set", "path": "/rows/0/method", "value": "unsupported"}], "why": "A criterion the plan could not observe, presented as a pass."},
+      {"id": "results-unsupported-as-fail", "base": "results", "ops": [{"op": "set", "path": "/rows/0/method", "value": "unsupported"}, {"op": "set", "path": "/rows/0/verdict", "value": "fail"}, {"op": "set", "path": "/rows/0/reason", "value": "Not observable."}, {"op": "set", "path": "/rows/0/proof", "value": []}, {"op": "set", "path": "/overall", "value": "fail"}], "why": "A criterion the plan could not observe, presented as a failure of the build."},
+      {"id": "results-overall-pass-with-blocked-row", "base": "results", "ops": [{"op": "set", "path": "/rows/2/verdict", "value": "blocked"}, {"op": "set", "path": "/rows/2/reason", "value": "No head result for the planned test."}, {"op": "set", "path": "/rows/2/proof", "value": []}], "why": "An overall pass over a blocked row."},
+      {"id": "results-row-without-method", "base": "results", "ops": [{"op": "remove", "path": "/rows/0/method"}], "why": "A row that cannot be joined to the plan's method."},
+      {"id": "results-test-proof-without-plan-id", "base": "results", "ops": [{"op": "remove", "path": "/rows/0/proof/0/planId"}], "why": "A proof entry that cannot be joined to a planned test."},
+      {"id": "results-test-proof-without-status", "base": "results", "ops": [{"op": "remove", "path": "/rows/0/proof/0/status"}], "why": "A proof entry that does not say what the cited test did."},
+      {"id": "results-test-proof-path-escapes", "base": "results", "ops": [{"op": "set", "path": "/rows/0/proof/0/file", "value": "../outside/sort.test.ts"}], "why": "A proof that names a test file outside the worktree."},
+      {"id": "results-without-spec-set", "base": "results", "ops": [{"op": "remove", "path": "/specSetSha256"}], "why": "Results not bound to the approved spec file set."},
+      {"id": "results-browser-pass-at-one-viewport", "base": "results-browser", "ops": [{"op": "remove", "path": "/rows/0/proof/1"}], "why": "A browser pass with a screenshot at only one viewport."},
+      {"id": "results-screenshot-without-hash", "base": "results-browser", "ops": [{"op": "remove", "path": "/rows/0/proof/0/sha256"}], "why": "A screenshot proof with no hash to verify."},
+      {"id": "results-browser-pass-on-test-proof", "base": "results-browser", "ops": [{"op": "set", "path": "/rows/0/proof", "value": [{"kind": "test", "planId": "t1", "ref": "AC-1: sorting by due date ascending is chronological", "file": "src/task-list/sort.test.ts", "side": "head", "status": "pass"}]}], "why": "A browser pass that cites no capture."},
+      {"id": "lead-member-skipped", "base": "spec-lead", "ops": [{"op": "set", "path": "/team/0/status", "value": "skipped"}, {"op": "set", "path": "/team/0/reason", "value": "The lead judged that the task has nothing to model."}], "why": "A triggered member that did not run. There is no skipped status."},
+      {"id": "lead-change-without-source", "base": "spec-lead", "ops": [{"op": "set", "path": "/round", "value": 2}, {"op": "set", "path": "/changes", "value": [{"round": 1, "n": 1, "ref": "finding 1", "action": "changed", "note": "AC-3 now states the status code."}]}], "why": "A revision answer that does not say whose finding it answers."},
+      {"id": "lead-finding-change-without-n", "base": "spec-lead", "ops": [{"op": "set", "path": "/round", "value": 2}, {"op": "set", "path": "/changes", "value": [{"source": "security-auditor", "round": 1, "action": "changed", "note": "AC-4 also sends id."}]}], "why": "A revision answer that names no finding."},
+      {"id": "lead-owner-change-without-ref", "base": "spec-lead", "ops": [{"op": "set", "path": "/round", "value": 2}, {"op": "set", "path": "/changes", "value": [{"source": "owner", "round": 1, "action": "changed", "note": "Dropped the export."}]}], "why": "An answer to owner feedback that does not say which comment."}
+    ]
+  },
+  "joinRejects": {
+    "expect": "The mutated document still validates against its schema. Each owning step turns these examples into tests of the named factory-contract join. The with mapping supplies companion files, including the bytes to stage under a PNG name.",
+    "cases": [
+      {"id": "review-null-tested-nonmanual", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/acCoverage/0/tested", "value": null}], "join": "Compare tested with the approved tag for AC-1.", "why": "AC-1 is tagged test."},
+      {"id": "plan-bug-missing-reproducer", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0/tests/0/reproduction", "value": false}], "join": "Require the named AC-1 reproducer for a test-method bug.", "why": "No base reproduction would be scheduled."},
+      {"id": "plan-bug-wrong-reproducer", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0/tests/0/name", "value": "formats a due date as day and month"}], "join": "Match the build report reproducer by file and full name.", "why": "This different test exists in the same file."},
+      {"id": "evidence-unrelated-assertion", "base": "evidence", "ops": [{"op": "set", "path": "/testRuns/1/tests/0/failure/excerpt", "value": "Expected response status 200, received 404."}], "join": "Judge the unchanged results base against this index and reject its AC-1 pass because the base assertion does not demonstrate the wrong chronological order.", "why": "The test name and failure kind match but the observed failure is unrelated."},
+      {"id": "results-wrong-row-commit", "base": "results", "ops": [{"op": "set", "path": "/rows/0/commit", "value": "2222222222222222222222222222222222222222"}], "join": "Compare row commit exactly to current headSha.", "why": "Only the displayed commit differs."},
+      {"id": "results-wrong-row-fixture", "base": "results", "ops": [{"op": "set", "path": "/rows/0/fixture", "value": "four tasks."}], "join": "Compare row fixture exactly to the approved AC-1 field.", "why": "Only the displayed fixture differs."},
+      {"id": "results-wrong-row-action", "base": "results", "ops": [{"op": "set", "path": "/rows/0/action", "value": "sort by title."}], "join": "Compare row action exactly to the approved AC-1 field.", "why": "Only the displayed action differs."},
+      {"id": "results-wrong-row-expected", "base": "results", "ops": [{"op": "set", "path": "/rows/0/expected", "value": "the list is empty."}], "join": "Compare row expected exactly to the approved AC-1 field.", "why": "Only the displayed expected differs."},
+      {"id": "results-previous-dispatch", "base": "results", "ops": [{"op": "set", "path": "/attemptId", "value": "11f78e37-ad5b-4f9a-a508-4a24ee19ac19"}], "join": "Require the current judge dispatch ID.", "why": "A judge retry reused its previous dispatch ID."},
+      {"id": "results-wrong-capture", "base": "results", "ops": [{"op": "set", "path": "/captureAttemptId", "value": "11f78e37-ad5b-4f9a-a508-4a24ee19ac19"}], "join": "Require the immutable capture ID in the brief and index.", "why": "The staged evidence belongs to another capture."},
+      {"id": "review-substituted-after-write", "base": "review-approve", "ops": [], "with": {"authenticated.code-reviewer": "builder/evals/fixtures/sort-skips-ac3-review.json", "repo.patch": "_shared/evals/tasklist/patches/sort-fix-skips-ac3.patch"}, "join": "Section 1 requires exact bytes from this attempt and reviewer session after process cleanup.", "why": "Both verdicts validate and the head suite passes, but only the changes verdict was submitted by the reviewer."},
+      {"id": "report-declared-deletion", "base": "build-report-declared-deletion", "ops": [], "with": {"repo.patch": "_shared/evals/tasklist/patches/sort-fix-deletes-declared.patch"}, "join": "Test integrity (factory-contract.md section 7): a test present at baseSha is absent at headSha.", "why": "The report declares a deleted test as an updated assertion. Every field is well formed; only a comparison of the two commits shows the test is gone."},
+      {"id": "report-wrong-input-commit", "base": "build-report", "ops": [{"op": "set", "path": "/inputSha", "value": "2222222222222222222222222222222222222222"}], "join": "build-report.json: inputSha equals the commit the factory checked out.", "why": "A report about some other starting point."},
+      {"id": "report-missing-criterion", "base": "build-report", "ops": [{"op": "remove", "path": "/acceptanceCriteria/2"}], "join": "build-report.json: one row per criterion of the approved spec, in order.", "why": "A complete report that leaves a criterion out."},
+      {"id": "report-test-does-not-exist", "base": "build-report", "ops": [{"op": "set", "path": "/acceptanceCriteria/1/tests/0/name", "value": "AC-2: a test that was never written"}], "join": "build-report.json: every listed test exists in its file.", "why": "A claimed test that is not in the worktree."},
+      {"id": "review-coverage-missing-criterion", "base": "review-approve", "ops": [{"op": "remove", "path": "/checks/acCoverage/2"}], "join": "verdicts: acCoverage has exactly one row per criterion of the approved spec.", "why": "An approval that covers two of three criteria."},
+      {"id": "review-coverage-duplicate-criterion", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/acCoverage/2/acId", "value": "AC-1"}], "join": "verdicts: acCoverage has exactly one row per criterion of the approved spec.", "why": "AC-1 twice, AC-3 never."},
+      {"id": "review-wrong-head", "base": "review-approve", "ops": [{"op": "set", "path": "/covers/headSha", "value": "2222222222222222222222222222222222222222"}], "join": "Every output: headSha equals the brief's.", "why": "A verdict on a commit that is not the one under review."},
+      {"id": "review-stale-spec-set", "base": "review-approve", "ops": [{"op": "set", "path": "/covers/specSetSha256", "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}], "join": "Every output: specSetSha256 equals the brief's.", "why": "A verdict against a spec file set that is not the approved one."},
+      {"id": "review-without-test-command", "base": "review-approve", "ops": [{"op": "set", "path": "/checks/commands/0/command", "value": "git status"}], "join": "verdicts: checks.commands includes the project's test command.", "why": "An approval that ran a command, but not the tests."},
+      {"id": "spec-review-unknown-criterion", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/findings/0/acIds", "value": ["AC-9"]}], "join": "verdicts: every acIds entry is a current or retired criterion.", "why": "A finding about a criterion that does not exist."},
+      {"id": "spec-review-finding-numbering", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/findings/0/n", "value": 2}], "join": "verdicts: findings[].n is 1 to k with no gap and no repeat.", "why": "A finding the next round cannot refer to."},
+      {"id": "spec-review-missing-file", "base": "spec-review-changes", "ops": [{"op": "set", "path": "/findings/0/location/file", "value": "specification.md"}], "join": "verdicts: location.file exists at the reviewed commit or in the spec file set.", "why": "A finding located in a file that does not exist."},
+      {"id": "plan-duplicate-test-id", "base": "plan", "ops": [{"op": "set", "path": "/criteria/1/tests/0/id", "value": "t1"}], "join": "plan.json: test ids are unique in the plan.", "why": "Two planned tests share an id, so a proof entry could not say which it is evidence for."},
+      {"id": "plan-missing-criterion", "base": "plan", "ops": [{"op": "remove", "path": "/criteria/2"}], "join": "plan.json: one entry per criterion of the approved spec, in order.", "why": "A criterion with no planned observation would never get a row."},
+      {"id": "plan-test-not-in-tree", "base": "plan", "ops": [{"op": "set", "path": "/criteria/0/tests/0/file", "value": "src/task-list/missing.test.ts"}], "join": "plan.json: every test's file is a tracked file at headSha that contains the test's name.", "why": "A well-formed path to a test that is not there."},
+      {"id": "plan-reproduction-on-wrong-criterion", "base": "plan", "ops": [{"op": "set", "path": "/criteria/1/tests/0/reproduction", "value": true}], "join": "plan.json: reproduction is true only on a test of AC-1 of a bug.", "why": "A base run requested for a test that is not the reproduction."},
+      {"id": "results-duplicate-row", "base": "results", "ops": [{"op": "set", "path": "/rows/1/acId", "value": "AC-1"}], "join": "results.json: exactly one row per criterion of the approved spec, in order.", "why": "AC-1 twice and AC-2 never, with an overall pass."},
+      {"id": "results-missing-row", "base": "results", "ops": [{"op": "remove", "path": "/rows/2"}], "join": "results.json: exactly one row per criterion of the approved spec, in order.", "why": "An overall pass over two of three criteria."},
+      {"id": "results-proof-of-another-criterion", "base": "results", "ops": [{"op": "set", "path": "/rows/1/proof/0/planId", "value": "t1"}, {"op": "set", "path": "/rows/1/proof/0/ref", "value": "AC-1: sorting by due date ascending is chronological"}], "join": "results.json: a pass on a test row has a head pass for every planned test of that row.", "why": "AC-2 passed on AC-1's test."},
+      {"id": "results-reproduction-without-base-proof", "base": "results", "ops": [{"op": "remove", "path": "/rows/0/proof/1"}], "join": "results.json: a reproduction test also needs a proof with status fail on base-with-head-tests.", "why": "A bug's AC-1 passed without the red run."},
+      {"id": "results-against-stale-evidence", "base": "results", "ops": [], "with": {"verification/evidence/index.json": "verifier/evals/fixtures/sort-evidence-stale.json"}, "join": "results.json: the evidence index's headSha is still the pull request's, and every proof names a record of the index.", "why": "Results written over evidence of another commit."},
+      {"id": "results-base-failed-for-another-reason", "base": "results", "ops": [], "with": {"verification/evidence/index.json": "verifier/evals/fixtures/sort-evidence-wrong-reason.json"}, "join": "results.json: a test proof's status equals the record's, and a reproduction's base failure is of kind assertion.", "why": "The base run failed on an import error, which shows nothing about the bug."},
+      {"id": "results-status-contradicts-index", "base": "results", "ops": [], "with": {"verification/evidence/index.json": "verifier/evals/fixtures/sort-evidence-mixed.json"}, "join": "results.json: a test proof's status equals the index record's.", "why": "The results cite passes the index records as failures or does not record at all."},
+      {"id": "results-screenshot-hash-mismatch", "base": "results-browser", "ops": [], "with": {"spec.md": "verifier/evals/fixtures/swatch/spec.md", "verification/plan.json": "verifier/evals/fixtures/swatch/plan.json", "verification/evidence/index.json": "verifier/evals/fixtures/swatch/index.json", "verification/evidence/swatch-head-mobile.png": "verifier/evals/fixtures/swatch/swatch-head-mobile.png", "verification/evidence/swatch-head-desktop.png": "verifier/evals/fixtures/swatch/substituted-desktop.png"}, "join": "results.json: a screenshot proof's sha256 equals the record's and the stored file's bytes.", "why": "The original sibling desktop PNG passes this join; only its staged bytes are replaced with a different encoding of the same pixels."},
+      {"id": "results-wrong-plan", "base": "results", "ops": [{"op": "set", "path": "/planSha256", "value": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}], "join": "results.json: planSha256 equals the evidence index's.", "why": "Results judged against a plan other than the one that was executed."},
+      {"id": "lead-inherited-wrong-digest", "base": "inherited-lead", "ops": [{"op": "set", "path": "/team/0/sha256", "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}], "join": "Match the inherited decision to its authenticated original session, earlier round and archived bytes.", "why": "Only the sha256 differs from the original provenance."},
+      {"id": "lead-inherited-wrong-author", "base": "inherited-lead", "ops": [{"op": "set", "path": "/team/0/authorSession", "value": "eval-other-session"}], "join": "Match the inherited decision to its authenticated original session, earlier round and archived bytes.", "why": "Only the authorSession differs from the original provenance."},
+      {"id": "lead-inherited-wrong-round", "base": "inherited-lead", "ops": [{"op": "set", "path": "/team/0/originalRound", "value": 2}], "join": "Match the inherited decision to its authenticated original session, earlier round and archived bytes.", "why": "Only the originalRound differs from the original provenance."},
+      {"id": "lead-criteria-differ-from-spec", "base": "spec-lead", "ops": [{"op": "remove", "path": "/acceptanceCriteria/3"}], "with": {"spec.md": "_shared/evals/tasklist/taskdirs/task-by-id/spec.md"}, "join": "Spec file set: spec-lead.json lists every criterion id and tag exactly as spec.md does.", "why": "The spec has AC-4 and the result file does not, so the factory would never plan or verify it."},
+      {"id": "lead-member-not-triggered", "base": "spec-lead", "ops": [{"op": "set", "path": "/team", "value": []}], "join": "Team verification (factory-contract.md section 4): team has one entry per member the confirmed tier and flags trigger.", "why": "The security flag is set and no threat modeler is recorded."}
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+import { beforeEach, expect, test } from "bun:test";
+import { createTask, handle, resetTasks } from "./tasks";
+
+beforeEach(resetTasks);
+
+const call = (method: string, path: string, userId: number | null, body?: unknown): Promise<Response> =>
+  handle(
+    new Request(`http://localhost${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body) }),
+    userId === null ? null : { userId },
+  );
+
+test("lists only the caller's tasks", async () => {
+  createTask(1, "mine", null);
+  createTask(2, "theirs", null);
+  const res = await call("GET", "/api/tasks", 1);
+  expect(res.status).toBe(200);
+  const titles = ((await res.json()) as { title: string }[]).map((t) => t.title);
+  expect(titles).toEqual(["mine"]);
+});
+
+test("rejects a request with no session", async () => {
+  expect((await call("GET", "/api/tasks", null)).status).toBe(401);
+});

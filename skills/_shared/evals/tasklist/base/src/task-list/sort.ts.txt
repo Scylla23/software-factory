@@ -1,0 +1,29 @@
+export interface Task {
+  id: number;
+  ownerId: number;
+  title: string;
+  /** ISO date such as 2026-11-02, or null when the task has no due date. */
+  due: string | null;
+}
+
+export type Direction = "asc" | "desc";
+export type Column = "title" | "due";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The due date as the list shows it, such as "2 Nov". */
+export function formatDue(due: string | null): string {
+  if (due === null) return "";
+  const date = new Date(due);
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+}
+
+const comparators: Record<Column, (a: Task, b: Task) => number> = {
+  title: (a, b) => a.title.localeCompare(b.title),
+  due: (a, b) => formatDue(a.due).localeCompare(formatDue(b.due)),
+};
+
+export function sortTasks(tasks: readonly Task[], column: Column, direction: Direction): Task[] {
+  const sorted = [...tasks].sort(comparators[column]);
+  return direction === "asc" ? sorted : sorted.reverse();
+}

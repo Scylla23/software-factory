@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/verdict.schema.json",
+  "title": "Factory verdict",
+  "description": "The one verdict shape written by every reviewer and auditor skill: spec-reviewer, code-reviewer, security-auditor, database-auditor. See verdict.md for the rules a schema cannot express.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "role", "stage", "taskId", "round", "covers", "verdict", "summary", "findings", "checks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "role": { "enum": ["spec-reviewer", "code-reviewer", "security-auditor", "database-auditor"] },
+    "stage": { "description": "spec: the verdict is on the spec file set. code: the verdict is on the diff baseSha..headSha.", "enum": ["spec", "code"] },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "round": { "description": "1 for the first review of this stage, then 1 higher for each re-review.", "type": "integer", "minimum": 1 },
+    "covers": {
+      "description": "Exactly what was reviewed, so the factory can bind the verdict to a revision. The factory rejects a verdict whose values differ from the run brief's.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseSha", "specSetSha256"],
+      "properties": {
+        "baseSha": { "$ref": "#/$defs/sha" },
+        "headSha": { "$ref": "#/$defs/sha" },
+        "specSetSha256": { "description": "specSet.sha256 from the run brief: the hash of the whole spec file set (spec.md, spec-lead.json, the team brief, and every decision file), at both stages.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "verdict": { "description": "approve: no blocking finding. changes: at least one blocking finding.", "enum": ["approve", "changes"] },
+    "summary": { "description": "Two or three sentences in the reviewer's own words. No quoted untrusted text.", "type": "string", "minLength": 1, "maxLength": 800 },
+    "findings": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/finding" } },
+    "resolutions": {
+      "description": "One entry for every blocking finding of the previous round. Required from round 2.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/resolution" }
+    },
+    "checks": { "$ref": "#/$defs/checks" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "approve" } } },
+      "then": { "properties": { "findings": { "not": { "contains": { "properties": { "blocking": { "const": true } }, "required": ["blocking"] } } } } },
+      "else": { "properties": { "findings": { "contains": { "properties": { "blocking": { "const": true } }, "required": ["blocking"] } } } }
+    },
+    {
+      "if": { "properties": { "round": { "minimum": 2 } } },
+      "then": { "required": ["resolutions"] }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "code" } } },
+      "then": {
+        "properties": {
+          "covers": { "required": ["baseSha", "headSha", "specSetSha256"] },
+          "findings": { "items": { "properties": { "location": { "required": ["file", "line"] } } } }
+        }
+      },
+      "else": { "properties": { "covers": { "not": { "required": ["headSha"] } }, "findings": { "items": { "properties": { "location": { "not": { "required": ["side"] } } } } } } }
+    },
+    {
+      "if": { "properties": { "role": { "const": "spec-reviewer" } } },
+      "then": { "properties": { "stage": { "const": "spec" }, "checks": { "required": ["grounding", "tier"] } } }
+    },
+    {
+      "if": { "properties": { "role": { "const": "spec-reviewer" }, "round": { "minimum": 2 } } },
+      "then": { "properties": { "checks": { "required": ["grounding", "tier", "revisionDiffReviewed"] } } }
+    },
+    {
+      "if": { "properties": { "role": { "const": "code-reviewer" } } },
+      "then": {
+        "properties": {
+          "stage": { "const": "code" },
+          "checks": { "required": ["commands", "acCoverage"], "properties": { "commands": { "minItems": 1 }, "acCoverage": { "minItems": 1 } } }
+        }
+      }
+    },
+    {
+      "description": "On approval the factory joins each row to its spec tag and accepts null only for a manual criterion.",
+      "if": { "properties": { "role": { "const": "code-reviewer" }, "verdict": { "const": "approve" } } },
+      "then": {
+        "properties": {
+          "checks": { "properties": { "acCoverage": { "items": { "properties": { "implemented": { "const": true }, "tested": { "enum": [true, null] } } } } } }
+        }
+      }
+    },
+    {
+      "description": "At code stage the auditors run the project's tests too, so an audit with no command recorded did not happen.",
+      "if": { "properties": { "role": { "enum": ["security-auditor", "database-auditor"] }, "stage": { "const": "code" } } },
+      "then": { "properties": { "checks": { "required": ["commands"], "properties": { "commands": { "minItems": 1 } } } } }
+    },
+    {
+      "if": { "properties": { "role": { "const": "security-auditor" } } },
+      "then": { "properties": { "checks": { "required": ["threatModel"] } } }
+    },
+    {
+      "if": { "properties": { "role": { "const": "database-auditor" } } },
+      "then": { "properties": { "stage": { "const": "code" }, "checks": { "required": ["migrations"] } } }
+    }
+  ],
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "repoPath": { "description": "A relative path with forward slashes and no . or .. segment.", "type": "string", "minLength": 1, "maxLength": 400, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$" },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "severity", "blocking", "category", "title", "location", "acIds", "detail", "evidence"],
+      "properties": {
+        "n": { "description": "1, 2, 3 in array order. The factory and the next round refer to a finding as round and n.", "type": "integer", "minimum": 1 },
+        "severity": { "enum": ["critical", "high", "medium", "low"] },
+        "blocking": { "description": "True when the stage must not pass until this is fixed.", "type": "boolean" },
+        "category": {
+          "enum": [
+            "format", "grounding", "untestable", "contradiction", "lost-requirement", "tier", "catalog", "plan",
+            "acceptance-criterion", "correctness", "regression", "test-integrity", "convention", "scope", "dependency",
+            "security",
+            "reversibility", "data-loss", "index", "locking", "compatibility", "integrity"
+          ]
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": {
+            "file": { "description": "Repository path at the reviewed revision, or at spec stage an exact member of the staged spec set such as spec.md.", "$ref": "#/$defs/repoPath" },
+            "side": { "description": "Code stage only. base: the file existed at baseSha and the diff deletes it, so line counts in the base version. Omit for a file that exists at headSha.", "const": "base" },
+            "line": { "type": "integer", "minimum": 1 },
+            "endLine": { "type": "integer", "minimum": 1 },
+            "section": { "description": "Heading of the spec or decision file section.", "type": "string", "minLength": 1 }
+          }
+        },
+        "acIds": { "description": "Every acceptance criterion the finding bears on, current or retired. Empty only when it bears on none.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
+        "detail": { "description": "What is wrong and what goes wrong because of it.", "type": "string", "minLength": 1, "maxLength": 2000 },
+        "evidence": { "description": "What the reviewer observed: the quoted line, or the command and its relevant output.", "type": "string", "minLength": 1, "maxLength": 2000 },
+        "requiredChange": { "description": "The smallest change that would resolve the finding.", "type": "string", "minLength": 1, "maxLength": 1000 }
+      },
+      "allOf": [
+        { "if": { "properties": { "severity": { "enum": ["critical", "high"] } } }, "then": { "properties": { "blocking": { "const": true } } } },
+        { "if": { "properties": { "severity": { "const": "low" } } }, "then": { "properties": { "blocking": { "const": false } } } },
+        { "if": { "properties": { "blocking": { "const": true } } }, "then": { "required": ["requiredChange"] } },
+        { "if": { "properties": { "category": { "const": "acceptance-criterion" } } }, "then": { "properties": { "acIds": { "minItems": 1 } } } }
+      ]
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["round", "n", "status", "note"],
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "n": { "type": "integer", "minimum": 1 },
+        "status": { "description": "resolved: fixed. unresolved: still present, and repeated in findings. withdrawn: the reviewer was wrong.", "enum": ["resolved", "unresolved", "withdrawn"] },
+        "carriedAs": { "description": "For unresolved: the n of the finding in this verdict that repeats it.", "type": "integer", "minimum": 1 },
+        "note": { "type": "string", "minLength": 1, "maxLength": 600 }
+      },
+      "allOf": [
+        { "if": { "properties": { "status": { "const": "unresolved" } } }, "then": { "required": ["carriedAs"] }, "else": { "not": { "required": ["carriedAs"] } } }
+      ]
+    },
+    "checks": {
+      "description": "What the reviewer actually did. Each role has required members (see the allOf above).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grounding": {
+          "description": "spec-reviewer: every path the spec cites as existing was looked up at baseSha. Paths the plan creates are counted in newPaths and are never missing.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pathsChecked", "missingPaths", "newPaths"],
+          "properties": {
+            "pathsChecked": { "type": "integer", "minimum": 0 },
+            "missingPaths": { "description": "Paths cited as existing or reused that are absent at baseSha.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "newPaths": { "description": "Creation targets from the plan, checked against the base tree. An approval requires every target to be absent.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "tier": {
+          "description": "spec-reviewer: the tier re-derived from the plan, against the tier in the spec header.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["specTier", "assessedTier", "reason"],
+          "properties": {
+            "specTier": { "enum": ["S", "M", "L"] },
+            "assessedTier": { "enum": ["S", "M", "L"] },
+            "reason": { "type": "string", "minLength": 1, "maxLength": 600 }
+          }
+        },
+        "revisionDiffReviewed": { "description": "spec-reviewer, round 2 and later: the full diff of every member of the spec file set against the set previously reviewed was read.", "const": true },
+        "commands": {
+          "description": "Every command run to reach the verdict, including ones that failed to start. Required and non-empty for the code reviewer and for the auditors at code stage.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command", "exitCode", "summary"],
+            "properties": {
+              "command": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "exitCode": { "type": ["integer", "null"] },
+              "summary": { "type": "string", "minLength": 1, "maxLength": 600 }
+            }
+          }
+        },
+        "acCoverage": {
+          "description": "code-reviewer: one row per acceptance criterion in the spec.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["acId", "implemented", "tested", "note"],
+            "properties": {
+              "acId": { "$ref": "#/$defs/acId" },
+              "implemented": { "type": "boolean" },
+              "tested": { "description": "A test or planned capture asserts this criterion's expected result. Use null for manual criteria.", "type": ["boolean", "null"] },
+              "note": { "type": "string", "maxLength": 600 }
+            }
+          }
+        },
+        "threatModel": {
+          "description": "security-auditor: how the audit used threat-model.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["present", "threatsChecked", "unmitigated"],
+          "properties": {
+            "present": { "type": "boolean" },
+            "threatsChecked": { "type": "integer", "minimum": 0 },
+            "unmitigated": { "description": "Threat ids such as T-3 whose mitigation is missing or untested.", "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^T-[1-9][0-9]{0,3}$" } }
+          }
+        },
+        "migrations": {
+          "description": "database-auditor: one row per migration or schema file in the diff.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "reversible", "note"],
+            "properties": {
+              "file": { "$ref": "#/$defs/repoPath" },
+              "reversible": { "enum": ["yes", "no", "declared-irreversible", "not-applicable"] },
+              "note": { "type": "string", "maxLength": 600 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

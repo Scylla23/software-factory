@@ -1,0 +1,15 @@
+CREATE TABLE users (
+  id bigserial PRIMARY KEY,
+  email text NOT NULL UNIQUE
+);
+
+CREATE TABLE tasks (
+  id bigserial PRIMARY KEY,
+  owner_id bigint NOT NULL REFERENCES users (id),
+  title text NOT NULL,
+  due date,
+  assignee text,
+  legacy_notes text
+);
+
+CREATE INDEX tasks_owner_id_idx ON tasks (owner_id);

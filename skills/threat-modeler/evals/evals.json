@@ -1,0 +1,74 @@
+{
+  "skill": "threat-modeler",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "threat-modeler-01-per-user-data",
+      "purpose": "The model finds the cross-user access threat, rates it high, and ties it to a negative test the lead can adopt. Every high threat is verifiable.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "threat-modeler", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": "../../spec-lead/evals/fixtures/team/linkshelf-brief.md",
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in outDir and no other file was created or changed anywhere" },
+        { "id": "headings", "kind": "deterministic", "check": "threat-model.md has the level 2 headings Decision, Options considered, Rationale, Assets and actors, Entry points, Threats, Proposed acceptance criteria, Required changes to acceptance criteria, Accepted risks, Security path globs, Curated entries used, Catalog gaps, Assumptions, in that order" },
+        { "id": "ids", "kind": "deterministic", "check": "Threats rows have ids T-1..T-k without gaps, and every Entry point cell is an id present in the Entry points table" },
+        { "id": "high-verified", "kind": "deterministic", "check": "every Threats row with Rating high has non-empty Mitigation and Verified by cells" },
+        { "id": "globs", "kind": "deterministic", "check": "Security path globs has at least one list item" },
+        { "id": "idor", "kind": "judge", "check": "Is there a threat rated high in which one signed-in user reads or changes another user's links, with a proposed criterion that tests it as the second user and expects refusal?" },
+        { "id": "url-handling", "kind": "judge", "check": "Does the model address saved URLs being rendered as links (for example a javascript: URL) or used in the digest email?" },
+        { "id": "no-boilerplate", "kind": "judge", "check": "Does every threat attach to something in this design, with no row that would apply unchanged to any web app and nothing in this one?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "threat-modeler-02-mitigation-changes-criteria",
+      "purpose": "A draft criterion is itself insecure. The modeler must report the needed change under Required changes, not silently rewrite the criterion or let it stand.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "threat-modeler", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: Linkshelf password reset\n\n## Problem\n\nUsers who forget their password need a way back in.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): requesting a reset for any email shows whether an account exists for it, so users know if they mistyped.\n- AC-2 (draft): the reset link in the email works whenever the user gets around to it; it does not expire.\n- AC-3 (draft): after choosing a new password the user is signed in.\n\n## Constraints\n\n- TypeScript on Bun; email goes through the mailer port.\n\n## What exists\n\nNew project.\n\n## Questions for each specialist\n\n- threat-modeler: what can go wrong with the reset flow.\n"
+          },
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in outDir and team-brief.md is unchanged" },
+        { "id": "required-changes", "kind": "deterministic", "check": "Required changes to acceptance criteria has list items that mention AC-1 and AC-2 and is not \"None.\"" },
+        { "id": "high-verified", "kind": "deterministic", "check": "every Threats row with Rating high has non-empty Mitigation and Verified by cells" },
+        { "id": "enumeration", "kind": "judge", "check": "Does the model identify that AC-1 as drafted lets anyone learn which emails have accounts, and state what the criterion would have to say instead?" },
+        { "id": "expiry", "kind": "judge", "check": "Does the model identify the non-expiring, reusable reset link as a threat and require single use and a limited lifetime?" },
+        { "id": "not-decided", "kind": "judge", "check": "Does the file leave the product decision to the lead, presenting the changes as required for the mitigation rather than as already made?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "threat-modeler-03-small-flagged-task",
+      "purpose": "On a tier S task with the security flag and no decision files, the model stays small and specific instead of producing a generic checklist dump.",
+      "pilot": "The pilot renders a user-supplied task title into a list page. The task changes how titles are displayed (for example, turning URLs in titles into links).",
+      "input": {
+        "brief": { "role": "threat-modeler", "round": 1, "project": { "isNew": false } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: link URLs in task titles\n\n## Problem\n\nWhen a task title contains a URL, show it as a clickable link in the task list.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): a title containing https://example.com/a shows that URL as a link that opens it.\n- AC-2 (draft): a title without a URL renders exactly as before.\n\n## Constraints\n\n- Tier S, security flag set. No decision files exist.\n\n## What exists\n\nThe pilot repository; the task list view and its title rendering.\n\n## Questions for each specialist\n\n- threat-modeler: what can go wrong when user-supplied titles become markup.\n"
+          }
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in outDir and no other file was created or changed anywhere" },
+        { "id": "small", "kind": "deterministic", "check": "the Threats table has at most 8 rows and threat-model.md is at most 200 lines" },
+        { "id": "cites-code", "kind": "deterministic", "check": "the Entry points table cites at least one path that exists in the pilot repository at baseSha" },
+        { "id": "xss", "kind": "judge", "check": "Is there a threat about a title that injects markup or a non-http URL scheme, with a proposed test criterion that uses such a title and expects it to render inert?" },
+        { "id": "focused", "kind": "judge", "check": "Is the model limited to title rendering and what it touches, without sections on authentication, payments, or other areas this task does not change?" }
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

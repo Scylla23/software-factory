@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-task-by-id",
+  "round": 2,
+  "status": "ready-for-review",
+  "tier": {
+    "provisional": "M",
+    "confirmed": "M",
+    "reason": "The change adds API routes in one module, with no schema change and no new dependency."
+  },
+  "riskFlags": {
+    "security": {
+      "value": true,
+      "reason": "New routes read and write per-user data by id and parse a request body."
+    },
+    "migration": {
+      "value": false,
+      "reason": "No persisted shape change."
+    },
+    "newProject": {
+      "value": false,
+      "reason": "project.isNew is false."
+    }
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "tag": "test"
+    },
+    {
+      "id": "AC-2",
+      "tag": "test"
+    },
+    {
+      "id": "AC-3",
+      "tag": "test"
+    },
+    {
+      "id": "AC-4",
+      "tag": "test"
+    }
+  ],
+  "retiredCriteria": [],
+  "team": [
+    {
+      "status": "inherited",
+      "member": "threat-modeler",
+      "file": "threat-model.md",
+      "originalRound": 1,
+      "authorSession": "eval-threat-round-1",
+      "sha256": "44d27a8e2af4b0b50cc9987c261914d22c45a90f192af27145a343f54525a052"
+    }
+  ],
+  "conflicts": [],
+  "escalations": [],
+  "catalogGaps": [],
+  "changes": [
+    {
+      "source": "spec-reviewer",
+      "round": 1,
+      "n": 1,
+      "action": "changed",
+      "note": "AC-3 now specifies the 404 response."
+    },
+    {
+      "source": "security-auditor",
+      "round": 1,
+      "n": 1,
+      "action": "changed",
+      "note": "AC-4 now covers id and ownerId."
+    }
+  ]
+}

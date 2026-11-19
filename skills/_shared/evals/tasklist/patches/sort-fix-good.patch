@@ -1,0 +1,51 @@
+diff --git a/src/task-list/sort.test.ts b/src/task-list/sort.test.ts
+index 8cab894..4fdf122 100644
+--- a/src/task-list/sort.test.ts
++++ b/src/task-list/sort.test.ts
+@@ -17,3 +17,19 @@ test("formats a due date as day and month", () => {
+   expect(formatDue("2026-11-02")).toBe("2 Nov");
+   expect(formatDue(null)).toBe("");
+ });
++
++const dated = [task(1, "c", "2026-11-20"), task(2, "b", "2026-11-10"), task(3, "a", "2026-11-02")];
++
++test("AC-1: sorting by due date ascending is chronological", () => {
++  expect(sortTasks(dated, "due", "asc").map((t) => t.due)).toEqual(["2026-11-02", "2026-11-10", "2026-11-20"]);
++});
++
++test("AC-2: sorting by due date descending is reverse chronological", () => {
++  expect(sortTasks(dated, "due", "desc").map((t) => t.due)).toEqual(["2026-11-20", "2026-11-10", "2026-11-02"]);
++});
++
++test("AC-3: tasks without a due date sort last in both directions", () => {
++  const tasks = [task(4, "undated"), ...dated];
++  expect(sortTasks(tasks, "due", "asc").map((t) => t.id)).toEqual([3, 2, 1, 4]);
++  expect(sortTasks(tasks, "due", "desc").map((t) => t.id)).toEqual([1, 2, 3, 4]);
++});
+diff --git a/src/task-list/sort.ts b/src/task-list/sort.ts
+index bbbe4c9..87e5b8d 100644
+--- a/src/task-list/sort.ts
++++ b/src/task-list/sort.ts
+@@ -18,12 +18,17 @@ export function formatDue(due: string | null): string {
+   return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+ }
+ 
+-const comparators: Record<Column, (a: Task, b: Task) => number> = {
+-  title: (a, b) => a.title.localeCompare(b.title),
+-  due: (a, b) => formatDue(a.due).localeCompare(formatDue(b.due)),
+-};
++const compareTitle = (a: Task, b: Task): number => a.title.localeCompare(b.title);
++
++/** Chronological in the given direction; tasks with no due date come last either way. */
++function compareDue(a: Task, b: Task, direction: Direction): number {
++  if (a.due === null || b.due === null) return a.due === b.due ? 0 : a.due === null ? 1 : -1;
++  const difference = Date.parse(a.due) - Date.parse(b.due);
++  return direction === "asc" ? difference : -difference;
++}
+ 
+ export function sortTasks(tasks: readonly Task[], column: Column, direction: Direction): Task[] {
+-  const sorted = [...tasks].sort(comparators[column]);
++  if (column === "due") return [...tasks].sort((a, b) => compareDue(a, b, direction));
++  const sorted = [...tasks].sort(compareTitle);
+   return direction === "asc" ? sorted : sorted.reverse();
+ }
