@@ -1,17 +1,21 @@
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { SYSTEM_READ } from "../verify/sandbox";
-import type { AttemptDirectories, SkillRole } from "./attempt";
+import type { AttemptDirectories } from "./attempt";
 import { gitWriteProtectedPaths } from "./git";
 import { overlaps, type SandboxPolicy } from "./policy";
 
 export function skillPolicy(
-  role: SkillRole, dirs: AttemptDirectories, denyRead: readonly string[],
+  dirs: AttemptDirectories, denyRead: readonly string[],
   tools: readonly string[], binaryRoots: readonly string[], git: string,
 ): SandboxPolicy {
-  const builder = role === "builder";
+  const builder = dirs.role === "builder";
   const gitDirs = [dirs.worktree, ...(dirs.scratchRepo ? [dirs.scratchRepo] : [])]
-    .flatMap(tree => gitWriteProtectedPaths(git, tree));
+    .flatMap(tree => {
+      const link = lstatSync(join(tree, ".git"));
+      if (!link.isDirectory() && !link.isFile()) throw new Error("invalid checkout git directory");
+      return gitWriteProtectedPaths(git, tree);
+    });
   const readable = [...new Set([dirs.worktree, dirs.skillsDir, dirs.taskDir, ...gitDirs,
     ...tools.map(p => realpathSync(p)), ...SYSTEM_READ.map(p => realpathSync(p)), ...binaryRoots])];
   const writable = [dirs.outDir, dirs.scratchDir, ...(builder ? [dirs.worktree] : [])];

@@ -23,7 +23,8 @@ test("Codex permissions close unlisted paths and grant writes to precisely the r
       attemptId: crypto.randomUUID(), role, stage,
     });
     runGit("/usr/bin/git", dirs.worktree, ["init", "-q"]);
-    const policy = skillPolicy(role, dirs, [sb.stateRoot], [], [], "/usr/bin/git");
+    if (dirs.scratchRepo) runGit("/usr/bin/git", dirs.scratchRepo, ["init", "-q"]);
+    const policy = skillPolicy(dirs, [sb.stateRoot], [], [], "/usr/bin/git");
     expect(policy.writable).toEqual([dirs.outDir, dirs.scratchDir, ...(role === "builder" ? [dirs.worktree] : [])]);
     expect(policy.denyWrite).toContain(realpathSync(join(dirs.worktree, ".git")));
     expect(policy.denyRead).toContain(join(dirs.root, "agents"));
@@ -46,6 +47,6 @@ test("Codex permissions close unlisted paths and grant writes to precisely the r
     expect(profile).toContain(`"${dirs.taskDir}"="read"`);
     expect(profile).toContain(`"${dirs.outDir}"="write"`);
     expect(profile).toContain(`"${dirs.scratchDir}"="write"`);
-    expect(() => skillPolicy(role, dirs, [dirs.root], [], [], "/usr/bin/git")).toThrow("mandatory denial");
+    expect(() => skillPolicy(dirs, [dirs.root], [], [], "/usr/bin/git")).toThrow("mandatory denial");
   }
 });

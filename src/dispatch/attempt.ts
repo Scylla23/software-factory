@@ -7,6 +7,8 @@ import { overlaps } from "./policy";
 export type SkillRole = "spec-lead" | "triage" | "builder" | "spec-reviewer" | "code-reviewer" | "database-auditor" | "security-auditor" | "verifier";
 
 export interface AttemptDirectories {
+  role: SkillRole;
+  stage: string;
   root: string;
   taskDir: string;
   skillsDir: string;
@@ -53,7 +55,7 @@ export function createAttempt(input: {
     const needsCopy = role === "code-reviewer" || role === "database-auditor" || (role === "security-auditor" && stage === "code");
     const stat = lstatSync(outDir, { bigint: true });
     return {
-      root, taskDir, skillsDir, outDir, scratchDir, outputIdentity: { dev: stat.dev, ino: stat.ino },
+      role, stage, root, taskDir, skillsDir, outDir, scratchDir, outputIdentity: { dev: stat.dev, ino: stat.ino },
       worktree: role === "builder" ? project : dir("snapshot"),
       ...(needsCopy ? { scratchRepo: dir("scratch/repo") } : {}),
       ...(role === "spec-lead" ? { agentsDir: dir("agents") } : {}),
