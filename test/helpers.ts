@@ -47,8 +47,9 @@ case "$last" in
     wait ;;
   late:*)
     trap 'sleep 301 & echo $! > "$arg"; exit 0' TERM
-    sleep 300 &
-    wait ;;
+    echo $$ > "$arg.ready"
+    # A signal to the current sleep can return wait before the shell itself receives TERM.
+    while :; do sleep 300 & wait; done ;;
   detach:*)
     # A real detached child: setsid in a forked child, then fork again so it is reparented to launchd in a group
     # and session of its own, with its cwd still the worktree; the CLI exits once the pid is written.
