@@ -115,7 +115,9 @@ try {
       if (scenario === "revision" && t.state === "spec_drafting" &&
           (role !== "spec" || config.agents[role].model !== "claude-opus-5-5" || config.agents[role].effort !== "high"))
         throw Error("the spec and its revision require Opus high");
-      const body = role === "spec" ? "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
+      const teamHandoff = scenario === "tier-L" ? "tier L, members architect, infra, frontend, threat-modeler" :
+        scenario === "security-M" ? "tier M, security flag, member threat-modeler" : null;
+      const body = role === "spec" ? teamHandoff ? `BLOCKED: team required, ${teamHandoff}, affects AC-1` : "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
       if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
         throw Error("reviewer did not see both reproduction results");
       const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro.test.ts", content: "eA==" }] : [];

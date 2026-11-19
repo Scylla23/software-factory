@@ -13,7 +13,7 @@ import { verifyPilot } from "./verify";
 import { Store, type Attempt, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
 
-import { drive, effect } from "./machine";
+import { drive, effect, Uncertain } from "./machine";
 
 export type Observer = (event: string, id: string) => void;
 type StagePublisher = Pick<Publisher, "boundPull" | "fetch" | "commit" | "draft" | "comment" | "comments" | "pages" |
@@ -246,6 +246,10 @@ async function draft(store: Store, task: Task, { git, dispatch, observe }: Servi
       await git.fetch(task.head);
       const output = await dispatch(store, task, a, "spec", prompt, observe);
       const text = output.result.resultText?.trim() ?? "";
+      // No harness has passed the prelaunch team allowlist and depth controls yet.
+      if (text.startsWith("BLOCKED: team required"))
+        throw new Uncertain("spec team required but no proven team-capable launch is available: " + text.slice(0, 600));
+      if (text.startsWith("BLOCKED: ")) throw new Uncertain("spec lead blocked: " + text.slice(9, 609));
       if (!text.includes("AC-1") || text.length > 32_000) throw new Error("invalid spec writer output");
       return `${text}\n`;
     });

@@ -130,3 +130,20 @@ test.each(["denied","store","timeout"])("gate two records a feedback %s failure 
     } finally { s.db.close(); }
   } finally { rmSync(root,{ recursive:true,force:true }); }
 });
+
+for (const scenario of ["tier-L", "security-M"]) test("unproven spec team stops before gate 1 on " + scenario, async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-team-gate-"));
+  try {
+    expect(await invoke(root, scenario)).toBe(true);
+    const store = new Store(join(root, "state.sqlite"));
+    try {
+      const task = store.task(1);
+      expect(task.state).toBe("escalated");
+      expect(task.reason).toContain("team required");
+      expect(task.spec).toBe("");
+      expect(store.db.query("SELECT id FROM attempts WHERE action='dispatch-spec' AND result IS NOT NULL").all()).toHaveLength(0);
+      expect(store.db.query("SELECT id FROM attempts WHERE action IN ('commit-spec','open-draft','request-spec-approval')").all()).toHaveLength(0);
+      expect(store.db.query("SELECT id FROM approvals").all()).toHaveLength(0);
+    } finally { store.db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
