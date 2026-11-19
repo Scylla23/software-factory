@@ -1,3 +1,4 @@
+import { count, safeSessionFile, sessionUuid } from "./validation";
 import { Glob } from "bun";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
 import { lstatSync, realpathSync } from "node:fs";
@@ -158,7 +159,6 @@ export function codexTurnUsage(raw: unknown): CodexUsage | null {
     outputTokens: raw.output_tokens,
     reasoningOutputTokens: raw.reasoning_output_tokens ?? null,
   };
-  const count = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
   if (![u.inputTokens,u.cachedInputTokens,u.outputTokens].every(count)
       || ![u.cacheWriteInputTokens,u.reasoningOutputTokens].every(v => v === null || count(v))) return null;
   return { harness: "codex", ...(u as Omit<CodexUsage, "harness">) };
@@ -175,18 +175,16 @@ function addUsage(a: CodexUsage, b: CodexUsage): CodexUsage {
   };
 }
 
-const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Finds `<sessionsRoot>/YYYY/MM/DD/rollout-<timestamp>-<threadId>.jsonl`. */
 export async function findCodexSessionFile(sessionsRoot: string, threadId: string): Promise<string | null> {
-  if (!THREAD_ID.test(threadId)) throw new Error(`not a Codex thread id: ${JSON.stringify(threadId.slice(0, 80))}`);
+  if (!sessionUuid.test(threadId)) throw new Error(`not a Codex thread id: ${JSON.stringify(threadId.slice(0, 80))}`);
   const glob = new Glob(`*/*/*/rollout-*-${threadId}.jsonl`);
   if (!lstatSync(sessionsRoot, { throwIfNoEntry: false })?.isDirectory() || realpathSync(sessionsRoot) !== sessionsRoot) return null;
   let found: string | null = null;
   for await (const rel of glob.scan({ cwd: sessionsRoot, onlyFiles: true, followSymlinks: false })) {
     const path = `${sessionsRoot}/${rel}`;
-    const st = lstatSync(path);
-    if (found || !st.isFile() || st.nlink !== 1 || realpathSync(path) !== path) return null;
+    if (found || !safeSessionFile(path)) return null;
     found = path;
   }
   return found;

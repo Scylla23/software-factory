@@ -1,3 +1,4 @@
+import { count, money } from "../dispatch/validation";
 import { isRecord } from "../dispatch/jsonl";
 import type { RunResult } from "../dispatch/types";
 import { estimate, priceDate, type Tokens } from "./prices";
@@ -15,12 +16,6 @@ export interface Capture {
   priceDate: string;
 }
 
-export function count(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-export function money(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
 export function codexLine(model: string | null, raw: Record<string, unknown>, perRequest: boolean): Line | null {
   const { inputTokens: input, cachedInputTokens: cacheRead, cacheWriteInputTokens: cacheWrite,
     outputTokens: output, reasoningOutputTokens: reasoning } = raw;

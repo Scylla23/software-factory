@@ -1,3 +1,4 @@
+import { sessionUuid } from "../dispatch/validation";
 import { spawn } from "node:child_process";
 import { meteredJob, recordUsage, recordInterrupted } from "../usage/store";
 import {
@@ -36,9 +37,8 @@ export interface WorkerOutput {
   result: RunResult;
   files: { path: string; content: string }[];
 }
-const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 function jobDir(id: string, stateRoot: string) {
-  if (!uuid.test(id)) throw new Error("invalid worker attempt id");
+  if (!sessionUuid.test(id)) throw new Error("invalid worker attempt id");
   return join(stateRoot, "jobs", id);
 }
 

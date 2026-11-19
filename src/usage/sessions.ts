@@ -1,22 +1,16 @@
 import { lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { codexTurnUsage, findCodexSessionFile } from "../dispatch/codex";
-import { assertPrivateDir } from "../dispatch/config";
+import { count, money, safeSessionFile, sessionUuid } from "../dispatch/validation";
+import { assertPrivateDir, type DispatchConfig } from "../dispatch/config";
 import { isRecord, readJsonl, str } from "../dispatch/jsonl";
-import { codexLine, count, money, primary, summarize, type Line, type RunUsage } from "./capture";
+import { codexLine, primary, summarize, type Line, type RunUsage } from "./capture";
 import { estimate } from "./prices";
-
-const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
-
-function safeFile(path: string) {
-  const st = lstatSync(path);
-  return st.isFile() && st.nlink === 1 && realpathSync(path) === path;
-}
 
 async function claudeMessages(root: string, session: string, lines: Map<string, Line>) {
   const paths: string[] = [];
   for await (const name of new Bun.Glob(`*/${session}.jsonl`).scan({ cwd: root, followSymlinks: false })) paths.push(join(root, name));
-  if (paths.length !== 1 || !safeFile(paths[0]!)) return null;
+  if (paths.length !== 1 || !safeSessionFile(paths[0]!)) return null;
   const children = join(dirname(paths[0]!), session, "subagents");
   // Native child transcripts are confined to this parent's own session directory.
   if (lstatSync(children, { throwIfNoEntry: false })?.isDirectory() && realpathSync(children) === children) {
@@ -26,7 +20,7 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
   for (const path of paths) {
     const child = path !== paths[0];
     const localIds = new Set<string>();
-    if (!safeFile(path)) continue;
+    if (!safeSessionFile(path)) continue;
     for await (const item of readJsonl(path)) {
       if (item.kind !== "record") continue;
       const e = item.value;
@@ -82,19 +76,19 @@ async function codexResponses(root: string, session: string, lines: Map<string, 
   return lastModel;
 }
 
-export async function captureRun(run: RunUsage, stateRoot: string) {
+export async function captureRun(run: RunUsage, locations: Pick<DispatchConfig, "stateRoot" | "harnessHomes">) {
   const direct = run.harness === "claude" && !run.usage && money(run.reportedCostUsd)
     ? summarize([], "result", false, run.reportedCostUsd)
     : primary(run.usage, run.observedModel, run.outcome);
   const session = run.sessionId ?? (run.harness === "claude" ? run.runId : null);
   let observed = run.observedModel;
   const result = (capture: typeof direct) => ({ session, observed, capture });
-  if ((direct.lines.length && (observed || run.harness !== "codex")) || !session || !uuid.test(session)
+  if ((direct.lines.length && (observed || run.harness !== "codex")) || !session || !sessionUuid.test(session)
       || (run.harness === "claude" && session !== run.runId)) return result(direct);
   const lines = new Map<string, Line>();
   try {
     const claude = run.harness === "claude";
-    const home = assertPrivateDir(join(stateRoot, claude ? "claude-home" : "codex-home"), stateRoot);
+    const home = assertPrivateDir(locations.harnessHomes[run.harness], locations.stateRoot);
     const root = join(home, claude ? "projects" : "sessions");
     if (realpathSync(root) !== root) return result(direct);
     const reader = claude ? claudeMessages : codexResponses;

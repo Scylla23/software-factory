@@ -3,6 +3,7 @@ import { appendFileSync, cpSync, linkSync, renameSync, copyFileSync, mkdirSync, 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { config } from "../factory.config";
+import { dispatchHomes } from "../src/dispatch/config";
 import { parseClaudeStream } from "../src/dispatch/claude";
 import { parseCodexEvents } from "../src/dispatch/codex";
 import { readJsonl } from "../src/dispatch/jsonl";
@@ -39,8 +40,8 @@ async function replay(harness: "claude" | "codex", mode: "complete" | "killed") 
 
 test.each(["claude", "codex"] as const)("%s result agrees with the independently recovered session", async harness => {
   const { run } = await replay(harness, "complete");
-  const { capture } = await captureRun(run, root);
-  const fallback = (await captureRun({ ...run, usage: null }, root)).capture;
+  const { capture } = await captureRun(run, dispatchHomes(root));
+  const fallback = (await captureRun({ ...run, usage: null }, dispatchHomes(root))).capture;
   expect(capture.source).toBe("result");
   expect(capture.coverage).toBe("complete");
   expect(fallback.coverage).toBe("partial");
@@ -64,7 +65,7 @@ test("killed Claude dedupes message fragments across parent and child and exclud
   const childMsg = { ...msg, agentId: "child", isSidechain: true, message: { ...msg.message, id: "child-msg" } };
   writeFileSync(child, [msg, { ...msg, message: { ...msg.message, id: "inherited-only" } }, childMsg, { ...childMsg, message: { ...childMsg.message, usage: { ...childMsg.message.usage, output_tokens: 84 } } },
     { ...childMsg, sessionId: crypto.randomUUID(), message: { ...msg.message, id: "foreign" } }].map(e => JSON.stringify(e)).join("\n"));
-  const { capture, observed } = await captureRun({ ...run, sessionId: null, observedModel: null }, root);
+  const { capture, observed } = await captureRun({ ...run, sessionId: null, observedModel: null }, dispatchHomes(root));
   expect(observed).toBe("claude-haiku-5-5");
   expect(capture).toMatchObject({ source: "session", coverage: "partial" });
   expect(capture.lines.map(l => l.input)).toEqual([2, 2]);
@@ -78,7 +79,7 @@ test("killed Codex charges only unique responses owned by the requested session"
   const copy = (p: object) => JSON.stringify({ ...msg, payload: { ...msg.payload, ...p } });
   appendFileSync(path, [copy({}), copy({ thread_id: crypto.randomUUID(), response_id: "foreign" }),
     copy({ session_id: crypto.randomUUID(), response_id: "foreign2" }), copy({ response_id: null })].join("\n"));
-  const { capture, observed } = await captureRun({ ...run, observedModel: null }, root);
+  const { capture, observed } = await captureRun({ ...run, observedModel: null }, dispatchHomes(root));
   expect(observed).toBe("gpt-6-luna");
   expect(capture).toMatchObject({ source: "session", coverage: "partial", lines: [{ input: 10660, output: 36 }] });
 });
@@ -90,7 +91,7 @@ test.each(["claude","codex"] as const)("%s rejects links and foreign session IDs
   rmSync(path);
   symlinkSync(foreign, path);
   for (const sessionId of [run.sessionId, crypto.randomUUID(), "../*"]) {
-    const { capture } = await captureRun({ ...run, sessionId }, root);
+    const { capture } = await captureRun({ ...run, sessionId }, dispatchHomes(root));
     expect(capture).toMatchObject({ coverage: "unknown", costUsd: null, lines: [] });
   }
 });
@@ -132,9 +133,9 @@ test("Claude preserves a reported cost even when only transcript tokens survive"
   writeFileSync(log, JSON.stringify(raw));
   const parsed = await parseClaudeStream(readJsonl(log));
   const incomplete = { ...run, usage: parsed.usage, reportedCostUsd: parsed.reportedCostUsd };
-  expect((await captureRun(incomplete, root)).capture).toMatchObject({ source: "session", coverage: "partial", reportedTotal: true, costUsd: 0.75 });
+  expect((await captureRun(incomplete, dispatchHomes(root))).capture).toMatchObject({ source: "session", coverage: "partial", reportedTotal: true, costUsd: 0.75 });
   rmSync(path);
-  expect((await captureRun(incomplete, root)).capture).toMatchObject({ source: "result", coverage: "unknown", reportedTotal: true, costUsd: 0.75 });
+  expect((await captureRun(incomplete, dispatchHomes(root))).capture).toMatchObject({ source: "result", coverage: "unknown", reportedTotal: true, costUsd: 0.75 });
 });
 
 test("each recovered Codex response applies the request's context tier", () => {
@@ -161,7 +162,7 @@ test.each(["claude","codex"] as const)("%s rejects a redirected session director
   symlinkSync(join(root, "foreign"), dir);
   const scan = spyOn(Bun.Glob.prototype, "scan");
   try {
-    expect((await captureRun(run, root)).capture.coverage).toBe("unknown");
+    expect((await captureRun(run, dispatchHomes(root))).capture.coverage).toBe("unknown");
     expect(scan).not.toHaveBeenCalled();
   } finally { scan.mockRestore(); }
 });
@@ -176,7 +177,7 @@ test.each(["leaf", "ancestor"])("Claude refuses to enumerate a redirected subage
   symlinkSync(join(root, "outside"), source);
   const scan = spyOn(Bun.Glob.prototype, "scan");
   try {
-    expect((await captureRun(run, root)).capture.lines).toHaveLength(1);
+    expect((await captureRun(run, dispatchHomes(root))).capture.lines).toHaveLength(1);
     expect(scan.mock.calls.some(([options]) => typeof options === "object" && options.cwd === dir)).toBe(false);
   } finally { scan.mockRestore(); }
 });
@@ -184,13 +185,13 @@ test.each(["leaf", "ancestor"])("Claude refuses to enumerate a redirected subage
 test.each(["claude","codex"] as const)("%s refuses a hardlinked transcript", async harness => {
   const { run, path } = await replay(harness,"killed");
   linkSync(path, join(root, "foreign.jsonl"));
-  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+  expect((await captureRun(run, dispatchHomes(root))).capture.lines).toEqual([]);
 });
 
 test("Claude refuses two project directories claiming the session", async () => {
   const { run } = await replay("claude","killed");
   put(join(root,"claude-home/projects/other",run.sessionId + ".jsonl"),"claude-killed-session");
-  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+  expect((await captureRun(run, dispatchHomes(root))).capture.lines).toEqual([]);
 });
 
 test.each(["id","session_id"])("Codex rejects foreign session metadata in %s before counting responses", async field => {
@@ -198,7 +199,7 @@ test.each(["id","session_id"])("Codex rejects foreign session metadata in %s bef
   const records = readFileSync(path,"utf8").trim().split("\n").map(line => JSON.parse(line));
   records[0].payload[field] = crypto.randomUUID();
   writeFileSync(path, records.map(r => JSON.stringify(r)).join("\n"));
-  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+  expect((await captureRun(run, dispatchHomes(root))).capture.lines).toEqual([]);
 });
 
 test("Claude rejects a child claiming a different agent filename", async () => {
@@ -208,12 +209,12 @@ test("Claude rejects a child claiming a different agent filename", async () => {
   const dir = join(dirname(path), run.sessionId!, "subagents");
   mkdirSync(dir,{ recursive:true });
   writeFileSync(join(dir,"agent-first.jsonl"),JSON.stringify({ ...msg, isSidechain:true, agentId:"second" }));
-  expect((await captureRun(run, root)).capture.lines).toHaveLength(1);
+  expect((await captureRun(run, dispatchHomes(root))).capture.lines).toHaveLength(1);
 });
 
 test("Claude rejects a reported session differing from the dispatch UUID", async () => {
   const { run } = await replay("claude","killed");
-  expect((await captureRun({ ...run, runId:crypto.randomUUID() },root)).capture.lines).toEqual([]);
+  expect((await captureRun({ ...run, runId:crypto.randomUUID() },dispatchHomes(root))).capture.lines).toEqual([]);
 });
 
 test("Claude excludes synthetic assistant accounting", async () => {
@@ -221,7 +222,7 @@ test("Claude excludes synthetic assistant accounting", async () => {
   const msg = JSON.parse(readFileSync(path,"utf8"));
   msg.message.model = "<synthetic>";
   writeFileSync(path, JSON.stringify(msg));
-  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+  expect((await captureRun(run, dispatchHomes(root))).capture.lines).toEqual([]);
 });
 
 test("Claude refuses a hardlinked child independently of its trusted parent", async () => {
@@ -232,7 +233,7 @@ test("Claude refuses a hardlinked child independently of its trusted parent", as
   mkdirSync(dirname(child), { recursive:true });
   writeFileSync(child,JSON.stringify({ ...msg, isSidechain:true, agentId:"child" }));
   linkSync(child,join(root,"outside.jsonl"));
-  expect((await captureRun(run,root)).capture.lines).toHaveLength(1);
+  expect((await captureRun(run,dispatchHomes(root))).capture.lines).toHaveLength(1);
 });
 
 test("Claude ignores the entire child directory when its root transcript is untrusted", async () => {
@@ -241,7 +242,7 @@ test("Claude ignores the entire child directory when its root transcript is untr
   mkdirSync(dirname(child), { recursive:true });
   writeFileSync(child,JSON.stringify({ ...JSON.parse(readFileSync(path,"utf8")), isSidechain:true, agentId:"child" }));
   linkSync(path,join(root,"elsewhere.jsonl"));
-  expect((await captureRun(run,root)).capture.lines).toEqual([]);
+  expect((await captureRun(run,dispatchHomes(root))).capture.lines).toEqual([]);
 });
 
 test("live Haiku child and parent reconcile to the provider total and copied parent IDs remain single charges", async () => {
@@ -252,7 +253,7 @@ test("live Haiku child and parent reconcile to the provider total and copied par
   mkdirSync(project,{ recursive:true, mode:0o700 });
   cpSync(src,project,{ recursive:true });
   const run: RunUsage = { harness:"claude", runId:session, sessionId:session, requestedModel:"haiku", observedModel:null, usage:null, outcome:"cancelled" };
-  const read = () => captureRun(run, root);
+  const read = () => captureRun(run, dispatchHomes(root));
   const initial = await read();
   const totals = initial.capture.lines.reduce((a,l) => [a[0]! + l.input,a[1]! + l.cacheRead,a[2]! + l.cacheWrite!,a[3]! + l.output], [0,0,0,0]);
   expect(totals).toEqual([6,2966,4806,209]);
@@ -290,7 +291,16 @@ test("Claude observes the parent model independently of the child model", async 
   msg.message.model = "child-model";
   msg.message.id += "-child";
   writeFileSync(child,JSON.stringify({ ...msg,agentId:"cheap",isSidechain:true }));
-  const capture = await captureRun({ ...run, observedModel:null },root);
+  const capture = await captureRun({ ...run, observedModel:null },dispatchHomes(root));
   expect(capture.capture.lines.map(l => l.model)).toEqual(["claude-haiku-5-5","child-model"]);
   expect(capture.observed).toBe("claude-haiku-5-5");
+});
+
+test("session recovery uses the dispatch configuration's hermetic harness home", async () => {
+  const { run } = await replay("claude","killed");
+  const locations = dispatchHomes(root);
+  const custom = join(root,"isolated-claude");
+  renameSync(locations.harnessHomes.claude,custom);
+  locations.harnessHomes.claude = custom;
+  expect((await captureRun(run,locations)).capture.lines).toHaveLength(1);
 });

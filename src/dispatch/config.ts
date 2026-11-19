@@ -61,6 +61,11 @@ export interface LoadOptions {
   stateRoot?: string;
 }
 
+/** The controller can recover session usage even when the original executable is unavailable. */
+export function dispatchHomes(stateRoot: string): Pick<DispatchConfig, "stateRoot" | "harnessHomes"> {
+  return { stateRoot, harnessHomes: { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") } };
+}
+
 export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   const untrusted = [...tempRoots(), ...opts.agentWriteRoots.map(canonical)];
   const harnessBinDirs: string[] = [];
@@ -83,13 +88,12 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   const stateRoot = canonical(opts.stateRoot ?? join(accountHome, ".software-factory"));
   assertStateRootIsolated(stateRoot, untrusted);
   assertSafeDir(stateRoot, accountHome);
-  const homes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
-  for (const home of Object.values(homes)) assertPrivateDir(home, stateRoot);
+  const locations = dispatchHomes(stateRoot);
+  for (const home of Object.values(locations.harnessHomes)) assertPrivateDir(home, stateRoot);
   return {
     executables: { claude: find("claude", true), codex: find("codex", true), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted), git: assertTrustedExecutable("/usr/bin/git", untrusted), lsof: assertTrustedExecutable("/usr/sbin/lsof", untrusted) },
     accountHome,
-    stateRoot,
-    harnessHomes: homes,
+    ...locations,
     agentPath: trustedAgentPath(harnessBinDirs, untrusted),
     managedSettingsPaths: CLAUDE_MANAGED_SETTINGS_PATHS,
   };

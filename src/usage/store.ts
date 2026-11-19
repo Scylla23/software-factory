@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { dispatchHomes } from "../dispatch/config";
 import { parseClaudeStream } from "../dispatch/claude";
 import { parseCodexEvents } from "../dispatch/codex";
 import { readJsonl } from "../dispatch/jsonl";
@@ -49,7 +50,7 @@ export interface MeterJob {
 }
 
 export async function recordUsage(db: Database, task: Task, job: MeterJob, run: RunUsage, root: string) {
-  const { capture, session, observed } = await captureRun(run, root);
+  const { capture, session, observed } = await captureRun(run, dispatchHomes(root));
   db.transaction(() => {
     // Receipt adoption is idempotent. A later final receipt can settle an uncertain supervisor.
     const record = db.run(`INSERT INTO audit(attempt,task,stage,session,requested_model,observed_model,effort,prompt_revision,base,head,outcome,usage)

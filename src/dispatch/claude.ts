@@ -1,3 +1,4 @@
+import { count, money } from "./validation";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
 import type { SandboxPolicy } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
@@ -147,12 +148,12 @@ function claudeUsage(result: Record<string, unknown>): ClaudeUsage | null {
       cacheReadInputTokens: raw.cacheReadInputTokens,
       cacheCreationInputTokens: raw.cacheCreationInputTokens,
     };
-    if (!Object.values(u).every((v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0)) return null;
+    if (!Object.values(u).every(count)) return null;
     byModel[model] = { ...u, costUsd: usd(raw.costUSD) } as ClaudeModelUsage;
   }
   return { harness: "claude", totalCostUsd: usd(result.total_cost_usd), byModel };
 }
 
 function usd(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  return money(value) ? value : null;
 }
