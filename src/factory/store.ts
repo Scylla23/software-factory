@@ -157,7 +157,7 @@ export class Store {
       .get(task.id, task.visit);
     const reviewed = this.db
       .query<{ result: string }, [number]>(
-        "SELECT result FROM attempts WHERE task=? AND action='code-review' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
+        "SELECT result FROM attempts WHERE task=? AND action IN ('code-review','code-review-validation-retry') AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
       )
       .get(task.id);
     if (previous?.previous !== "verifying" || !reviewed) return false;
@@ -256,7 +256,7 @@ export class Store {
       // Reuse that exact dispatch, including its original UUID and audit, across repeated owner-authorized restarts.
       if (action === "dispatch-builder" && this.db.query("SELECT 1 FROM transitions WHERE task=? AND visit=? AND previous='escalated' AND state='building'").get(task.id, task.visit)) {
         const saved = this.db.query<{ id: string; result: string; intent: string }, [number, number]>(
-          "SELECT id,result,intent FROM attempts WHERE task=? AND visit<? AND action='dispatch-builder' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1"
+          "SELECT id,result,intent FROM attempts WHERE task=? AND visit<? AND action IN ('dispatch-builder','dispatch-builder-validation-retry') AND result IS NOT NULL ORDER BY visit DESC LIMIT 1"
         ).get(task.id, task.visit);
         if (!saved || saved.intent !== json) throw new Error("interrupted base proof lost its completed builder");
         return { id: saved.id, result: saved.result, action, fresh: false };

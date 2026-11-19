@@ -179,3 +179,16 @@ for (const trigger of ["tier-L", "security-M"]) test("eligible team handoff uses
     } finally { s.db.close(); }
   } finally { rmSync(root, {recursive: true, force: true}); }
 });
+
+test("a schema-valid second reviewer attempt supplies the approval used by the final gate", async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-review-retry-"));
+  try {
+    expect(await invoke(root, "retry-review")).toBe(true);
+    const s = new Store(join(root, "state.sqlite"));
+    try {
+      expect(s.task(1).state).toBe("done");
+      expect(s.db.query("SELECT id FROM attempts WHERE action='code-review' AND result IS NULL").all()).toHaveLength(1);
+      expect(s.db.query("SELECT id FROM attempts WHERE action='code-review-validation-retry' AND result IS NOT NULL").all()).toHaveLength(1);
+    } finally { s.db.close(); }
+  } finally { rmSync(root, {recursive: true, force: true}); }
+});

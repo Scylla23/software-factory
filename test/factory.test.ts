@@ -361,7 +361,7 @@ test("owner resume replaces only the interrupted read-only attempt and preserves
     const s = new Store(":memory:");
     try {
       let t = s.move(spec(s), "building", { repairCount: 1, reason: "fix fixture" }, approved);
-      const builder = s.plan(t, "dispatch-builder", "intent");
+      const builder = s.plan(t, action === "base-reproduction" ? "dispatch-builder-validation-retry" : "dispatch-builder", "intent");
       s.finish(builder.id, ["original patch"]);
       if (action !== "base-reproduction") t = s.move(t, "checks");
       if (action === "verify") t = s.move(s.move(t, "code_review"), "verifying");

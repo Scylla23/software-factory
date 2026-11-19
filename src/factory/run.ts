@@ -146,7 +146,7 @@ async function review(store: Store, task: Task, { git, dispatch, observe }: Serv
 function latest<T>(store: Store, task: Task, action: string): T {
   const row = store.db
     .query<{ result: string }, [number, string]>(
-      "SELECT result FROM attempts WHERE task=? AND action=? AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
+      "SELECT result FROM attempts WHERE task=? AND action IN (?2,?2 || '-validation-retry') AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
     )
     .get(task.id, action);
   if (!row) throw new Error(`missing required evidence: ${action}`);

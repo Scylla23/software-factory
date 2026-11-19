@@ -110,6 +110,7 @@ try {
     git, stateRoot: root, observe: () => {},
     ...(scenario.startsWith("eligible-") ? {authorizeTeam: () => {}} : {}),
     dispatch: async (_s, t, a, role, prompt) => {
+      if (a.action === "code-review" && scenario === "retry-review") throw new InvalidSkillOutput("wrong spec digest");
       if (role === "reviewer" && scenario === "invalid-verdict") throw new InvalidSkillOutput("wrong spec digest");
       if (role === "reviewer" && scenario === "replacement") throw new Uncertain("skill output integrity escalation: output bytes changed after authenticated final write");
       if (scenario === "login" && a.action === "dispatch-spec") {
