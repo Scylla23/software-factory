@@ -24,9 +24,9 @@ export function money(value: unknown): value is number {
 export function codexLine(model: string | null, raw: Record<string, unknown>, perRequest: boolean): Line | null {
   const { inputTokens: input, cachedInputTokens: cacheRead, cacheWriteInputTokens: cacheWrite,
     outputTokens: output, reasoningOutputTokens: reasoning } = raw;
-  if (!count(input) || !count(cacheRead) || !count(cacheWrite) || !count(output) || !count(reasoning)
-      || cacheRead + cacheWrite > input || reasoning > output) return null;
-  const t = { input: input - cacheRead - cacheWrite, cacheRead, cacheWrite, output, reasoning };
+  if (!count(input) || !count(cacheRead) || (cacheWrite !== null && !count(cacheWrite)) || !count(output) || (reasoning !== null && !count(reasoning))
+      || cacheRead + (cacheWrite ?? 0) > input || (reasoning !== null && reasoning > output)) return null;
+  const t = { input: input - cacheRead - (cacheWrite ?? 0), cacheRead, cacheWrite, output, reasoning };
   return { model, ...t, costUsd: estimate(model, t, 0, perRequest) };
 }
 
@@ -40,7 +40,7 @@ export function primary(usage: unknown, model: string | null, outcome: string): 
   const lines: Line[] = [];
   if (isRecord(usage) && usage.harness === "codex") {
     const line = codexLine(model, usage, false);
-    if (line) return summarize([line], "result", outcome === "completed");
+    if (line) return summarize([line], "result", outcome === "completed" && line.cacheWrite !== null && line.reasoning !== null);
   }
   if (isRecord(usage) && usage.harness === "claude" && isRecord(usage.byModel)) {
     const entries = Object.entries(usage.byModel);

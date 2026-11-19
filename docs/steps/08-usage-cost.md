@@ -12,6 +12,8 @@ The meter prefers Claude's `total_cost_usd` for the run and records the individu
 For a multi-model run, the model report uses the amounts attributed to each model by the CLI, while the task, project and stage reports use the run total.
 Codex input includes cache hits and writes, so the meter subtracts both before pricing ordinary input.
 Output already includes reasoning.
+If Codex omits a write or reasoning counter, that bucket remains null across turns and the token breakdown is partial.
+An unknown write count keeps the aggregate input count available and makes its price unknown.
 The normalized line records reasoning separately when the harness provides it.
 
 When exit accounting is absent, the meter reads only the named session under the factory's dedicated Claude or Codex home.
@@ -89,4 +91,4 @@ No live subagent was launched.
 
 `bun run typecheck` passed.
 `python3 scripts/mutate-step-08.py` ran each affected test against the baseline, applied one change at a time in a private source copy, and required the named test to fail.
-All 19 [mutants](../../scripts/mutations/step-08.json) were killed, covering message and response deduplication, session ownership, unknown cost, prices, token subsets, reported totals, coverage, receipt adoption and feedback attribution.
+All 21 [mutants](../../scripts/mutations/step-08.json) were killed, covering message and response deduplication, session ownership, unknown cost, prices, token subsets, reported totals, coverage, receipt adoption and feedback attribution.

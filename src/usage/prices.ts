@@ -14,10 +14,10 @@ export function priceFor(observedModel: string | null) {
 }
 
 export interface Tokens {
-  // Disjoint buckets. Reasoning is a subset of output and can be unavailable.
+  // Input includes unclassified writes when the provider omits the write bucket.
   input: number;
   cacheRead: number;
-  cacheWrite: number;
+  cacheWrite: number | null;
   output: number;
   reasoning: number | null;
 }
@@ -25,6 +25,7 @@ export interface Tokens {
 export function estimate(model: string | null, t: Tokens, longWrites = 0, perRequest = false) {
   const p = priceFor(model);
   if (!p) return null;
+  if (t.cacheWrite === null) return null;
   const prompt = t.input + t.cacheRead + t.cacheWrite;
   const longCodex = perRequest && model?.startsWith("gpt-") && prompt > 272_000;
   const haikuFactor = perRequest && model === "claude-haiku-5-5" && prompt > 100_000 ? 5 : 1;

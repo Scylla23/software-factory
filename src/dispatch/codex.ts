@@ -154,11 +154,13 @@ export function codexTurnUsage(raw: unknown): CodexUsage | null {
   const u = {
     inputTokens: raw.input_tokens,
     cachedInputTokens: raw.cached_input_tokens,
-    cacheWriteInputTokens: raw.cache_write_input_tokens ?? 0,
+    cacheWriteInputTokens: raw.cache_write_input_tokens ?? null,
     outputTokens: raw.output_tokens,
-    reasoningOutputTokens: raw.reasoning_output_tokens ?? 0,
+    reasoningOutputTokens: raw.reasoning_output_tokens ?? null,
   };
-  if (!Object.values(u).every((v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0)) return null;
+  const count = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+  if (![u.inputTokens,u.cachedInputTokens,u.outputTokens].every(count)
+      || ![u.cacheWriteInputTokens,u.reasoningOutputTokens].every(v => v === null || count(v))) return null;
   return { harness: "codex", ...(u as Omit<CodexUsage, "harness">) };
 }
 
@@ -167,9 +169,9 @@ function addUsage(a: CodexUsage, b: CodexUsage): CodexUsage {
     harness: "codex",
     inputTokens: a.inputTokens + b.inputTokens,
     cachedInputTokens: a.cachedInputTokens + b.cachedInputTokens,
-    cacheWriteInputTokens: a.cacheWriteInputTokens + b.cacheWriteInputTokens,
+    cacheWriteInputTokens: a.cacheWriteInputTokens === null || b.cacheWriteInputTokens === null ? null : a.cacheWriteInputTokens + b.cacheWriteInputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
-    reasoningOutputTokens: a.reasoningOutputTokens + b.reasoningOutputTokens,
+    reasoningOutputTokens: a.reasoningOutputTokens === null || b.reasoningOutputTokens === null ? null : a.reasoningOutputTokens + b.reasoningOutputTokens,
   };
 }
 

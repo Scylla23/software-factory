@@ -25,6 +25,7 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
   let mainModel: string | null = null;
   for (const path of paths) {
     const child = path !== paths[0];
+    const localIds = new Set<string>();
     if (!safeFile(path)) continue;
     for await (const item of readJsonl(path)) {
       if (item.kind !== "record") continue;
@@ -40,7 +41,9 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
       const longWrites = isRecord(u.cache_creation) ? u.cache_creation.ephemeral_1h_input_tokens : 0;
       const name = str(model) || null;
       if (!child) mainModel = name;
-      if (!child || !lines.has(id)) lines.set(id, { ...t, model: name,
+      if (child && lines.has(id) && !localIds.has(id)) continue;
+      if (child) localIds.add(id);
+      lines.set(id, { ...t, model: name,
         costUsd: count(longWrites) && longWrites <= cacheWrite ? estimate(name, t, longWrites, true) : null });
     }
   }

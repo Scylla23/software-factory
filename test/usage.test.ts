@@ -62,14 +62,14 @@ test("killed Claude dedupes message fragments across parent and child and exclud
   mkdirSync(dirname(child), { recursive: true });
   appendFileSync(path, raw + '{"broken":');
   const childMsg = { ...msg, agentId: "child", isSidechain: true, message: { ...msg.message, id: "child-msg" } };
-  writeFileSync(child, [msg, { ...msg, message: { ...msg.message, id: "inherited-only" } }, childMsg, childMsg,
+  writeFileSync(child, [msg, { ...msg, message: { ...msg.message, id: "inherited-only" } }, childMsg, { ...childMsg, message: { ...childMsg.message, usage: { ...childMsg.message.usage, output_tokens: 84 } } },
     { ...childMsg, sessionId: crypto.randomUUID(), message: { ...msg.message, id: "foreign" } }].map(e => JSON.stringify(e)).join("\n"));
   const { capture, observed } = await captureRun({ ...run, sessionId: null, observedModel: null }, root);
   expect(observed).toBe("claude-haiku-5-5");
   expect(capture).toMatchObject({ source: "session", coverage: "partial" });
   expect(capture.lines.map(l => l.input)).toEqual([2, 2]);
   expect(capture.lines.map(l => l.cacheWrite)).toEqual([5038, 5038]);
-  expect(capture.lines.map(l => l.output)).toEqual([82, 82]);
+  expect(capture.lines.map(l => l.output)).toEqual([82, 84]);
 });
 
 test("killed Codex charges only unique responses owned by the requested session", async () => {
@@ -140,4 +140,16 @@ test("Claude preserves a reported cost even when only transcript tokens survive"
 test("each recovered Codex response applies the request's context tier", () => {
   const tokens = { input: 272001, cacheRead: 5, cacheWrite: 10, output: 77, reasoning: 60 };
   expect(estimate("gpt-6-luna", tokens, 0, true)).toBeCloseTo((272001 * 0.2 + 5 * 0.02 + 10 * 0.25 + 77 * 0.75) / 1e6, 12);
+});
+
+test("omitted Codex write and reasoning counters stay unknown across turns", async () => {
+  const path = join(root, "incomplete.jsonl");
+  const usage = { input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 };
+  const turn = (u: typeof usage) => JSON.stringify({ type: "turn.completed", usage: u });
+  const measured = { ...usage, reasoning_output_tokens: 1, cache_write_input_tokens: 3 };
+  writeFileSync(path, [turn(usage), turn(measured)].join("\n"));
+  const result = await parseCodexEvents(readJsonl(path));
+  const capture = primary(result.usage, "gpt-6-luna", "completed");
+  expect(capture).toMatchObject({ coverage: "partial", costUsd: null,
+    lines: [{ input: 16, cacheRead: 4, cacheWrite: null, output: 6, reasoning: null }] });
 });

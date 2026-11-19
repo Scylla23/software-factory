@@ -55,9 +55,9 @@ export interface CodexUsage {
   harness: "codex";
   inputTokens: number;
   cachedInputTokens: number;
-  cacheWriteInputTokens: number;
+  cacheWriteInputTokens: number | null;
   outputTokens: number;
-  reasoningOutputTokens: number;
+  reasoningOutputTokens: number | null;
 }
 
 export interface RunResult {

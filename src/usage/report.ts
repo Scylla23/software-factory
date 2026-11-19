@@ -26,7 +26,7 @@ function coverage(a: Coverage, b: Coverage): Coverage {
 }
 
 function add(t: Totals, lines: Line[], usd: number | null, state: Coverage, reportedTotal: boolean) {
-  const tokens = lines.length ? lines.reduce((sum, l) => sum + l.input + l.cacheRead + l.cacheWrite + l.output, 0) : null;
+  const tokens = lines.length ? lines.reduce((sum, l) => sum + l.input + l.cacheRead + (l.cacheWrite ?? 0) + l.output, 0) : null;
   const costs = lines.flatMap(l => l.costUsd === null ? [] : [l.costUsd]);
   const knownCost = usd ?? (costs.length ? costs.reduce((a,b) => a + b, 0) : null);
   const tokenState = tokens === null ? "unknown" : state;
