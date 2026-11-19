@@ -65,6 +65,8 @@ export interface CodexUsage {
 
 export interface RunResult {
   bundleHash?: string;
+  /** Hash of the dispatched prompt, composed instructions and selected team definition revision. */
+  promptRevision?: string;
   harness: Harness;
   runId: string;
   /** Claude session id or Codex thread id, as reported by the CLI. */

@@ -7,7 +7,7 @@ import { runGit } from "../src/dispatch/git";
 import { outputDigest } from "../src/dispatch/output";
 import { skillInputs, specFileSet, stageInputs, type WorkerRole } from "../src/factory/skill-inputs";
 import { archiveCollection } from "../src/factory/skill-store";
-import { validateSkillOutput } from "../src/factory/skill-validation";
+import { InvalidSkillOutput, validateSkillOutput } from "../src/factory/skill-validation";
 import { Store, type Task } from "../src/factory/store";
 import { makeSandbox, type Sandbox } from "./helpers";
 import mutations from "../skills/_shared/evals/mutations.json";
@@ -49,7 +49,7 @@ test("triage joins schema-valid areas, task revision and kind to the immutable s
   triage.taskId = input.brief.taskId;
   const check = (doc: unknown) => validateSkillOutput(input, dirs, new Map([["triage.json", Buffer.from(JSON.stringify(doc))]]), [], "/usr/bin/git", false);
   expect(() => check(triage)).not.toThrow();
-  for (const areas of [["absent.txt"], ["../src/task-list/sort.ts"], ["/src"], ["src//task-list"]]) expect(() => check({...triage, areas})).toThrow();
+  for (const areas of [["absent.txt"], ["../src/task-list/sort.ts"], ["/src"], ["src//task-list"]]) expect(() => check({...triage, areas})).toThrow(InvalidSkillOutput);
   expect(() => check({...triage, areas: ["src/task-list"]})).not.toThrow();
   expect(() => check({...triage, taskRevision: 2})).toThrow("revision");
   expect(() => check({...triage, taskId: "different"})).toThrow("task");
@@ -96,7 +96,7 @@ test("builder joins the complete diff and test names before storing changes", ()
   expect(() => check(report.filesChanged)).toThrow("named test");
   symlinkSync(join(sb.worktree, "src/task-list/sort.test.ts"), join(sb.worktree, "linked.test.ts"));
   report.acceptanceCriteria[0].tests[0] = {file: "linked.test.ts", name: tests[0]};
-  expect(() => check(report.filesChanged)).toThrow();
+  expect(() => check(report.filesChanged)).toThrow(InvalidSkillOutput);
 });
 test("unproven routes refuse dispatch before a harness or team can start", () => {
   expect(() => requireSkillProofs("codex", "spec-lead", ["architect"])).toThrow("cannot restrict");

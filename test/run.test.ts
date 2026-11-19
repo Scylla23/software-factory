@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -28,6 +29,7 @@ describe("runAgent", () => {
     const r = await runAgent(spec("claude", `replay:${fixture("claude-headless.stream.jsonl")}`), sb.config);
     expect(r).toMatchObject({ outcome: "completed", exitCode: 0, requestedModel: "requested", observedModel: "claude-haiku-5-5", resultText: "PELICAN", diagnostics: [], cleanup: null });
     expect(r.usage?.harness).toBe("claude");
+    expect(r.promptRevision).toBe(createHash("sha256").update(JSON.stringify([`replay:${fixture("claude-headless.stream.jsonl")}`,null,null])).digest("hex"));
   });
 
   test("codex: observed model comes from the session file under the dedicated CODEX_HOME", async () => {

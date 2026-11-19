@@ -21,8 +21,12 @@ const schemas = {
 function requireJoin(condition: unknown, field: string): asserts condition {
   if (!condition) throw new InvalidSkillOutput("skill output does not match " + field);
 }
+function validOutputPath(path: string) {
+  try { assertRepoPath(path); }
+  catch { throw new InvalidSkillOutput("invalid repository path in skill output"); }
+}
 function trackedMode(git: string, tree: string, sha: string, path: string) {
-  assertRepoPath(path);
+  validOutputPath(path);
   const entry = runGit(git, tree, ["ls-tree", "-z", sha, "--", path]).toString();
   if (!entry) return "";
   const match = /^(\d{6}) \w+ [a-f0-9]+\t([^\0]+)\0$/.exec(entry);
@@ -93,8 +97,11 @@ export function validateSkillOutput(
     const tests = criteria.flatMap(c => c.tests ?? []);
     if (document.reproduction) tests.push(document.reproduction.test);
     for (const t of tests) {
-      assertRepoPath(t.file);
-      requireJoin(decoder.decode(readRegularFile(join(dirs.worktree, t.file), 1024 * 1024)).includes(t.name), "named test in worktree");
+      validOutputPath(t.file);
+      let content;
+      try { content = decoder.decode(readRegularFile(join(dirs.worktree, t.file), 1024 * 1024)); }
+      catch { throw new InvalidSkillOutput("invalid referenced test file"); }
+      requireJoin(content.includes(t.name), "named test in worktree");
     }
     if (brief.previous?.buildReport) {
       const previous = parseStaged<{reproduction: unknown}>(input, brief.previous.buildReport);

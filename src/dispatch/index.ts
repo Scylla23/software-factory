@@ -1,5 +1,6 @@
 import { sessionUuid } from "./validation";
 import { closeSync, existsSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
@@ -77,6 +78,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
   const team = skill && brief && skill.members.length ? publishTeam(skill, brief, projectInstructions, fileToolsOnly) : undefined;
+  const promptRevision = createHash("sha256").update(JSON.stringify([prompt, instructions, team?.revision ?? null])).digest("hex");
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
     spec.harness === "claude"
@@ -123,6 +125,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
     harness: spec.harness,
+    promptRevision,
     ...(bundleHash ? { bundleHash } : {}),
     runId: spec.runId,
     exitCode: status?.code ?? null,
@@ -185,6 +188,7 @@ function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, pro
   const file = join(skill.dirs.agentsDir, "definitions.json");
   const definitions = claudeDefinitions(brief, skill.members, projectInstructions);
   if (fileToolsOnly) definitions["spec-lead"]!.tools = definitions["spec-lead"]!.tools.filter(tool => tool !== "Bash");
-  writeFileSync(file, JSON.stringify(definitions), { flag: "wx", mode: 0o400 });
-  return { file, members: skill.members };
+  const bytes = JSON.stringify(definitions);
+  writeFileSync(file, bytes, { flag: "wx", mode: 0o400 });
+  return { file, members: skill.members, revision: createHash("sha256").update(bytes).digest("hex") };
 }

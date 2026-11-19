@@ -22,7 +22,7 @@ test("worker, project check and capture receipts are adopted only for the intend
     const a = { ...store.plan(t, "dispatch-spec", { head: t.head }), fresh: false };
     const job = join(root, "jobs", a.id);
     mkdirSync(job, { recursive: true });
-    const result = { runId: a.id, sessionId: "one", requestedModel: "fixture", observedModel: "fixture", outcome: "completed",
+    const result = { runId: a.id, sessionId: "one", requestedModel: "fixture", observedModel: "fixture", promptRevision: "d".repeat(64), outcome: "completed",
       quarantineWorktree: false, bundleHash: "a".repeat(64), resultText: "completed", usage: null };
     const events: string[] = [];
     const dispatch = () => dispatchWorker(store, t, a, "triage", "{}", (e) => events.push(e), root);
@@ -34,7 +34,9 @@ test("worker, project check and capture receipts are adopted only for the intend
     expect((await dispatch()).result.sessionId).toBe("one");
     await dispatch();
     expect(events).toEqual(["recover-worker", "recover-worker"]);
-    expect(store.db.query("SELECT attempt FROM audit").all()).toEqual([{ attempt: a.id }]);
+    expect(store.db.query("SELECT attempt,prompt_revision FROM audit").all()).toEqual([{ attempt: a.id, prompt_revision: "d".repeat(64) }]);
+    save({ output: {result: {...result, promptRevision: undefined}, files: []} });
+    await expect(dispatch()).rejects.toThrow("dispatched prompt revision");
     save({ output: { result: { ...result, runId: "foreign" }, files: [] } });
     await expect(dispatch()).rejects.toThrow("another attempt");
     save({ escalated: true, error: "builder deleted a tracked file" });
@@ -74,7 +76,7 @@ test("a live launcher can take longer than five seconds to claim its attempt", a
     const a = s.plan(t, "dispatch-spec", {});
     const result = await dispatchWorker(s, t, a, "triage", "{}", () => {}, root, (dir, id) => {
       const output = { result: { runId: id, sessionId: "delayed", requestedModel: "fixture", observedModel: "fixture",
-        outcome: "completed", bundleHash: "a".repeat(64), resultText: "completed", usage: null }, files: [], collection: triageOutput(id, t.base, "delayed") };
+        promptRevision: "d".repeat(64), outcome: "completed", bundleHash: "a".repeat(64), resultText: "completed", usage: null }, files: [], collection: triageOutput(id, t.base, "delayed") };
       child = Bun.spawn([process.execPath, "-e", `
         await Bun.sleep(5500);
         await Bun.write("claim", String(process.pid));

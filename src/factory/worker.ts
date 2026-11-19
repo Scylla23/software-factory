@@ -299,6 +299,7 @@ export async function dispatchWorker(
     auditWarning(cause);
   }
   if (failure) throw failure;
+  if (!result.promptRevision || !/^[a-f0-9]{64}$/.test(result.promptRevision)) throw new Uncertain("worker receipt lacks the dispatched prompt revision");
   if (!result.resultText!.startsWith("BLOCKED: ")) {
     const c = reply.output.collection;
     if (!c || c.attempt !== attempt.id || c.base !== task.base || c.head !== task.head || c.role !== skillRoles[role] ||
