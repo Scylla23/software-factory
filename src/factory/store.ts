@@ -1,3 +1,4 @@
+import { migrateSkillStore } from "./skill-store";
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { migrateFeedbackFailures, migrateUsage } from "../usage/store";
@@ -65,9 +66,20 @@ export class Store {
     this.db
       .transaction(() => {
         const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version;
-        if (version === 3) return;
-        if (version === 2) return migrateFeedbackFailures(this.db);
-        if (version === 1) return migrateUsage(this.db);
+        if (version === 4) return;
+        if (version === 2 && !this.db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='usage_captures'").get()) {
+          // Step 4b's pre-merge v2 contained skills and predated usage accounting.
+          const skills = this.db.query("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('skill_tasks','skill_collections','skill_files')").all();
+          if (skills.length !== 3) throw new Error("unrecognized v2 factory schema");
+          migrateUsage(this.db);
+          this.db.exec("PRAGMA user_version=4");
+          return;
+        }
+        if (version === 1 || version === 2 || version === 3) {
+          if (version === 1) migrateUsage(this.db);
+          if (version === 2) migrateFeedbackFailures(this.db);
+          return migrateSkillStore(this.db);
+        }
         if (version !== 0) throw new Error(`unsupported factory database version ${version}`);
         this.db.exec(`
         CREATE TABLE tasks (id INTEGER PRIMARY KEY, source TEXT NOT NULL, repo_id INTEGER NOT NULL,
@@ -88,6 +100,7 @@ export class Store {
         PRAGMA user_version=1;
       `);
         migrateUsage(this.db);
+        migrateSkillStore(this.db);
       })
       .immediate();
   }
