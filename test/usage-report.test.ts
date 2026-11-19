@@ -125,3 +125,21 @@ for (const [name, elapsed, pid, message] of [
     expect(costReport(store.db,"task").groups).toMatchObject([{ tokens:null, tokenCoverage:"unknown", apiEquivalentUsd:null }]);
   } finally { clock.mockRestore(); }
 });
+
+test.each(["supervisor", "uncertain", "quarantine"] as const)("audit failure preserves the original %s error", async mode => {
+  const attempt = store.plan(task, "dispatch-builder",{});
+  const dir = join(root,"jobs",attempt.id);
+  mkdirSync(dir,{ recursive:true });
+  writeFileSync(join(dir,"job.json"),"{broken");
+  const output = { result:{ runId:attempt.id, quarantineWorktree:true, outcome:"failed" }, files:[] };
+  const reason = mode === "quarantine" ? "needs inspection" : "original supervisor error";
+  const receipt = mode === "quarantine" ? { output } : { escalated:mode === "uncertain", error:reason };
+  writeFileSync(join(dir,"result.json"),JSON.stringify(receipt));
+  const log = spyOn(console,"warn").mockImplementation(() => {});
+  try {
+    const error = await dispatchWorker(store,task,attempt,"builder","probe",() => {},root).catch(e => e);
+    expect(error.message).toContain(reason);
+    expect(error instanceof Uncertain).toBe(mode !== "supervisor");
+    expect(log.mock.calls.flat().join(" ")).toContain(attempt.id);
+  } finally { log.mockRestore(); }
+});

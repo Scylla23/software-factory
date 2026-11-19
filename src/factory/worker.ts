@@ -148,8 +148,13 @@ export async function dispatchWorker(
   const dir = jobDir(attempt.id, stateRoot);
   const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role] };
   const snapshot = () => meteredJob(dir, { ...job, agent: config.agents[role] });
+  const auditWarning = (cause: unknown) => console.warn(`usage audit failed for ${attempt.id}`, cause);
+  const recordInterruption = async () => {
+    try { await recordInterrupted(store.db, task, snapshot(), dir, stateRoot); }
+    catch (cause) { auditWarning(cause); }
+  };
   const interrupted = async (error: Error): Promise<never> => {
-    await recordInterrupted(store.db, task, snapshot(), dir, stateRoot);
+    await recordInterruption();
     throw error;
   };
   const claim = join(dir, "claim");
@@ -194,18 +199,27 @@ export async function dispatchWorker(
     await Bun.sleep(150);
   }
   const reply: { output?: WorkerOutput; error?: string; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
-  if (reply.escalated || !reply.output) await recordInterrupted(store.db, task, snapshot(), dir, stateRoot);
+  if (reply.escalated || !reply.output) await recordInterruption();
   if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
   if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;
   if (result.runId !== attempt.id) throw new Uncertain("worker receipt belongs to another attempt");
-  await recordUsage(store.db, task, snapshot(), result, stateRoot);
-  if (result.outcome === "failed" && !result.quarantineWorktree && result.resultText?.startsWith("Not logged in"))
-    throw new WorkerLoginError("factory harness needs its dedicated login");
-  if (result.quarantineWorktree || result.outcome === "timed_out")
-    throw new Uncertain(`worker ${attempt.id} needs inspection, see ${dir}`);
-  if (result.outcome !== "completed" || !result.resultText)
-    throw new AgentFailed(`worker ${attempt.id} ${result.outcome}, see ${dir}`);
+  const failure = workerFailure(result, dir);
+  try { await recordUsage(store.db, task, snapshot(), result, stateRoot); }
+  catch (cause) {
+    if (!failure) throw cause;
+    auditWarning(cause);
+  }
+  if (failure) throw failure;
   return reply.output;
+}
+function workerFailure(result: RunResult, dir: string) {
+  if (result.outcome === "failed" && !result.quarantineWorktree && result.resultText?.startsWith("Not logged in"))
+    return new WorkerLoginError("factory harness needs its dedicated login");
+  if (result.quarantineWorktree || result.outcome === "timed_out")
+    return new Uncertain(`worker ${result.runId} needs inspection, see ${dir}`);
+  if (result.outcome !== "completed" || !result.resultText)
+    return new AgentFailed(`worker ${result.runId} ${result.outcome}, see ${dir}`);
+  return null;
 }
 if (import.meta.main) await work(process.argv[2] ?? "");
