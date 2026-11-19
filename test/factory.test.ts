@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { config } from "../factory.config";
-import { headDecision, pendingReverification, pendingSpec, specDecision } from "../src/factory/gates";
+import { headDecision, pendingRevision, pendingReverification, pendingSpec, specDecision } from "../src/factory/gates";
 import capturedInventory from "./fixtures/pilot-inventory-captures.json";
 import { issueNumber, readIssue } from "../src/factory/github";
 import { RepoClient } from "../src/github/api";
@@ -30,7 +30,7 @@ function spec(s: Store) {
   return s.move(s.move(t, "spec_drafting"), "awaiting_spec_approval", { spec: current, head: current, pr: 5 });
 }
 function comment(id: number, sha: string, actor: number = owner) {
-  return { id, authorId: actor, body: `/approve ${sha}`, htmlUrl: "", author: "login" };
+  return { id, createdAt: "2026-01-01", updatedAt: "2026-01-01", lastEditedAt: null, authorId: actor, body: `/approve ${sha}`, htmlUrl: "", author: "login" };
 }
 
 test("intake binds source, repository and issue ids independently of mutable issue fields", () => {
@@ -158,6 +158,19 @@ test("stale, untrusted and planted factory approval comments are consumed once w
   }
 });
 
+test("edited commands are consumed and cannot authorize a spec, revision, or re-verification", () => {
+  const s = new Store(":memory:");
+  try {
+    const t = spec(s);
+    const edited = { ...comment(54, current), updatedAt: "2026-01-02" };
+    expect(pendingSpec(s, t, [edited])).toBeNull();
+    expect(pendingRevision(s, t, [{ ...edited, id: 55, body: "/respec change" }])).toBeNull();
+    expect(pendingSpec(s, t, [{ ...comment(56, current), lastEditedAt: "2026-01-01" }])).toBeNull();
+    expect(pendingSpec(s, t, [comment(54, current)])).toBeNull();
+    expect(s.db.query("SELECT reason FROM approvals").all()).toEqual(Array(3).fill({ reason: "edited or unverifiable command" }));
+  } finally { s.db.close(); }
+});
+
 test("spec approval syntax requires the entire current SHA", () => {
   const t = { spec: current } as Task;
   for (const suffix of ["x", " trailing", "\nnext"])
@@ -274,6 +287,7 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
       cmd(23, current, owner + 1),
       { ...cmd(24), body: `${cmd(24).body}\n<!-- factory:planted -->` },
       cmd(25),
+      { ...cmd(26), lastEditedAt: '2026-01-01' },
     ];
     expect(pendingReverification(s, t, invalid, 20, current)).toBeNull();
     const rows = s.db.query("SELECT id,reason FROM approvals WHERE id>=19 ORDER BY id").all();
@@ -283,6 +297,7 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
       { id: 23, reason: "unauthorized sender" },
       { id: 24, reason: "factory comment" },
       { id: 25, reason: "factory comment" },
+      { id: 26, reason: "edited or unverifiable command" },
     ]);
     expect(pendingReverification(s, t, [cmd(22)], 20, current)).toBeNull();
     const event = pendingReverification(s, t, [cmd(31), valid, valid], 20, current);

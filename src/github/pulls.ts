@@ -39,12 +39,18 @@ export interface IssueComment {
   /** The author's login, such as `software-factory-9f09[bot]`. */
   author: string;
   authorId?: number;
+  nodeId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastEditedAt?: string | null;
 }
 
 function toComment(raw: unknown): IssueComment {
   if (!isRecord(raw) || typeof raw.id !== "number" || typeof raw.html_url !== "string") throw new Error("GitHub returned an unexpected comment shape");
   const author = isRecord(raw.user) ? raw.user : {};
-  return { id: raw.id, htmlUrl: raw.html_url, body: typeof raw.body === "string" ? raw.body : "", author: typeof author.login === "string" ? author.login : "", ...(typeof author.id === "number" ? {authorId: author.id} : {}) };
+  return { id: raw.id, htmlUrl: raw.html_url, body: typeof raw.body === "string" ? raw.body : "", author: typeof author.login === "string" ? author.login : "", ...(typeof raw.node_id === "string" ? { nodeId: raw.node_id } : {}),
+    ...(typeof raw.created_at === "string" ? { createdAt: raw.created_at } : {}),
+    ...(typeof raw.updated_at === "string" ? { updatedAt: raw.updated_at } : {}), ...(typeof author.id === "number" ? {authorId: author.id} : {}) };
 }
 
 const MAX_COMMENT_CHARS = 65_000;

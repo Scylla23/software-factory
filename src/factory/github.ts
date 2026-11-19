@@ -212,8 +212,27 @@ export class Publisher {
     }
     throw new Error("PR head does not match the intended revision");
   }
-  comments(number: number) {
-    return listComments(this.read, number);
+  async comments(number: number) {
+    const comments = await listComments(this.read, number);
+    const commands = comments.filter((c) => /^\/(?:approve|respec|reverify)\b/.test(c.body));
+    // REST timestamps have one-second resolution. An explicit null lastEditedAt also rules out a same-second edit.
+    for (let i = 0; i < commands.length; i += 100) {
+      const page = commands.slice(i, i + 100);
+      const ids = page.map((c) => c.nodeId);
+      if (ids.some((id) => !id)) throw new Error("missing GitHub command identity");
+      type Node = { id: string; body: string; lastEditedAt: string | null };
+      const result = await this.read.request<{ data?: { nodes: (Node | null)[] }; errors?: unknown[] }>("POST", "/graphql", {
+        query: "query($ids:[ID!]!){nodes(ids:$ids){id ... on IssueComment{body lastEditedAt}}}",
+        variables: { ids },
+      });
+      if (!result?.data || result.errors?.length) throw new Error("cannot verify GitHub command edit history");
+      const nodes = new Map(result.data.nodes.map((n) => [n?.id, n]));
+      for (const c of page) {
+        const node = nodes.get(c.nodeId);
+        if (node?.body === c.body) c.lastEditedAt = node.lastEditedAt;
+      }
+    }
+    return comments;
   }
   async comment(number: number, id: string, text: string) {
     const marker = `<!-- factory:comment attempt=${id} -->`;

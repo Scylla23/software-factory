@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { config } from "../../factory.config";
 import { assertPrivateDir } from "../dispatch/config";
 import { Publisher, issueNumber } from "./github";
-import { headDecision, pendingReverification, pendingSpec, type Review } from "./gates";
+import { headDecision, pendingRevision, pendingReverification, pendingSpec, type Review } from "./gates";
 import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
 import { ProjectChecks } from "./checks";
 import { runGit } from "../dispatch/git";
@@ -244,26 +244,8 @@ async function gateOne(store: Store, git: Publisher, task: Task) {
   store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [commentId, task.id]);
   console.log(`${pull.htmlUrl}  ${cmd}`);
   const comments = await git.comments(task.pr);
-  const feedback = comments.find(
-    (c) =>
-      c.authorId === config.ownerId &&
-      /^\/respec [^\n]{1,1000}$/.test(c.body) &&
-      !store.db.query("SELECT id FROM approvals WHERE kind='comment' AND id=?").get(c.id),
-  );
-  if (feedback)
-    return store.move(
-      task,
-      "spec_drafting",
-      { reason: feedback.body.slice(8) },
-      {
-        kind: "comment",
-        id: feedback.id,
-        actor: config.ownerId,
-        sha: task.spec,
-        accepted: false,
-        reason: "owner requested spec revision",
-      },
-    );
+  const revision = pendingRevision(store, task, comments);
+  if (revision) return store.move(task, "spec_drafting", { reason: revision.feedback }, revision.event);
   const approval = pendingSpec(store, task, comments);
   return approval ? store.move(task, "building", {}, approval) : null;
 }
