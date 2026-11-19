@@ -13,8 +13,10 @@ export async function drive(store: Store, initial: Task, stages: Stages) {
       if (!next) break;
       task = next;
     } catch (error) {
-      if (error instanceof Uncertain && task.state !== "escalated")
-        return store.move(task, "escalated", { reason: error.message });
+      if (error instanceof Uncertain && task.state !== "escalated") {
+        task = store.move(task, "escalated", { reason: error.message });
+        continue;
+      }
       if (error instanceof AgentFailed && task.state !== "escalated")
         return store.move(task, "failed", { reason: error.message });
       throw error;

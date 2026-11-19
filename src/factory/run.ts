@@ -8,7 +8,7 @@ import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
 import { ProjectChecks } from "./checks";
 import { runGit } from "../dispatch/git";
 import { verdict, check, type Check } from "../verify/verdict";
-import { publishSummary, type EvidenceSummary } from "../github/summary";
+import { fenced, publishSummary, redact, type EvidenceSummary } from "../github/summary";
 import { verifyPilot } from "./verify";
 import { Store, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
@@ -173,7 +173,14 @@ async function gateTwo(store: Store, git: Publisher, task: Task) {
 }
 
 async function resolveVerification(store: Store, git: Publisher, task: Task) {
-  if (!store.canReverify(task)) return null;
+  if (!store.canReverify(task)) {
+    if (task.pr) {
+      const id = await effect(store, task, "report-escalation", { pr: task.pr, reason: task.reason }, (a) =>
+        git.comment(task.pr, a.id, `Factory task ${task.id} requires owner attention.\n\n${fenced(redact(task.reason))}`));
+      store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [id, task.id]);
+    }
+    return null;
+  }
   await git.boundPull(task);
   const command = `/reverify ${task.head}`;
   const id = await effect(
