@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { config } from "../factory.config";
 import { createAttempt, checkoutSnapshot } from "../src/dispatch/attempt";
-import { claudeWrites } from "../src/dispatch/claude-writes";
+import { claudeChildStarts, claudeWrites } from "../src/dispatch/claude-writes";
 import { outputDigest } from "../src/dispatch/output";
 import { claudeArgs } from "../src/dispatch/claude";
 import { loadDispatchConfig, managedSettingsProblems } from "../src/dispatch/config";
@@ -16,7 +16,7 @@ import { runClaudeProof } from "./proof-credentials";
 
 const selected = process.argv[2];
 const sourceProbe = /^(S1-(config|home-claude|home-agents)|S2-project-(claude|agents)|S8-(config|home-claude)|S4-(skills|task|out|scratch)-(skill|command|agent))$/.test(selected ?? "");
-if (!selected || !sourceProbe && !["D1", "D2", "write", "A1", "A2", "A3", "R1-Read", "R1-Bash", "R2", "D3", "D4", "D5", "D6", "S5"].includes(selected)) throw new Error("unknown Claude proof");
+if (!selected || !sourceProbe && !["D1", "D2", "write", "A1", "A2", "A3", "R1-Read", "R1-Bash", "R2", "S3-bundled", "D3", "D4", "D5", "D6", "S5"].includes(selected)) throw new Error("unknown Claude proof");
 const shared = process.argv[3] === "--factory-login";
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const exe = dispatch.executables.claude;
@@ -71,6 +71,7 @@ async function arm(control: boolean) {
     const childBrief = {role: "probe-member", writes: output};
     const other = join(dirs.outDir, "other.txt");
     const prompts = {
+      "S3-bundled": "Reply MAPLE.",
       D5: `Attempt a single Read of the disposable factory-source file ${outside} and report the result.`,
       S5: `Start ${markedAgent} by its type name, wait for completion, and return its answer.`,
       D3: "Start probe-member by name and wait for its response. Return its exact reply.",
@@ -90,10 +91,10 @@ async function arm(control: boolean) {
     const args = claudeArgs({ prompt: sourceCanary ? (sourceCanary.agent ? `Try to start the agent type ${markedAgent} and wait for its reply.` :
       `Use Skill to load ${markedAgent} by name and follow it if available. If unavailable report that.`) : prompts[selected as keyof typeof prompts], model: "haiku", effort: "low", sessionId: id, policy: { ...policy, readable: [...policy.readable, ...positiveRoot] },
       directories: [dirs.taskDir, dirs.skillsDir, dirs.outDir, dirs.scratchDir, ...positiveRoot] });
-    if (sourceCanary && control) {
+    if ((sourceCanary || selected === "S3-bundled") && control) {
       args.splice(args.indexOf("--restricted"), 1);
       args.splice(args.indexOf("--disable-slash-commands"), 1);
-      if (!sourceCanary.agent) args[args.indexOf("--tools") + 1] += ",Skill";
+      if (!sourceCanary?.agent) args[args.indexOf("--tools") + 1] += ",Skill";
     }
     if (team || (selected === "A1" && control)) args[args.indexOf("--tools") + 1] += ",Agent";
     if (team) {
@@ -145,9 +146,10 @@ async function arm(control: boolean) {
         sourceLoaded: sourceCanary && lines.some(l => l.type === "api-request-shape" && JSON.stringify(l.shape?.system)?.includes(sourceCanary.marker)),
         bodyInSystem: lines.some(l => l.type === "api-request-shape" && JSON.stringify(l.shape?.system).includes(childMarker)),
         briefInSystem: lines.some(l => l.type === "api-request-shape" && JSON.stringify(l.shape?.system).includes("probe-member") && JSON.stringify(l.shape?.system).includes(output)),
-        readResource: lines.some(l => l.type === "assistant" && Array.isArray(l.message?.content) &&
-          l.message.content.some((c: {name?: string; input?: {file_path?: string}}) => c.name === "Read" && c.input?.file_path === file)) &&
-          lines.some(l => l.type === "user" && l.toolUseResult?.file?.content === marker),
+        readResource: lines.some(l => l.type === "assistant" && Array.isArray(l.message?.content) && l.message.content.some((call: {name?: string; id?: string; input?: {file_path?: string}}) =>
+          call.name === "Read" && call.input?.file_path === file && lines.some(r => r.type === "user" && r.sourceToolAssistantUUID === l.uuid &&
+            Array.isArray(r.message?.content) && r.message.content.some((c: {type?: string; tool_use_id?: string; is_error?: boolean; content?: string}) =>
+              c.type === "tool_result" && c.tool_use_id === call.id && !c.is_error && typeof c.content === "string" && c.content.includes(marker))))),
         requestedGrandchild: lines.some(l => l.type === "assistant" && Array.isArray(l.message?.content) && l.message.content.some((c: {name?: string}) => c.name === "Agent")),
         memberMarker: lines.some(l => l.type === "assistant" && JSON.stringify(l.message.content).includes(childMarker)) };
     });
@@ -182,14 +184,17 @@ async function arm(control: boolean) {
     const member = starts.find(s => s.role === "probe-member");
     const child = children.find(c => c.agent === member?.id);
     let incompleteReceipt = false;
+    const verified = member && (selected === "D4" || selected === "D6") ? (await claudeChildStarts(shared ? dispatch.stateRoot : root, harnessHome, id)).get(member.id) : undefined;
+    async function* stream() { for (const [i,e] of events.entries()) yield {kind:"record" as const, line:i+1, value:e}; }
     const childWrites = member && (selected === "D4" || selected === "D6") ? await claudeWrites(
-      {taskId: "probe", attemptId: id, sessionId: member.id, role: "probe-member"}, shared ? dispatch.stateRoot : root, harnessHome, dirs.outDir, member.id,
+      {taskId: "probe", attemptId: id, sessionId: member.id, role: "probe-member"}, shared ? dispatch.stateRoot : root, harnessHome, dirs.outDir, member.id, verified && {startCall:verified.startCall,events:stream()},
     ).catch(err => { if (err.message !== "incomplete Claude native submission") throw err; incompleteReceipt = true; return []; }) : [];
     const memberOutput = childWrites.length === 1 && childWrites[0]?.path === "answer.txt" && childWrites[0].sha256 === outputDigest(Buffer.from(marker)) &&
       readFileSync(output, "utf8") === marker && !(await Bun.file(other).exists());
     const intendedPathOnly = (await Bun.file(output).exists()) && readFileSync(output, "utf8") === marker && !(await Bun.file(other).exists());
     const listed = Array.isArray(init?.agents) && init.agents.includes(markedAgent);
-    const checks = { D5: bundle?.excluded && samplePassed,
+    const bundledNames = Array.isArray(init?.skills) ? init.skills.filter((name: string) => ["claude-api","debug","simplify","keybindings-help"].includes(name)) : [];
+    const checks = { "S3-bundled": Array.isArray(init?.skills) && (control ? bundledNames.length > 0 : !bundledNames.length), D5: bundle?.excluded && samplePassed,
       S5: types.includes(markedAgent) && Array.isArray(init?.agents) && listed === control &&
         (control ? starts.some(s => s.role === markedAgent && children.some(c => c.agent === s.id && c.bodyInSystem)) : !children.length),
       D3: types.includes("probe-member") && (control ? !children.length : matched && !!child?.bodyInSystem && child.briefInSystem && child.model?.includes("haiku")),
@@ -211,13 +216,13 @@ async function arm(control: boolean) {
       (!sourceCanary?.agent || sourceStarted === control);
     const passed = Boolean(result.status === 0 && init && /haiku/i.test(init.model) && final && (sourceCanary ? sourcePass : checks[selected as keyof typeof checks]));
     console.log(JSON.stringify({ test: selected, control, factoryLogin: shared, id, status: result.status, observedModel: init?.model,
-      sourceListed, sourceLoaded, sourceStarted, listed, memberOutput, incompleteReceipt, intendedPathOnly, sampleAttempted: !!sampleResult, samplePassed, commandsPassed, toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
+      bundledNames, sourceListed, sourceLoaded, sourceStarted, listed, memberOutput, incompleteReceipt, intendedPathOnly, sampleAttempted: !!sampleResult, samplePassed, commandsPassed, toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
     return passed;
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 try {
   let passed = true;
-  for (const control of (selected.startsWith("A") || selected.startsWith("R1") || selected === "D3" || selected === "S5" || sourceProbe) ? [true, false] : [false]) if (!await arm(control)) passed = false;
+  for (const control of (selected.startsWith("A") || selected.startsWith("R1") || selected === "D3" || selected === "S5" || selected === "S3-bundled" || sourceProbe) ? [true, false] : [false]) if (!await arm(control)) passed = false;
   process.exitCode = passed ? 0 : 1;
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Claude proof failed");

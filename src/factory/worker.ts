@@ -24,9 +24,11 @@ import { assertRepoPath } from "../github/commit";
 import { createWorktree, removeWorktree } from "../orca/worktree";
 import type { Attempt, Store, Task } from "./store";
 import { createAttempt, checkoutSnapshot } from "../dispatch/attempt";
-import { claudeWrites } from "../dispatch/claude-writes";
+import { claudeChildStarts, claudeWrites } from "../dispatch/claude-writes";
 import { codexWrites } from "../dispatch/codex-writes";
-import { collectOutputs, outputDigest, OutputIntegrityError } from "../dispatch/output";
+import { readJsonl } from "../dispatch/jsonl";
+import { readRegularFile } from "../dispatch/regular-file";
+import { type OutputAuthor, collectOutputs, outputDigest, OutputIntegrityError } from "../dispatch/output";
 import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
 import { archiveCollection, pinFactoryCommit, type Collection } from "./skill-store";
 import { expectedFiles, skillInputs, skillRoles, stageInputs } from "./skill-inputs";
@@ -134,11 +136,29 @@ async function work(id: string) {
         if (!result.bundleHash || !result.sessionId) throw new Uncertain("skill output lacks trusted session or bundle hash");
         const identity = { taskId: brief.taskId, attemptId: id, role: dirs.role, sessionId: result.sessionId };
         const author = { role: dirs.role, sessionId: result.sessionId };
-        const expected = new Map(expectedFiles[job.role].map(path => [path, author]));
+        const expected = new Map<string, OutputAuthor>(expectedFiles[job.role].map(path => [path, author]));
         const home = dispatch.harnessHomes[agent.harness];
         let captured: Map<string, Buffer>;
         try {
           const writes = await (agent.harness === "claude" ? claudeWrites : codexWrites)(identity, dispatch.stateRoot, home, dirs.outDir);
+          if (job.input.members.length) {
+            const team = JSON.parse(readRegularFile(join(dirs.skillsDir, "spec-lead/team.json"), 32 * 1024).toString());
+            const starts = await claudeChildStarts(dispatch.stateRoot, home, id);
+            expected.set("team-brief.md", author);
+            if (starts.size !== job.input.members.length) throw new Error("unexpected specialist session count");
+            for (const member of job.input.members) {
+              const matches = [...starts].filter(([,start]) => start.role === member);
+              const file = team.members.find((m: {name: string}) => m.name === member)?.writes;
+              if (matches.length !== 1 || typeof file !== "string" || expected.has(file)) throw new Error("missing or ambiguous specialist author");
+              const [sessionId, start] = matches[0]!;
+              const principal = {role: member, sessionId};
+              expected.set(file, principal);
+              writes.push(...await claudeWrites({...identity,...principal}, dispatch.stateRoot, home, dirs.outDir, sessionId,
+                {startCall:start.startCall, events:readJsonl(result.stdoutPath)}));
+            }
+            for (const record of writes) if (expected.get(record.path)?.sessionId !== record.sessionId)
+              throw new Error("output submitted by a different team member");
+          }
           captured = collectOutputs(dirs, identity, expected, writes);
         } catch (error) {
           throw new OutputIntegrityError((error as Error).message);
@@ -147,7 +167,7 @@ async function work(id: string) {
         validateSkillOutput(job.input, dirs, captured, files.map(f => f.path), dispatch.executables.git, job.testPassed);
         output = { result, files, collection: { attempt: id, role: dirs.role, base: job.base, head: job.head,
           bundleHash: result.bundleHash, round: brief.round,
-          files: [...captured].map(([path, bytes]) => ({ path, role: author.role, session: author.sessionId,
+          files: [...captured].map(([path, bytes]) => ({ path, role: expected.get(path)!.role, session: expected.get(path)!.sessionId,
             sha256: outputDigest(bytes), base64: bytes.toString("base64") })) } };
       }
       quarantine = result.quarantineWorktree || !result.noKnownSurvivors;
@@ -280,9 +300,19 @@ export async function dispatchWorker(
   if (!result.resultText!.startsWith("BLOCKED: ")) {
     const c = reply.output.collection;
     if (!c || c.attempt !== attempt.id || c.base !== task.base || c.head !== task.head || c.role !== skillRoles[role] ||
-        c.bundleHash !== result.bundleHash || c.files.length !== expectedFiles[role].length ||
+        c.bundleHash !== result.bundleHash ||
         !expectedFiles[role].every(name => c.files.some(f => f.path === name && f.session === result.sessionId && f.role === c.role)))
       throw new Uncertain("worker receipt lacks the matching authenticated skill collection");
+    const extra = c.files.filter(f => !(expectedFiles[role] as readonly string[]).includes(f.path));
+    if (extra.length) {
+      if (role !== "spec" || !existsSync(join(dir,"job.json"))) throw new Uncertain("unexpected archived skill output");
+      const published: Job = JSON.parse(readFileSync(join(dir,"job.json"),"utf8"));
+      const selected = published.input.members;
+      if (!selected.length || published.id !== attempt.id || extra.length !== selected.length + 1 ||
+          !extra.some(f => f.path === "team-brief.md" && f.session === result.sessionId && f.role === "spec-lead") ||
+          !selected.every(member => extra.filter(f => f.role === member && f.session !== result.sessionId).length === 1))
+        throw new Uncertain("worker receipt lacks the authenticated specialist collection");
+    }
     archiveCollection(store.db, task.id, c);
   }
   return reply.output;

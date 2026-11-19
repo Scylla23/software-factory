@@ -70,8 +70,10 @@ export function validateSkillOutput(
     if (document.status !== "ready-for-review") throw new Uncertain("spec lead requires owner attention: " + document.status);
     const triage = parseStaged<{tier: string}>(input, "triage.json");
     requireJoin(document.tier.provisional === triage.tier && document.riskFlags.newProject.value === brief.project.isNew, "triage");
-    if (requiredMembers(document.tier.confirmed, document.riskFlags.security.value, brief.project.isNew).length || document.team.length)
-      throw new Uncertain("spec team requires verified child output authorship");
+    const required = requiredMembers(document.tier.confirmed, document.riskFlags.security.value, brief.project.isNew);
+    if (!isDeepStrictEqual([...required].sort(), [...input.members].sort())) throw new Uncertain("confirmed spec team differs from the approved launch");
+    requireJoin(isDeepStrictEqual(document.team.map((m:{member:string}) => m.member).sort(), [...required].sort()) &&
+      document.team.every((m: {status:string;file:string}) => m.status === "ran" && captured.has(m.file)), "fresh specialist decisions");
     const body = decoder.decode(captured.get("spec.md"));
     requireJoin(body.length <= 32000 && body.includes("AC-1"), "pilot spec");
     const ids = document.acceptanceCriteria.map((c: Criterion) => c.id);

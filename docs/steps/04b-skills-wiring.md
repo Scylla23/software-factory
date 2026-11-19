@@ -58,7 +58,7 @@ Run `bun scripts/probe-step-04b.ts` with the test name to reproduce a row.
 | Claude A3, fact 6c | Verified on this binary | Member `a32f3e3e3efb33843` had no Agent tool or grandchild, while control `ea513c5c-db60-44aa-ad4b-d039339352f0` exposed Agent and recorded a nested request |
 | Claude S5, fact 7 | Verified for the worktree source | Control `bac7ef89-c280-4f48-94af-a0607932a3a8` listed and started the project agent with its marked system instructions, while `a6c5227f-6020-493c-84ba-7a5e03a5cc70` recorded the named request with neither listing nor child |
 | Claude D3 | Partial | Session `e81ec30c-dfd7-4e72-912d-d7c43e10989b` started a child with the generated system body and brief, and the definition-absent control refused the name |
-| Claude D4 and #15 | Refuted for the current child receipt adapter | Child `a8ce8677612dd61f0` wrote the expected bytes, but its private transcript omitted the typed native result that binds the parent adapter's output receipt |
+| Claude D4 and #15 | Child read, write and digest verified | Child `af0553a45cc85a5e5` made a matching resource read and submitted the expected exact bytes, with the adapter binding the protected stream to its private transcript and the native parent start |
 | Claude D6 | Passed for path choice | Child `a4be07d15676b7d09` used the trusted path despite the second brief and the other file was absent |
 | Claude native parent output | Passed | In `c37d9f0c-a369-429f-b6cd-86e8a336581b` the adapter joined the native Write input and successful result and matched the exact UTF-8 digest |
 | Claude R1 file tool | Passed | The same disposable sample was read in `1e1636c4-0712-4ceb-ace2-b010aa6c367b` and denied by Read in `634f6694-d1af-407d-83c7-480f292b5657` |
@@ -72,11 +72,16 @@ Both D3 probes kept parent and child on the requested cheap model and low effort
 They establish no discrimination between different model and effort settings.
 The Codex definition-absent control sometimes selected an unnamed default child, so it does not prove a named rejection.
 S1, S3, S4, S7 and S8 need additional source-specific controls.
+All 24 prelaunch Claude S4 arms ran on the dedicated login and passed for skills, commands and agents in each of the four added directories.
+Same-session discovery after a write remains unverified.
+Claude S3 listed debug, simplify and claude-api in its enabled arm only.
+The Codex bundled-source positive control did not recognize its listing, and neither harness has a disposable system-source result.
+All nine Codex role and stage profiles passed the pinned CLI shell write matrix in `scripts/probe-write-roots.ts`, without a subscription or API call.
 The deterministic bundle exclusion and collector tests cover parts of D5 and R3.
 The final Codex R1 scorer binds the exact factory-supplied tool call to its native return by call ID.
 The earlier scorer missed nested command results that were absent from exec stdout.
 Claude D5 passed in `1a5db030-d5cd-4100-aa2b-38aff85705c0` with a pinned disposable factory tree and the excluded source path refused.
-The first Codex D5 model run did not attempt its read.
+Codex D5 passed in `01a1f5b1-477b-76f0-b1e6-5265345951bd` using the pinned checkout's skill body as the refused source and a distinct marker in its excluded eval folder.
 Claude S2 passed both arms for project `.claude/skills`, while the positive `.agents/skills` control did not list the definition.
 Codex S2 listed the project `.agents/skills` definition only in the positive arm.
 Automatic loading was unverified there, and the project `.claude/skills` positive arm did not list the definition.
@@ -139,7 +144,7 @@ Claude production evals and the end-to-end pilot have not run.
 | #18 | Open pending both arms of R1 and integration of the verified profile or broker |
 | #19 | Open pending authorized blind spec lead evals under the selected lead definition, with D1 verified separately |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
-| #21 | The distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
+| #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
 
 ## Contract findings
 
@@ -148,8 +153,11 @@ Copying the factory account's non-secret login metadata into a fresh configurati
 Using the shared subscription home for these controls would invalidate the isolation claim.
 
 The pinned Claude child transcript omits the typed native write-result object used for parent receipts.
-The current adapter rejects it and team-enabled work remains disabled.
-A protected native write hook or another authenticated submission channel requires a new live positive and substitution control before enabling that route.
+The first D4 run reproduced this gap.
+The child adapter now verifies the parent start and joins the protected outer stream to the child's private transcript by session, role, parent tool call, native Write ID, success-event UUID, permission decision, submitted path and complete UTF-8 content.
+It never interprets tool-result text as an authentication record.
+The collector also rejects a designated path submitted from a second team session.
+Team-enabled dispatch remains gated on the remaining sandbox and discovery proofs.
 The Claude shell profile also requires a verified correction or the Q57 broker before production use.
 The step 3 worker has one immutable GitHub issue revision per task and stages it as numeric revision 1 alongside the stored issue digest.
 The pilot keeps its registered AC-1 base and head checks and stages their fixture and reproduction path as task attachments.

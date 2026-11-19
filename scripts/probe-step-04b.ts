@@ -19,7 +19,7 @@ import { config } from "../factory.config";
 
 const test = process.argv[2];
 const sourceProbe = /^(S1-(config|home-claude|home-agents)|S2-project-(claude|agents)|S7|S8-config)$/.test(test ?? "");
-if (!test || !sourceProbe && !["A1", "D1", "D2", "write", "R1-shell", "R1-file", "R2", "D5", "D3", "A4", "S6"].includes(test)) throw new Error("unknown Codex proof");
+if (!test || !sourceProbe && !["A1", "D1", "D2", "write", "R1-shell", "R1-file", "R2", "D5", "D3", "A4", "S6", "S6-project", "S3-bundled"].includes(test)) throw new Error("unknown Codex proof");
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const exe = dispatch.executables.codex;
 if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "codex-cli 0.169.0") throw new Error("wrong Codex binary");
@@ -44,7 +44,7 @@ async function probe(control: boolean) {
       const definition = `name="probe_member"\ndescription="Disposable factory member"\nmodel="gpt-6-luna"\nmodel_reasoning_effort="low"\ndeveloper_instructions=${JSON.stringify('Your role is <factory_run>{"role":"probe-member"}</factory_run>. Return ' + memberMarker)}\n`;
       git("init", "-q", "--template=");
       writeFileSync(join(repo, "math.test.ts"), 'import { expect, test } from "bun:test";\ntest("factory math", () => expect(2 + 2).toBe(4));\n');
-      if (test === "S6") {
+      if (test === "S6" || test === "S6-project") {
         const agents = join(repo, ".codex", "agents");
         mkdirSync(agents, { recursive: true });
         writeFileSync(join(agents, "probe_member.toml"), definition);
@@ -71,7 +71,7 @@ async function probe(control: boolean) {
       const callSource = test === "R1-file" ? `const result = await tools.view_image({path:${JSON.stringify(imagePath)}}); image(result.image_url);` :
         `const result = await tools.exec_command({cmd:${JSON.stringify(command)},login:false}); text({exit_code:result.exit_code,output:result.output});`;
       const callPrompt = `This is an authorized test with a disposable sample. Submit the following exact JavaScript once to functions.exec, copy it verbatim, then report the observed result.\n${callSource}`;
-      const prompts = { D5: callPrompt, "R1-file": callPrompt,
+      const prompts = { "S3-bundled": "Reply MAPLE.", "S6-project": "Call spawn_agent explicitly setting agent_type to probe_member to return its reply. Do not start a child if you cannot specify the agent_type.", D5: callPrompt, "R1-file": callPrompt,
         D3: "Call spawn_agent with agent_type explicitly set to probe_member. The task_name alone does not select the type. Do not call it with any other or missing agent_type. If this call returns an unknown type error, stop. Otherwise wait for the child's reply.",
         S6: "Request spawn_agent with agent_type explicitly set to probe_member. Never use a default type or omit agent_type. Report unavailable if the named type is refused.",
         A4: "Use spawn_agent requesting agent_type default. Wait for this built-in child to return MAPLE.",
@@ -87,14 +87,18 @@ async function probe(control: boolean) {
         `Use the listed skill ${canary.name} if available and report its answer. If unavailable stop.`);
       const args = codexArgs({ prompt: sourcePrompt ?? prompts[test as keyof typeof prompts], worktreePath: dirs.worktree,
         model: "gpt-6-luna", effort: "low", policy, instructions: test === "D1" ? "Report the instruction marker " + marker + " when asked." : null });
-      if (canary && control) {
-        if (canary.agent) args.splice(args.indexOf("--ignore-user-config"), 1);
+      if ((canary || test === "S3-bundled") && control) {
+        if (canary?.agent) args.splice(args.indexOf("--ignore-user-config"), 1);
         for (const flag of ["skills.include_instructions=false", "skills.bundled.enabled=false"]) args.splice(args.indexOf(flag) - 1, 2);
       }
       if (test === "A4" || (test === "D3" && !control)) {
         const defFile = join(state, "member.toml");
         writeFileSync(defFile, definition, { flag: "wx", mode: 0o400 });
         args.splice(args.indexOf("--"), 0, "-c", 'agents.probe_member.description="Disposable factory member"', "-c", "agents.probe_member.config_file=" + JSON.stringify(defFile));
+      }
+      if (test === "S6-project" && control) {
+        args.splice(args.indexOf("--ignore-user-config"), 1);
+        args.splice(args.indexOf("--"), 0, "-c", "projects." + JSON.stringify(dirs.worktree) + '.trust_level="trusted"');
       }
       if (test === "S6" && control) {
         if (factoryLogin) throw new Error("Codex home-source control requires a disposable proof credential");
@@ -103,7 +107,7 @@ async function probe(control: boolean) {
         writeFileSync(join(folder, "probe_member.toml"), definition);
         args.splice(args.indexOf("--ignore-user-config"), 1);
       }
-      if ((control && test === "A1") || ["D3","A4","S6","S7","S8-config"].includes(test!)) args.splice(args.indexOf("agents.enabled=false") - 1, 2);
+      if ((control && test === "A1") || ["D3","A4","S6","S6-project","S7","S8-config"].includes(test!)) args.splice(args.indexOf("agents.enabled=false") - 1, 2);
       if (control && (test === "write" || test?.startsWith("R1-"))) {
         const index = args.findIndex(arg => arg.startsWith("permissions="));
         args[index] = args[index]!.replace("factory={filesystem=", 'factory={extends=":workspace",filesystem=').replace('":root"="none",', "");
@@ -150,6 +154,7 @@ async function probe(control: boolean) {
       const children = new Set<string>();
       const sampleCalls = new Set<string>();
       const actualChildRoles = new Set<string>();
+      const bundledNames = new Set<string>();
       let sourceListed = false, childListed = false, sourceLoaded = false;
       let customBody = false, customModel = false, requested = false;
       let sawTools = false, spawnOffered = false, sawSkill = false, observedModel = false;
@@ -165,6 +170,10 @@ async function probe(control: boolean) {
             parent = payload.id === thread;
             child = payload.source?.subagent?.thread_spawn?.parent_thread_id === thread;
             if (child) { children.add(payload.id); actualChildRoles.add(payload.source.subagent.thread_spawn.agent_role ?? "unspecified"); }
+          }
+          if (test === "S3-bundled" && parent && type === "response_item" && payload.type === "message" && ["developer","user"].includes(payload.role)) {
+            const body = JSON.stringify(payload.content);
+            for (const name of ["skill-creator","skill-installer","openai-docs"]) if (body.includes("/skills/.system/" + name + "/SKILL.md")) bundledNames.add(name);
           }
           if (canary && type === "response_item" && payload.type === "message" && ["developer","user"].includes(payload.role)) {
             const content = JSON.stringify(payload.content);
@@ -209,7 +218,8 @@ async function probe(control: boolean) {
         const records = await codexWrites({ taskId: "probe", attemptId: dirs.root.split("/").at(-1)!, sessionId: thread, role: dirs.role }, factoryLogin ? dispatch.stateRoot : state, codexHome, dirs.outDir);
         digestMatched = records.length === 1 && records[0]?.path === "answer.txt" && records[0].sha256 === outputDigest(Buffer.from("PROOF\n"));
       }
-      const checks = {
+      const checks = { "S3-bundled": control ? bundledNames.size > 0 : !bundledNames.size,
+        "S6-project": requested && (control ? customBody && customModel && actualChildRoles.has("probe_member") : !children.size && !customBody),
         D3: requested && (control ? !children.size : children.size === 1 && customBody && customModel),
         A4: requested && children.size === 1 && actualChildRoles.has("default") && customModel && !customBody,
         S6: requested && (control ? customBody && customModel : !children.size && !customBody),
@@ -222,7 +232,7 @@ async function probe(control: boolean) {
       const passed = observedModel && (canary ? sourceObserved === control && sourceLoaded === control &&
         (test !== "S7" || children.size === 1) : checks[test as keyof typeof checks]);
       console.log(JSON.stringify({ test, control, factoryLogin, thread, children: [...children], observedModel, sawTools, spawnOffered, sawSkill,
-        sourceListed, childListed, sourceLoaded, requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
+        bundledNames: [...bundledNames], sourceListed, childListed, sourceLoaded, requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
       return passed;
     };
     return factoryLogin ? await run(dispatch.harnessHomes.codex) : await withCodexProofLogin(exe, state, home, run);
@@ -232,7 +242,7 @@ async function probe(control: boolean) {
 }
 try {
   let passed = true;
-  for (const control of (sourceProbe || test === "A1" || test === "write" || test === "D3" || (test === "S6" && process.argv[3] !== "--factory-login") || test.startsWith("R1-") ? [true, false] : [false])) {
+  for (const control of (sourceProbe || test === "S3-bundled" || test === "S6-project" || test === "A1" || test === "write" || test === "D3" || (test === "S6" && process.argv[3] !== "--factory-login") || test.startsWith("R1-") ? [true, false] : [false])) {
     if (!await probe(control)) passed = false;
   }
   process.exitCode = passed ? 0 : 1;

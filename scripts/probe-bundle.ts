@@ -19,5 +19,5 @@ export function probeBundle(git: string, parent: string, dest: string, readable:
   const entries = readdirSync(dest, {recursive: true, withFileTypes: true});
   const excluded = entries.every(e => !e.name.startsWith(".") && e.name !== "evals" &&
     (!e.isFile() || !readFileSync(join(e.parentPath, e.name)).includes(Buffer.from(marker))));
-  return {path, excluded};
+  return {path: join(repo, "skills/probe-lead/SKILL.md"), excluded};
 }
