@@ -3,7 +3,7 @@ import { closeSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots } from "./config";
+import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots, trustedAgentPath } from "./config";
 import { briefPrompt, claudeDefinitions, runBrief } from "./brief";
 import { bundleDigest, composeInstructions, materializeBundle } from "./bundle";
 import { requireSkillProofs, type SkillLaunch } from "./skill-launch";
@@ -68,7 +68,8 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const brief = skill ? runBrief(skill.dirs, skill.brief, skill.members.length > 0) : undefined;
   const prompt = brief ? briefPrompt(brief) : spec.prompt;
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
-  const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: config.agentPath, accountHome: config.accountHome });
+  const path = skill ? trustedAgentPath([...skill.toolDirs, "/Library/Developer/CommandLineTools/usr/bin"], agentWritable) : config.agentPath;
+  const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: path, accountHome: config.accountHome });
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
   const team = skill && brief && skill.members.length ? publishTeam(skill, brief, projectInstructions) : undefined;
@@ -132,7 +133,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   };
 
   if (spec.harness === "claude") {
-    const s = await parseClaudeStream(readJsonl(logs.stdoutPath));
+    const s = await parseClaudeStream(readJsonl(logs.stdoutPath), skill && {session: spec.runId, members: skill.members});
     return {
       ...base,
       sessionId: s.sessionId,

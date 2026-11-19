@@ -12,7 +12,7 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
  * runAgent refuses to dispatch while any managed settings source exists (see config.ts).
  * Claude has no read carve-outs: `policy.readable` is for Codex's own binary.
  */
-export function claudeSettings(policy: SandboxPolicy): object {
+export function claudeSettings(policy: SandboxPolicy, team = false): object {
   const denyRead = [...policy.denyRead];
   const denyWrite = [...new Set([...policy.denyWrite, ...(policy.writable ? policy.readable.filter(p => !policy.writable!.includes(p)) : [])])];
   const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
@@ -22,6 +22,7 @@ export function claudeSettings(policy: SandboxPolicy): object {
         ? ["Read", "Glob", "Grep", "Bash", ...policy.writable.flatMap(p => [...rules("Write", p), ...rules("Edit", p)])]
         : [...CLAUDE_BUILDER_TOOLS],
       deny: [
+        ...(team ? ["Agent(Explore)", "Agent(Plan)", "Agent(general-purpose)", "Agent(fork)"] : []),
         "WebFetch",
         "WebSearch",
         ...denyRead.flatMap((p) => rules("Read", p)),
@@ -81,7 +82,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--disable-slash-commands",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
-    "--settings", JSON.stringify(claudeSettings(input.policy)),
+    "--settings", JSON.stringify(claudeSettings(input.policy, !!input.team)),
     ...(input.directories ?? []).flatMap(p => ["--add-dir", p]),
     ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",
@@ -110,20 +111,42 @@ export interface ClaudeStreamSummary {
  * The `result` event carries the run's whole accounting, so a lost interior line does not make usage incomplete,
  * but a second `result` event does, because it is unclear whether its totals are cumulative.
  */
-export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promise<ClaudeStreamSummary> {
+export async function parseClaudeStream(items: AsyncIterable<JsonlItem>, skill?: {
+  session: string; members: readonly string[];
+}): Promise<ClaudeStreamSummary> {
   const s: ClaudeStreamSummary = { sessionId: null, observedModel: null, succeeded: false, resultText: null, usage: null, diagnostics: [], diagnosticCount: 0 };
   const sample = new DiagnosticSample();
   let results = 0;
+  let invalidRun = false;
+  let initialized = false;
   for await (const item of items) {
     if (item.kind === "invalid") {
+      if (skill) invalidRun = true;
       sample.add(describeInvalid(item));
       continue;
     }
     const event = item.value;
+    if (skill && event.type === "assistant" && isRecord(event.message) && Array.isArray(event.message.content)) {
+      for (const tool of event.message.content) {
+        if (!isRecord(tool) || tool.type !== "tool_use" || !["Task","Agent"].includes(String(tool.name))) continue;
+        const type = isRecord(tool.input) && tool.input.subagent_type;
+        if (event.parent_tool_use_id || typeof type !== "string" || !skill.members.includes(type)) {
+          invalidRun = true;
+          sample.add("unapproved subagent call in skill session");
+        }
+      }
+    }
     if (event.type === "system" && event.subtype === "init") {
+      initialized = true;
+      if (skill && (event.session_id !== skill.session || !Array.isArray(event.tools) ||
+          (!skill.members.length && event.tools.some(name => /^(Agent|Task)(?:\(|$)/.test(String(name)))))) {
+        invalidRun = true;
+        sample.add("skill session identity or tool inventory mismatch");
+      }
       s.sessionId = str(event.session_id) ?? s.sessionId;
       s.observedModel = str(event.model);
     } else if (event.type === "result") {
+      if (skill && event.session_id !== skill.session) invalidRun = true;
       results++;
       s.sessionId = str(event.session_id) ?? s.sessionId;
       s.succeeded = event.subtype === "success" && event.is_error === false;
@@ -140,6 +163,7 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
     s.usage = null;
     delete s.reportedCostUsd;
   }
+  if (skill && (!initialized || invalidRun)) s.succeeded = false;
   s.diagnostics = sample.list();
   s.diagnosticCount = sample.count;
   return s;

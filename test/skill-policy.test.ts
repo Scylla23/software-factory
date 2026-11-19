@@ -50,3 +50,22 @@ test("Codex permissions close unlisted paths and grant writes to precisely the r
     expect(() => skillPolicy(dirs, [dirs.root], [], [], "/usr/bin/git")).toThrow("mandatory denial");
   }
 });
+
+test("Claude checks submitted agent types in addition to the prelaunch allowlist", async () => {
+  const {parseClaudeStream} = await import("../src/dispatch/claude");
+  async function check(role: string, parent: string | null, members: string[]) {
+    async function* records() {
+      const values = [
+        {type: "system", subtype: "init", session_id: "lead", tools: members.length ? ["Task","Read"] : ["Read"]},
+        {type: "assistant", parent_tool_use_id: parent, message: {content: [{type: "tool_use", name: "Agent", input: {subagent_type: role}}]}},
+        {type: "result", subtype: "success", is_error: false, result: "done", session_id: "lead"},
+      ];
+      for (const [i, value] of values.entries()) yield {kind: "record" as const, line: i+1, value};
+    }
+    return (await parseClaudeStream(records(), {session: "lead", members})).succeeded;
+  }
+  expect(await check("architect", null, ["architect"])).toBe(true);
+  expect(await check("fork", null, ["architect"])).toBe(false);
+  expect(await check("architect", "parent-agent", ["architect"])).toBe(false);
+  expect(await check("architect", null, [])).toBe(false);
+});
