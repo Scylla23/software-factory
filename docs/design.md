@@ -162,17 +162,38 @@ Clarifying questions may also be asked and answered in the source channel.
 - Network is allowed only for stages that install dependencies; build stages run without network.
 - Only the publisher process pushes and opens PRs, using short-lived GitHub App installation tokens minted from a private key in Keychain.
 - Project setup, test, lint, typecheck, and preview commands, and git hooks, run sandboxed and never in a process that holds publishing credentials.
+- Project commands run under a factory-written Seatbelt profile applied with `/usr/bin/sandbox-exec`, closed by default.
+  They read only the worktree, a private home, the project's own git dirs, declared toolchain roots, and fixed system dirs, with the dispatch deny-list applied again on top.
+  They write only the worktree and the private home, never the git dirs, and reach no keychain and no unix socket.
+- Network follows the phase.
+  Setup connects only to a factory-run egress proxy that tunnels to the project's allowlisted registry hosts on 443, checks a per-phase credential, dials only public addresses, and is stopped when setup ends, which revokes egress for every process the phase started.
+  The preview may bind and connect to its own loopback port only.
+  A command beside the live preview gets that port or no network, never egress.
+- Previews, their private homes, port leases, logs, and evidence live under the state root, in a per-attempt directory created exclusively, outside every agent-writable root; cleanup removes only what the attempt created.
 - Isolation is proven with a harmless credential canary before it is trusted.
 - Deterministic checks: the factory runs the project's test, lint, and typecheck before any reviewer tokens are spent.
 - For bugs, the reproduction must fail on base and pass on head.
 - Diffs that delete or weaken tests are blocked.
 - Code reviewer and triggered auditors get read-only access to the worktree with the spec and acceptance criteria, may run tests, and cite `file:line` and AC id per finding.
 - Verification starts the preview from the reviewed commit on a task-specific port with the project's declared fixtures and a clean browser profile.
+- Verification records the PR's base and head before anything is captured, previews the base as before and the head as after, and binds every capture to its commit.
+  A PR whose base or head moved by the time evidence is published gets nothing; the attempt is stale and runs again.
+- The clean browser profile is a fresh isolated Orca profile per attempt, created, used, and deleted by the factory, and checked to hold no GitHub session before capture.
+  Each capture is bound to the preview's origin and to the live preview server, checked after load and again after the screenshot.
+  Orca cannot restrict a page's requests to the preview origin, so every evidence record states that browser egress was unrestricted.
+- Every verification observation is a required check that keeps its own status: a probe's exit code, a teardown's report, screenshot hashes, the expected change.
+  An attempt passes only when every check passes, and only a passed attempt is published.
 - UI evidence uses fixed viewports and before/after screenshots against base, judged against the frontend skill's rubric.
+  The mobile viewport uses Orca's device preset, so the page loads with the device's size, touch input, and user agent.
 
 ### Evidence table
 
 The PR body is an acceptance evidence table: AC id, tag, fixture, action, expected, observed, proof (test name, screenshot, console log), commit, verdict.
+Screenshots, logs, and full records stay on the factory host, in `~/.software-factory/evidence/<attempt>`, and are kept until the owner removes them.
+The store is owner-only, and every file in it is created exclusively, never through a symlink, and within a per-file and per-attempt size limit.
+A screenshot is cited in the PR by its SHA-256, its commit, and its viewport; nothing is uploaded.
+The PR gets one text-only comment from the App per attempt, with allowlisted fields in the open and diagnostics redacted, capped, and fenced.
+The comment starts with a hidden marker naming the PR, the attempt, the base, the head, and the captured revision, and a retry of the same attempt updates that comment instead of adding another.
 `manual` criteria become an owner checklist and require the owner's recorded observation before completion.
 No PR reaches gate 2 without evidence for every criterion.
 
@@ -231,3 +252,8 @@ Signals for later improvement are recorded from day one: owner review comments, 
 - Only owner-labeled issues start work.
 - Merge and deploy authority stays with the owner.
 - Model inference sends repository content to Anthropic and OpenAI under the owner's subscriptions.
+- Each GitHub operation mints its own installation token, limited to the named repository and the permissions it needs, and refuses a token GitHub granted less than asked.
+  A token is refreshed 5 minutes before it expires, and an expired one is never used; the App does not request `issues: write`.
+- Verification evidence never leaves the factory host; the PR gets redacted text only.
+- Known gap: the verification browser's network is not restricted (spike 02, Q52).
+  A preview page can request any host while it is captured; the profile holds no credentials and no GitHub session, and the records list every other origin the page requested.

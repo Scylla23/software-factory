@@ -1,21 +1,25 @@
 # Spike 02 - Verification
 
 Plan step: [v1-plan.md](../v1-plan.md) step 2.
-Date: 2026-11-19.
+Date: 2026-11-19, first run and repair round.
 Versions: Orca 1.4.262, macOS 26.6.2 (Darwin 25.6.0), Bun 1.2.10, git 2.x from `/usr/bin/git`, Claude Code 2.1.325, codex-cli 0.169.0.
 No model calls were made.
 Home paths are shown as `~`, and the preview root under `$TMPDIR` is shown as `<tmp>`.
 
 ## Verdict
 
+Sections 1 to 7 record the first run.
+[Section 8](#8-repair-round) records the repair round after review, with the owner's decisions Q50 to Q53; where they differ, section 8 is current.
+
 - Project commands (setup, preview, and later test, lint, and typecheck) run under a Seatbelt profile the factory writes itself and applies with `/usr/bin/sandbox-exec` (`src/verify/sandbox.ts`).
-  It is the only candidate that lets a preview bind its own loopback port while making no outbound connection at all, not even to another local port.
-- Evidence goes to the PR as screenshots committed to an orphan `factory-evidence` branch through the Git Data API, linked from a PR comment as `https://github.com/<owner>/<repo>/blob/<evidence commit>/<path>?raw=true`.
-  In the private `factory-pilot` repo these render inline for the owner and for nobody without access (`raw.githubusercontent.com` links do not render at all).
-- The preview starts from an exact commit, is ready in about 0.7 seconds for the fixture (setup included), and tears down with `noKnownSurvivors: true`, the worktree and home removed.
-- The browser runs in a fresh isolated Orca profile per verification; it holds no GitHub session (`logged_in=no`, no `user_session`), and the private PR answers "Page not found" there.
-- Stabilized screenshots are byte-identical across two runs at both viewports, and before/after differ.
-- Fixture PR (draft, opened by the App): https://github.com/Scylla23/factory-pilot/pull/1.
+  Reads are closed by default (Q51), setup reaches the network only through a factory egress proxy that dies with the phase (Q50), and the preview may connect to its own port only.
+- Evidence stays on the factory host in `~/.software-factory/evidence/<attempt>` (Q53).
+  The PR gets one text-only comment from the App per attempt, redacted, with a marker that names the captured revisions, published only when every check passed and the PR still has the recorded base and head.
+- The preview starts from an exact commit in a per-attempt directory under the state root, on a leased port, and tears down with `noKnownSurvivors: true`, the worktree and home removed.
+- The browser runs in a fresh isolated Orca profile per verification, owned and deleted by the factory; it holds no GitHub session, and every capture is bound to the preview's origin and live server.
+  Orca cannot restrict the page's requests to that origin, so browser egress during capture is unrestricted and recorded as such (Q52).
+- Stabilized screenshots are byte-identical across two captures at both viewports and across runs, and before and after differ.
+- Fixture PRs (draft, opened by the App): https://github.com/Scylla23/factory-pilot/pull/1 (first run) and https://github.com/Scylla23/factory-pilot/pull/2 (repair round, base at the fixture's first commit).
 
 ## 1. Preview from an exact commit
 
@@ -295,9 +299,159 @@ Nothing else was done in that profile.
 Afterwards `canary-probe.sh --cleanup` removed the planted transcripts, and no verification profile, tab, preview directory, `sandbox-exec`, `bun server.ts`, or `sleep` process remained.
 Left in place on purpose: the draft PR, `spike/verify-fixture`, `factory-evidence`, `~/orca/projects/factory-pilot` (for step 3), the run logs and evidence under `~/.software-factory/spike-02/`, and `~/.software-factory/canary.txt`.
 
+## 8. Repair round
+
+The review of the first run (234b291) found 5 blocking and 11 should-fix issues; all were fixed, each in its own commit with tests and a mutation check.
+The owner decided four questions.
+
+### Q50: setup egress through a revocable proxy
+
+Setup had outbound IP access, and a detached install helper that escaped the sweeps kept it after setup ended.
+Setup now runs under a profile that may connect only to a factory-run HTTP CONNECT proxy on loopback (`src/verify/proxy.ts`, Bun, no dependency).
+The proxy tunnels to the project's egress allowlist on 443 only, checks a fresh credential per phase, resolves names itself and dials only public addresses, logs every decision to the attempt's private log, and is stopped when setup ends, which revokes egress for every process the phase started.
+`Preview.run` accepts only `none` or `serve`, checked at run time too, so no command beside the live preview can get egress back.
+The preview profile may now connect to its own port, so an app can call itself; section 2's `LOOPBACK-SELF 000` no longer holds.
+
+Egress log of the final run's base preview setup (the probes of the next section ran in it):
+
+```
+LISTEN 127.0.0.1:63854 allow registry.npmjs.org
+ALLOW registry.npmjs.org:443 via 104.16.4.34
+DENY example.com:443 host not in the allowlist
+ALLOW registry.npmjs.org:443 via 104.16.4.34
+DENY example.com:443 host not in the allowlist
+DENY registry.npmjs.org:443 missing or wrong phase credential
+STOP allowed 2 denied 3
+```
+
+### Q51: reads closed by default
+
+Reads were open everywhere except the dispatch deny-list, so an install hook with network could read another project's `.env` or a credential file the list does not name.
+Reads are now allowed only in the worktree, the private home, the project's own git dirs, explicit toolchain roots, and a fixed system list, with the deny-list on top as a second layer.
+Bun lists each directory above its working directory and starts with an empty environment when it cannot, so the directories above a writable root may be listed (names, not contents).
+
+Proof, from the final run, during setup with the network on (through the proxy), and again beside the preview:
+
+- The canary probe (section 2) ran as a setup command: all 23 targets `DENIED`, `INDIRECT-HIDDEN`, `ENV-HIDDEN`, `NET-BLOCKED`, `RESULT PASS`, exit 0.
+- The driver planted `API_KEY=FACTORY-CANARY-<random>` in `~/orca/projects/factory-sibling-canary-<id>/.env`, a sibling of the fixture project, readable by the factory itself.
+  `scripts/sibling-probe.sh` read it directly and searched both the sibling and `~/orca/projects` for the value: `CONTROL-OK`, `DENIED <sibling>/.env`, `INDIRECT-HIDDEN`, `RESULT PASS`, exit 0, in setup and beside the preview.
+  The driver removed the sibling afterwards.
+
+### Q52: the browser cannot be held to the preview origin
+
+Orca's only request filter is `network route <glob> [--abort]` through `orca exec`; profiles have no proxy setting (`orca tab profile create` takes a label and a scope only).
+Probed with an isolated profile, a "preview" on `127.0.0.1:4291` whose page calls an "outside" server on `127.0.0.1:4292` that counts hits:
+
+```
+network route http://127.0.0.1:4292/** --abort         the page loads, the outside server gets 0 hits
+network route ** --abort                               the preview itself fails: ERR_FAILED (-2) loading 'http://127.0.0.1:4291/'
+  then network route http://127.0.0.1:4291/**          still ERR_FAILED: no later route exempts the preview
+network route http://127.0.0.1:4291/** first, then ** --abort    still ERR_FAILED
+patterns 429[2], {4292,4293}, 429[!1], 429?, and a regex      accepted, matched nothing: 3 outside hits
+```
+
+A route can block a named destination, but nothing can say "only this origin".
+A partial denylist was not implemented: loading the preview at `http://localhost:<port>` and aborting `https://**`, `wss://**`, and `http://*.*/**` would block dotted hosts and IP addresses, but not `http://localhost:<other port>` or dotless names, and whether routes cover service workers, WebSockets, and prefetches was not tested.
+`orca set offline` is a whole-tab switch, and `orca intercept` pauses requests for a per-request decision; neither was tried as an origin filter.
+
+Per the owner's decision, the gap is recorded rather than faked.
+Every `EvidenceRecord` carries `browserEgress: "unrestricted"`, its `origin`, and `externalOrigins` (the other origins Orca's network log saw), the PR comment says egress was unrestricted, and design.md lists it as a known gap.
+Within that gap, each capture is still bound to the preview: the page must be on the preview origin after load and after the screenshot, and the preview server that passed readiness must still hold its port alone at both points.
+
+### Q53: evidence stays local
+
+`src/github/evidence.ts` and its orphan `factory-evidence` branch are gone.
+`openEvidenceStore` (`src/verify/store.ts`) gives each attempt `<state root>/evidence/<attempt>`, created exclusively under an owner-only root; files are created exclusively, never through a symlink, mode 600, copied from a regular file only up to its size at open, at most 32 MiB each and 256 MiB per attempt.
+`publishSummary` (`src/github/summary.ts`) posts one text-only comment with a token limited to `pull_requests: write`: it refuses a failed verdict before any GitHub call, re-reads the PR and refuses if its base or head moved since capture, and updates the App's own comment for the same PR and attempt instead of adding another.
+Page-derived and command-derived text is redacted (URL query and fragment, token-like values, emails, the account home as `~`), capped, and fenced.
+Tokens are checked against an injected clock with a 5-minute refresh margin, an expired one is never used for git or the API, and the App no longer asks for `issues: write`.
+Evidence is kept until the owner removes it.
+The existing `factory-evidence` branch and PR #1's image comment were left for the owner.
+
+### Revision binding and the verdict
+
+`scripts/spike-verify.ts` takes only a PR number, records its base and head before any capture, previews the base as before and the head as after, and every capture names its commit; the comment's marker carries `base=`, `head=`, and `capture=`.
+Every observation is a check from `src/verify/checks.ts` that keeps its own status: a probe passes only on its own exit 0 (the probes exit 1 on a leak and 2 when inconclusive), with nothing left running; teardowns, git-write markers, the signed-out PR page, screenshot stability, the base and head difference, the expected change, and the planted console error are checks too.
+Setup-phase probes run as setup commands, so a failing one stops the preview and fails the attempt.
+`scripts/network-probe.sh` checks each phase's network and `scripts/sibling-probe.sh` the sibling `.env`; `scripts/spike-verify-pr.ts` opened PR #2, whose base `spike/verify-base` is the fixture's first commit, so before is the PR's base.
+
+### Mobile emulation
+
+Probed on a fresh isolated tab with a page that records its size, scale, touch points, `pointer: coarse`, and user agent at load:
+
+```
+viewport --width 390 --height 844 --scale 3 --mobile, then goto    390x844 dpr:3 touch:5 coarse:true ua-mobile:false
+set device --name "iPhone 12", then goto                           390x844 dpr:3 touch:5 coarse:true ua-mobile:true
+desktop viewport on a fresh tab after a device tab                 1440x900 dpr:1 touch:0 coarse:false ua-mobile:false
+the same page after load, on a reused tab                          values at load as above, now 1621x979
+```
+
+Emulation set on the blank tab before `goto` applies at load, so section 4's statement that the page loads at the pane's size no longer holds.
+`--mobile` alone keeps a desktop user agent, so the mobile viewport uses the `iPhone 12` preset, whose answer is checked for width, height, scale, and mobile.
+Orca resets the size after load, so the capture sets emulation again after `wait --load load` and checks the layout viewport before the screenshot.
+The user agent is per tab, and each capture uses a new tab.
+
+### Bun 1.2.10 runner wedge
+
+The intermittent hang noted under [Tests](#tests) is explained.
+`Bun.spawnSync` in Bun 1.2.10 runs timers and other async continuations while it waits: a timer callback runs inside it.
+Under `bun test`, a test that ends while other work waits in `Bun.spawnSync`, with an `afterEach` that awaits that work, wedges the runner for good, idle in `kevent64`; a minimal repro wedged 3 runs of 3.
+Tests now settle the factory work they started inside the test body (`settlingTest` in `test/verify-helpers.ts`): the repro then finished 3 of 3, and the mutation that wedged the full suite in 3 runs of 6 wedged 0 of 8.
+Every spawn and fetch in the tests is bounded, and `scripts/test-watchdog.sh` bounds a whole run from outside Bun, recording `sample`, `ps`, and `lsof` and killing the run when it overruns, and killing anything a run leaves behind.
+
+The production side is not fixed: the factory's `ps`, `lsof`, and git calls go through `Bun.spawnSync`, so other async work can run in the middle of them.
+`startPreview` handles the one interleaving found (a stop that lands while a check is being spawned), and port leases re-read a lease before reclaiming it for the same reason.
+Moving those calls to async spawns, or a Bun release without the reentrancy (Bun is pinned at 1.2.10), is the owner's call.
+
+### Final runs
+
+From the worktree, after `sh scripts/canary-probe.sh --setup` and `bun scripts/spike-verify-pr.ts`:
+
+```
+FACTORY_CANARY=canary-<random> bun scripts/spike-verify.ts 2
+### PR #2: base spike/verify-base 683a16be19aee1f56b76ded5b5c461614f47591f, head 4a5de0545bb0d9326e54b5397a3c7995e5cd8ac8
+### base preview 683a16be19ae ready on http://127.0.0.1:4195 in 1613ms (spawn to 200: 268ms)
+capture base-a-desktop: sha256 a52ee39fcc418e15, console errors 1, other origins []
+capture base-a-mobile: sha256 320c803e44f139ac, console errors 1, other origins []
+capture base-b-desktop: sha256 a52ee39fcc418e15, console errors 1, other origins []
+capture base-b-mobile: sha256 320c803e44f139ac, console errors 1, other origins []
+### head preview 4a5de0545bb0 ready on http://127.0.0.1:4167 in 774ms (spawn to 200: 261ms)
+capture head-desktop: sha256 2617112a6f2713b8, console errors 1, other origins []
+capture head-mobile: sha256 3104a530b809b8ac, console errors 1, other origins []
+### sibling canary removed: true
+### verdict PASS
+### published {"id":7006220670,"htmlUrl":"https://github.com/Scylla23/factory-pilot/pull/2#issuecomment-7006220670","updated":false}
+```
+
+All 29 checks passed; the hashes equal the first run's.
+Beside the preview, the network probe printed `REACHED the preview's own port 200`, then `BLOCKED` for another loopback port, an outside host, and a public address; with no network, all four were blocked.
+In setup, `REACHED allowed host through the proxy 200`, then `BLOCKED` for a denied host through the proxy, the allowed host and a public address bypassing the proxy, and the proxy without its credential.
+The git-write probe printed `WRITE-DENIED` for all seven targets and `WORKTREE-EDIT-OK`, and the keychain probe `KEYCHAIN-RC=44` against a baseline of 0 outside.
+
+The gate, on real runs:
+
+- With the expected change set to text the head does not add (a local edit, reverted), the run printed `verdict FAIL: change on head only (desktop), change on head only (mobile)` and `not published`, exited 1, and the PR's comment count stayed 2.
+- Publishing the passed attempt's records with base and head swapped, as if the PR had moved, was refused by GitHub's answer: `PR #2 moved since capture: base 4a5de0545bb0 -> 683a16be19ae, head 683a16be19ae -> 4a5de0545bb0`, nothing posted.
+- Publishing the passed attempt again returned `"updated":true` with the same comment id, and the PR still had 2 comments.
+
+The first passing attempt (comment 7006002523) showed a fragment of the account name at the start of a log excerpt, because a log tail began mid-line where redaction could not see the home path.
+Tails now start at a line boundary, and the second attempt's comment has none; the first comment is left for the owner.
+
+Rendering for the owner, read-only in the Default profile: one tab on the comment, a screenshot, and the tab closed; the comment shows the checks and captures tables and the redacted diagnostics.
+Afterwards `canary-probe.sh --cleanup` removed the planted transcripts, and no verification profile, tab, preview directory, port lease, sibling canary, or preview process remained.
+Left in place on purpose: PR #2 and `spike/verify-base`, the runs' logs under `~/.software-factory/spike-02/<attempt>`, and their evidence under `~/.software-factory/evidence/<attempt>`.
+
+### Residual risks
+
+- Browser egress during capture is unrestricted (Q52).
+- `Bun.spawnSync` reentrancy in production code (above).
+- Orca keeps a deleted profile's partition on disk (section 3).
+- `materializeCommit` does not check that the registered repo path is a git toplevel; a path inside another repository would materialize from that one.
+
 ## Proposed design changes
 
-These refine [design.md](../design.md); none is applied there by this spike.
+These refine [design.md](../design.md).
+The repair round applied 1 and 3 to it, with reads closed by default and setup egress through the proxy; 2 is replaced by the local evidence store and the text-only comment (Q53); 4 no longer holds, since a preview may call its own port.
 
 1. Project command sandbox.
    Add to "Build, check, review, verify": "Project setup, test, lint, typecheck, and preview commands run under a factory-written Seatbelt profile with `/usr/bin/sandbox-exec`: the dispatch deny-list, writes only in the worktree and a private home, no keychain, and network by phase (setup: outbound IP except loopback; preview: its own loopback port only; checks: none)."
@@ -323,7 +477,10 @@ These refine [design.md](../design.md); none is applied there by this spike.
 - `src/github/commit.ts`: Git Data API commits with fast-forward only.
 - `src/github/pulls.ts`: draft PR, comments.
 - `src/github/fetch.ts`: token-authenticated fetch of exact commits.
-- `src/github/evidence.ts`: evidence branch and comment.
+- `src/verify/proxy.ts`: the setup phase's egress proxy (repair round).
+- `src/verify/store.ts`: the local evidence store (repair round).
+- `src/verify/verdict.ts` and `src/verify/checks.ts`: checks and the verdict that gates publication (repair round).
+- `src/github/summary.ts`: the redacted text-only PR comment (repair round; it replaced `src/github/evidence.ts`).
 - Reused from step 1: `spawnAgentProcess`, `superviseRun`, `terminateTree`, `sweepWorktree`, `Tracker`, `snapshot`, `runGit`, `gitWriteProtectedPaths`, `effectiveDenyRead`, `trustedAgentPath`, `assertSafeDir`, `orcaJson`.
 - Changed in step 1 code: `sweepWorktree` takes `spare`; `assessCleanup` folds supervision and sweep into one verdict for `runAgent` and previews alike; `runGit` takes a timeout and names the subcommand after leading `-c` options.
 
@@ -349,3 +506,11 @@ The first pass found four gaps, all in tests:
 Not resolved: twice, the preview test file hung for minutes under the "sweep kills the spared preview" mutation, and Bun's 5-second test timeout did not fire.
 Eighteen later runs of that mutation and 17 unmutated runs did not hang, and every synchronous child call in `src/` is bounded.
 If it recurs, `sample <bun pid>` shows where it waits.
+That hang is the Bun 1.2.10 runner wedge explained in section 8.
+
+Repair round: `bun test` runs 275 tests across 16 files, 0 fail, 0 skip, and `bun run typecheck` passes.
+New files: `verify-proxy`, `verify-store`, `verify-checks`, and `watchdog`.
+Mutation check: 161 single-change mutants over the repair round's code, tests, and scripts, each killed by the test meant to catch it; one was killed by a Bun crash and one by a hang, which the watchdog now bounds.
+The first 20-run attempt hung in its 13th run: a step 1 test stopped a run with a 300 ms timeout and then waited for a pid the fake CLI writes only after starting its child, so a slow shell start left a poll running past the test timeout into later tests; the watchdog stopped the run at 900 seconds with its stacks recorded.
+The test now stops the run through its abort signal once the pid exists (a fake delayed by 0.5 seconds reproduces the old failure and passes with the fix).
+After that fix, 20 consecutive full runs under `scripts/test-watchdog.sh` each passed 275 of 275 tests in 72 to 86 seconds, and `bun run typecheck` passed.
