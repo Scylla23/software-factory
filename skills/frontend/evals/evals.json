@@ -1,0 +1,80 @@
+{
+  "skill": "frontend",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "frontend-01-new-project",
+      "purpose": "A new project gets screens with routes, both viewports, all states, at most two font families, and only catalog dependencies with exact package names.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "frontend", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": "../../spec-lead/evals/fixtures/team/linkshelf-brief.md",
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "headings", "kind": "deterministic", "check": "frontend.md has the level 2 headings Decision, Options considered, Rationale, Screens, Layout, Components, States, Accessibility, Dependencies to add, Curated entries used, Catalog gaps, Assumptions, in that order" },
+        { "id": "routes", "kind": "deterministic", "check": "every data row of the Screens table has a Route cell starting with /" },
+        { "id": "viewports", "kind": "deterministic", "check": "every level 3 subsection of Layout has one bullet starting with \"1440x900:\" and one starting with \"390x844:\"" },
+        { "id": "states", "kind": "deterministic", "check": "the States table has a row for every screen in the Screens table, with no empty cell" },
+        { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in frontend/catalog.json" },
+        { "id": "deps-valid", "kind": "deterministic", "check": "every row of Dependencies to add names an entries id of kind library, and its Packages cell lists only names from that entry's packages" },
+        { "id": "fonts", "kind": "deterministic", "check": "at most 2 distinct entries with category font appear under Curated entries used" },
+        { "id": "no-dropped", "kind": "deterministic", "check": "frontend.md contains none of: vaul, next-themes, dnd-kit, dnd kit, godly, lapa, siteinspire" },
+        { "id": "inspiration-as-pointer", "kind": "judge", "check": "Is every inspiration entry cited only as a pointer to a class of pattern, with no claim about what a specific site currently shows and no instruction to copy from it?" },
+        { "id": "mobile", "kind": "judge", "check": "Does the layout say concretely how the link list and the save form change at 390x844, rather than only saying they are responsive?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "frontend-02-palette-and-ai-surface",
+      "purpose": "The owner's two named entries are used as intended: cmdk with its flag reason repeated, and Beautiful UI for AI surfaces as copied components, not an npm install.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "frontend", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: Linkshelf command palette and ask panel\n\n## Problem\n\nPower users want to jump to any saved link or action from the keyboard, and to ask questions about their saved links in a side panel where an assistant streams an answer with the links it used.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): pressing the shortcut opens a palette that filters links and actions as the user types.\n- AC-2 (draft): the ask panel streams an answer and lists the links it drew on.\n- AC-3 (draft): before the assistant archives links on the user's behalf it shows what it will do and waits for approval.\n\n## Constraints\n\n- React with Tailwind and shadcn/ui components.\n\n## What exists\n\nNew project.\n\n## Questions for each specialist\n\n- frontend: components for the palette, the streaming answer, and the approval step.\n"
+          },
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "cmdk", "kind": "deterministic", "check": "`cmdk` appears under Curated entries used and in the Components table" },
+        { "id": "beautiful-ui", "kind": "deterministic", "check": "`beautiful-ui` appears under Curated entries used" },
+        { "id": "copy-paste", "kind": "deterministic", "check": "if `beautiful-ui` has a row in Dependencies to add, its Install cell is copy-paste and its Packages cell names no package" },
+        { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in frontend/catalog.json" },
+        { "id": "flag-repeated", "kind": "judge", "check": "Does the Rationale repeat the substance of cmdk's flagReason: that it fails the maintenance rule and should be pinned or re-checked?" },
+        { "id": "approval-state", "kind": "judge", "check": "Does the decision describe the approval step's states, including what the user sees while the assistant waits and after a rejection?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "frontend-03-gap-not-substitute",
+      "purpose": "A need with no approved entry is reported as a gap. The trap is that a well-known library for it sits in the catalog's dropped list.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "frontend", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: Linkshelf reading board\n\n## Problem\n\nUsers want a board with three columns (To read, Reading, Done) and to move a link between columns by dragging it, with the mouse or the keyboard.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): a link can be dragged from one column to another and stays there after reload.\n- AC-2 (draft): the same move can be made with the keyboard alone.\n\n## Constraints\n\n- React with Tailwind and shadcn/ui components.\n\n## What exists\n\nNew project.\n\n## Questions for each specialist\n\n- frontend: how the board and the drag interaction are built.\n"
+          },
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in frontend/catalog.json" },
+        { "id": "deps-valid", "kind": "deterministic", "check": "every row of Dependencies to add names an entries id of kind library" },
+        { "id": "resolved-in-catalog-or-gap", "kind": "deterministic", "check": "either `react-aria-components` appears under Curated entries used, or the Catalog gaps section is not \"None.\"" },
+        { "id": "dropped-not-used", "kind": "judge", "check": "Is the decision free of dnd kit (or any other out-of-catalog drag library) as a chosen dependency, mentioning such a library at most as an unapproved candidate under Catalog gaps?" },
+        { "id": "keyboard", "kind": "judge", "check": "Does the Accessibility section say how the move is made by keyboard and announced, as AC-2 requires?" }
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

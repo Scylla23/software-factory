@@ -1,0 +1,79 @@
+{
+  "skill": "infra",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "infra-01-new-project",
+      "purpose": "All nine categories get a decision, only what the criteria need is chosen, every pick is a catalog id that fits the architecture, and owner prerequisites are listed without secret values.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "infra", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": "../../spec-lead/evals/fixtures/team/linkshelf-brief.md",
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "headings", "kind": "deterministic", "check": "infra.md has the level 2 headings Decision, Options considered, Rationale, Choices, Owner prerequisites, Environments, Curated entries used, Catalog gaps, Assumptions, in that order" },
+        { "id": "nine-rows", "kind": "deterministic", "check": "the Choices table has exactly 9 data rows whose first cells are hosting, database, auth, email, queues, payments, analytics, ci, observability, in that order" },
+        { "id": "choices-valid", "kind": "deterministic", "check": "each Choice cell is a backticked entries id from infra/catalog.json whose category equals the row's category, or starts with \"existing:\", or equals \"not needed\"" },
+        { "id": "unneeded", "kind": "deterministic", "check": "the payments row and the analytics row are \"not needed\"" },
+        { "id": "fits-architecture", "kind": "deterministic", "check": "the hosting choice is not `cloudflare-workers` and not `vercel`" },
+        { "id": "no-secrets", "kind": "deterministic", "check": "infra.md contains no string matching (sk|pk|re|whsec)_[A-Za-z0-9]{8,} and no line assigning a value to an environment variable" },
+        { "id": "no-versions", "kind": "deterministic", "check": "infra.md contains no semantic version number such as 1.2.3" },
+        { "id": "prerequisites", "kind": "judge", "check": "For each chosen service, does Owner prerequisites say what the owner must create and name the environment variables the app will read?" },
+        { "id": "preview", "kind": "judge", "check": "Does the file say how email behaves in the preview and in tests with no outbound network, consistent with the architecture's in-memory outbox?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "infra-02-catalog-gap",
+      "purpose": "When the task needs categories the catalog lacks, the specialist records gaps instead of picking a familiar vendor.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "infra", "round": 1, "project": { "isNew": true } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: Linkshelf attachments and text alerts\n\n## Problem\n\nUsers attach a PDF or image of up to 20 MB to a saved link, and can opt in to a text message when their weekly digest is ready.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): a signed-in user can attach one file of up to 20 MB to a link and download it later.\n- AC-2 (draft): a user who opted in receives a text message when the digest is sent.\n\n## Constraints\n\n- TypeScript on Bun, one long-running server, one person operating it.\n\n## What exists\n\nNew project.\n\n## Questions for each specialist\n\n- infra: where attached files are stored and how text messages are sent.\n"
+          },
+          "architecture.md": "../../spec-lead/evals/fixtures/team/linkshelf-architecture.md"
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "gaps", "kind": "deterministic", "check": "the Catalog gaps section has at least 2 list items and is not \"None.\"" },
+        { "id": "choices-valid", "kind": "deterministic", "check": "each Choice cell is a backticked entries id from infra/catalog.json whose category equals the row's category, or starts with \"existing:\", or equals \"not needed\"" },
+        { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in infra/catalog.json" },
+        { "id": "gap-content", "kind": "judge", "check": "Do the gaps name file or object storage and text messaging as needs with no approved entry, and mark any vendor they mention as an unapproved candidate?" },
+        { "id": "not-smuggled", "kind": "judge", "check": "Is the decision free of any out-of-catalog vendor presented as chosen, in the Decision, Choices, or Owner prerequisites sections?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "infra-03-existing-project-wins",
+      "purpose": "On an existing project the specialist records what is already in use and does not replace it with catalog defaults.",
+      "pilot": "The pilot is a deployed Bun app with its own database layer, session handling, and a CI workflow already present in the repository.",
+      "input": {
+        "brief": { "role": "infra", "round": 1, "project": { "isNew": false } },
+        "files": {
+          "team-brief.md": {
+            "inline": "# Team brief: password reset by email\n\n## Problem\n\nUsers who forget their password have no way back in. Add a reset flow that emails a single-use link.\n\n## Draft acceptance criteria\n\n- AC-1 (draft): requesting a reset for a known email sends one message containing a single-use link.\n- AC-2 (draft): the link sets a new password once and then stops working.\n\n## Constraints\n\n- Keep the existing database, sessions, hosting, and CI.\n\n## What exists\n\nThe pilot repository.\n\n## Questions for each specialist\n\n- infra: how email is sent, and what the owner must set up.\n"
+          },
+          "architecture.md": {
+            "inline": "# Architecture: password reset by email\n\nTask: eval-infra-03\nAuthor: architect\n\n## Decision\n\nThe reset flow is added to the existing auth module. Email leaves the process through a new mailer port with a fake for tests and the preview. No new deployable.\n\n## Options considered\n\nNone beyond the existing structure.\n\n## Rationale\n\nThe change is contained in auth and one new adapter.\n\n## Curated entries used\n\n- `ports-and-adapters` (pattern, architecture): the mailer port and its fake.\n\n## Catalog gaps\n\nNone.\n\n## Assumptions\n\nNone.\n"
+          }
+        }
+      },
+      "expect": [
+        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "existing-rows", "kind": "deterministic", "check": "the hosting, database, auth, and ci rows of the Choices table each start with \"existing:\" or equal \"not needed\"" },
+        { "id": "email-picked", "kind": "deterministic", "check": "the email row's Choice is a backticked entries id from infra/catalog.json with category email" },
+        { "id": "existing-cited", "kind": "judge", "check": "Do the existing rows name what the pilot actually uses, with a path or file from the repository?" },
+        { "id": "no-replacement", "kind": "judge", "check": "Is the file free of any recommendation to migrate the existing database, auth, hosting, or CI to a catalog entry?" }
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

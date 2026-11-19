@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "lead": "spec-lead",
+  "note": "Subagent definitions for the spec lead's team. The factory turns each member into a harness-native subagent for the spec lead's run: its prompt is the member's SKILL.md plus the shared contract, and its model and effort come from factory.config.ts under configRole. See docs/skills-delivery.md.",
+  "phases": [["architect"], ["infra", "frontend"], ["threat-modeler"]],
+  "members": [
+    {
+      "name": "architect",
+      "skill": "architect",
+      "configRole": "architect",
+      "description": "Decides the system shape, module boundaries, data ownership, and key interfaces for a new project or a tier L change, and writes architecture.md. Start it first, alone.",
+      "runsWhen": ["new-project", "tier-L"],
+      "reads": ["team-brief.md"],
+      "writes": "architecture.md",
+      "claudeTools": ["Read", "Glob", "Grep", "Write"]
+    },
+    {
+      "name": "infra",
+      "skill": "infra",
+      "configRole": "infra",
+      "description": "Chooses hosting, database, auth, email, queues, payments, analytics, CI, and observability from the infra catalog for the decided architecture, and writes infra.md. Start it after architecture.md exists, in parallel with frontend.",
+      "runsWhen": ["new-project", "tier-L"],
+      "reads": ["team-brief.md", "architecture.md"],
+      "writes": "infra.md",
+      "claudeTools": ["Read", "Glob", "Grep", "Write"]
+    },
+    {
+      "name": "frontend",
+      "skill": "frontend",
+      "configRole": "frontend",
+      "description": "Decides layout, navigation, components, typography, states, and frontend libraries from the frontend catalog, and writes frontend.md. Start it after architecture.md exists, in parallel with infra.",
+      "runsWhen": ["new-project", "tier-L"],
+      "reads": ["team-brief.md", "architecture.md"],
+      "writes": "frontend.md",
+      "claudeTools": ["Read", "Glob", "Grep", "Write"]
+    },
+    {
+      "name": "threat-modeler",
+      "skill": "threat-modeler",
+      "configRole": "threat-modeler",
+      "description": "Models threats against the decided design and the draft acceptance criteria, maps each to a mitigation, and writes threat-model.md. Start it last, after every other decision file exists.",
+      "runsWhen": ["new-project", "tier-L", "security-flag"],
+      "reads": ["team-brief.md", "architecture.md", "infra.md", "frontend.md"],
+      "writes": "threat-model.md",
+      "claudeTools": ["Read", "Glob", "Grep", "Write"]
+    }
+  ]
+}

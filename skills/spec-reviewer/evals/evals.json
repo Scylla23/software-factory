@@ -1,0 +1,129 @@
+{
+  "skill": "spec-reviewer",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "spec-reviewer-01-planted-defects",
+      "purpose": "A spec with four planted defects of different kinds. The reviewer must find each one, with the right category, and record the missing path and the tier it re-derived.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "spec-reviewer", "stage": "spec", "round": 1, "taskId": "eval-tasklist-task-by-id", "project": { "isNew": false } },
+        "repo": { "fixture": "../../_shared/evals/tasklist" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/triage.json",
+          "spec.md": "fixtures/task-by-id-flawed.md",
+          "spec-lead.json": {
+            "inline": {
+              "schemaVersion": 1, "taskId": "eval-tasklist-task-by-id", "round": 1, "status": "ready-for-review",
+              "tier": { "provisional": "M", "confirmed": "S", "reason": "One file changes." },
+              "riskFlags": {
+                "security": { "value": false, "reason": "The shared guard already covers it." },
+                "migration": { "value": false, "reason": "No persisted shape change." },
+                "newProject": { "value": false, "reason": "project.isNew is false." }
+              },
+              "acceptanceCriteria": [{ "id": "AC-1", "tag": "test" }, { "id": "AC-2", "tag": "test" }],
+              "retiredCriteria": [], "team": [], "conflicts": [], "escalations": [], "catalogGaps": [], "changes": []
+            }
+          }
+        }
+      },
+      "answerKey": [
+        "grounding: Reused files and the plan cite src/api/auth.ts and a requireOwner guard; neither exists at baseSha.",
+        "untestable: AC-2 has a fixture and action too vague to reproduce and an Expected line (access control works correctly) that nothing can observe.",
+        "lost-requirement: the Task asks for PATCH /api/tasks/:id and that a patch can change only the title and due date; no criterion or plan step covers either.",
+        "tier: the header says S with no flags, but the change adds API routes (at least M) that read per-user data by id (security flag needed)."
+      ],
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/spec-reviewer.json validates against _shared/verdict.schema.json" },
+        { "id": "identity", "kind": "deterministic", "check": "role == \"spec-reviewer\" && stage == \"spec\" && round == 1 && taskId == \"eval-tasklist-task-by-id\"" },
+        { "id": "spec-hash", "kind": "deterministic", "check": "covers.specSha256 equals the SHA-256 of the spec.md fixture" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\"" },
+        { "id": "missing-path", "kind": "deterministic", "check": "checks.grounding.missingPaths contains \"src/api/auth.ts\" and a blocking finding has category \"grounding\"" },
+        { "id": "untestable", "kind": "deterministic", "check": "a blocking finding has category \"untestable\" and acIds containing \"AC-2\"" },
+        { "id": "lost", "kind": "deterministic", "check": "a blocking finding has category \"lost-requirement\"" },
+        { "id": "tier", "kind": "deterministic", "check": "checks.tier.specTier == \"S\" && checks.tier.assessedTier != \"S\" && a blocking finding has category \"tier\"" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run, and spec.md is unchanged" },
+        { "id": "lost-is-patch", "kind": "judge", "check": "Does the lost-requirement finding name the missing update (PATCH) route or the missing limit on which fields a patch may change?" },
+        { "id": "flag", "kind": "judge", "check": "Does the tier finding, or another blocking finding, say that the security flag must be set?" },
+        { "id": "fixable", "kind": "judge", "check": "Does every blocking finding's requiredChange say what must become true without rewriting the criterion in full?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "spec-reviewer-02-clean-spec-approves",
+      "purpose": "Precision. A grounded, testable tier S bug spec must be approved, with no blocking finding invented to look thorough.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": { "role": "spec-reviewer", "stage": "spec", "round": 1, "taskId": "eval-tasklist-sort", "project": { "isNew": false } },
+        "repo": { "fixture": "../../_shared/evals/tasklist" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/sort/triage.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/sort/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/sort/spec-lead.json"
+        }
+      },
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/spec-reviewer.json validates against _shared/verdict.schema.json" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"approve\" && no finding has blocking == true" },
+        { "id": "grounding", "kind": "deterministic", "check": "checks.grounding.pathsChecked >= 2 && checks.grounding.missingPaths is empty" },
+        { "id": "tier", "kind": "deterministic", "check": "checks.tier.specTier == \"S\" && checks.tier.assessedTier == \"S\"" },
+        { "id": "restraint", "kind": "deterministic", "check": "findings has at most 3 entries" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run" },
+        { "id": "no-preference", "kind": "judge", "check": "Is every finding, if any, about something that would materially help the builder or verifier rather than a wording or design preference?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "spec-reviewer-03-revision-breaks-something-else",
+      "purpose": "Round 2. The revision fixes the one finding of round 1 but deletes AC-4 and makes AC-3 contradict an unchanged design choice. A reviewer that only rechecks its own list approves; it must read the whole diff.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "spec-reviewer", "stage": "spec", "round": 2, "taskId": "eval-tasklist-task-by-id", "project": { "isNew": false },
+          "previous": { "spec": "previous/spec.md", "verdict": "previous/verdicts/spec-reviewer.json" }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+          "triage.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/triage.json",
+          "previous/spec.md": "fixtures/task-by-id-r1.md",
+          "previous/verdicts/spec-reviewer.json": "fixtures/task-by-id-r1-verdict.json",
+          "spec.md": "fixtures/task-by-id-r2.md",
+          "spec-lead.json": {
+            "inline": {
+              "schemaVersion": 1, "taskId": "eval-tasklist-task-by-id", "round": 2, "status": "ready-for-review",
+              "tier": { "provisional": "M", "confirmed": "M", "reason": "The change adds API routes in one module, with no schema change and no new dependency." },
+              "riskFlags": {
+                "security": { "value": true, "reason": "New routes read and write per-user data by id and parse a request body." },
+                "migration": { "value": false, "reason": "No persisted shape change." },
+                "newProject": { "value": false, "reason": "project.isNew is false." }
+              },
+              "acceptanceCriteria": [{ "id": "AC-1", "tag": "test" }, { "id": "AC-2", "tag": "test" }, { "id": "AC-3", "tag": "test" }],
+              "retiredCriteria": [], "team": [], "conflicts": [], "escalations": [], "catalogGaps": [],
+              "changes": [{ "inResponseTo": "spec-reviewer round 1 finding 1", "action": "changed", "note": "AC-3 now states the status code, the empty body, and the unchanged task." }]
+            }
+          }
+        }
+      },
+      "answerKey": [
+        "Round 1 finding 1 (AC-3 not observable) is resolved: the Expected line is now assertable.",
+        "contradiction: AC-3 now expects status 403, while Design choices, unchanged, says to answer 404 and not 403.",
+        "lost-requirement: AC-4 (unknown fields are rejected) was deleted, although the Task requires that a patch change only the title and due date; plan steps 2 and 3 still say they serve AC-4, and AC-4 is not listed in retiredCriteria."
+      ],
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/spec-reviewer.json validates against _shared/verdict.schema.json" },
+        { "id": "round", "kind": "deterministic", "check": "round == 2 && checks.revisionDiffReviewed == true" },
+        { "id": "resolution", "kind": "deterministic", "check": "resolutions has exactly one entry, with round == 1, n == 1, and status == \"resolved\"" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\"" },
+        { "id": "lost", "kind": "deterministic", "check": "a blocking finding has category \"lost-requirement\"" },
+        { "id": "contradiction", "kind": "deterministic", "check": "a blocking finding has category \"contradiction\" and acIds containing \"AC-3\"" },
+        { "id": "lost-is-ac4", "kind": "judge", "check": "Does the lost-requirement finding identify that the criterion rejecting unknown patch fields was removed?" },
+        { "id": "contradiction-is-status", "kind": "judge", "check": "Does the contradiction finding set the 403 in AC-3 against the 404 in Design choices?" }
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

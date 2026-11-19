@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/spec-lead.schema.json",
+  "title": "Spec lead result",
+  "description": "What the spec stage decided, for the factory to act on without parsing prose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "round", "status", "tier", "riskFlags", "acceptanceCriteria", "retiredCriteria", "team", "conflicts", "escalations", "catalogGaps", "changes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "round": { "type": "integer", "minimum": 1 },
+    "status": {
+      "description": "ready-for-review: the spec can go to the spec reviewer. needs-owner: an escalation or blocking question must be answered first. blocked: the stage could not finish, for example a specialist failed twice.",
+      "enum": ["ready-for-review", "needs-owner", "blocked"]
+    },
+    "blockedReason": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provisional", "confirmed", "reason"],
+      "properties": {
+        "provisional": { "enum": ["S", "M", "L"] },
+        "confirmed": { "enum": ["S", "M", "L"] },
+        "reason": { "description": "Evidence from the repository for the confirmed tier, required even when it equals the provisional one.", "type": "string", "minLength": 1, "maxLength": 600 }
+      }
+    },
+    "riskFlags": {
+      "description": "The flags the spec declares. They trigger the threat modeler and the auditors.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["security", "migration", "newProject"],
+      "properties": {
+        "security": { "$ref": "#/$defs/flag" },
+        "migration": { "$ref": "#/$defs/flag" },
+        "newProject": { "$ref": "#/$defs/flag" }
+      }
+    },
+    "acceptanceCriteria": {
+      "description": "Every criterion in spec.md, in order, so the factory can cross-check the two files.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "tag"],
+        "properties": {
+          "id": { "$ref": "#/$defs/acId" },
+          "tag": { "enum": ["test", "browser", "computer-use", "manual"] },
+          "pendingEscalation": { "description": "True when the criterion's final form depends on an open escalation.", "type": "boolean" }
+        }
+      }
+    },
+    "retiredCriteria": { "description": "Ids removed in any round. Never reused.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
+    "team": {
+      "description": "One entry per team member when the team was required; empty otherwise.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["member", "status"],
+        "properties": {
+          "member": { "enum": ["architect", "infra", "frontend", "threat-modeler"] },
+          "status": { "enum": ["ran", "skipped", "failed"] },
+          "file": { "enum": ["architecture.md", "infra.md", "frontend.md", "threat-model.md"] },
+          "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 400 }
+        },
+        "allOf": [
+          { "if": { "properties": { "status": { "const": "ran" } } }, "then": { "required": ["file", "attempts"] }, "else": { "required": ["reason"] } }
+        ]
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["between", "summary", "changesAcceptanceCriteria", "resolution"],
+        "properties": {
+          "between": { "description": "The two or more sources that disagree: decision file names, a project path, or task.", "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 } },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "changesAcceptanceCriteria": { "type": "boolean" },
+          "resolution": { "description": "Which side won and why, or escalated.", "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    },
+    "escalations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "question", "options"],
+        "properties": {
+          "kind": { "enum": ["ac-conflict", "blocking-question", "catalog-gap"] },
+          "question": { "description": "The question for the owner, answerable in one line.", "type": "string", "minLength": 1, "maxLength": 600 },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "effect"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+                "effect": { "description": "What this option does to the acceptance criteria or the design.", "type": "string", "minLength": 1, "maxLength": 400 }
+              }
+            }
+          },
+          "affectedCriteria": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } }
+        }
+      }
+    },
+    "catalogGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["catalog", "need", "reportedBy"],
+        "properties": {
+          "catalog": { "enum": ["frontend", "infra", "architecture"] },
+          "need": { "type": "string", "minLength": 1, "maxLength": 400 },
+          "reportedBy": { "enum": ["spec-lead", "architect", "infra", "frontend", "threat-modeler"] }
+        }
+      }
+    },
+    "changes": {
+      "description": "From round 2: how each finding or owner comment was answered. Empty in round 1.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["inResponseTo", "action", "note"],
+        "properties": {
+          "inResponseTo": { "description": "For example 'spec-reviewer round 1 finding 2' or 'owner comment'.", "type": "string", "minLength": 1, "maxLength": 200 },
+          "action": { "enum": ["changed", "declined"] },
+          "note": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "needs-owner" } } },
+      "then": { "properties": { "escalations": { "minItems": 1 } } },
+      "else": { "properties": { "escalations": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "blocked" } } },
+      "then": { "required": ["blockedReason"] },
+      "else": { "not": { "required": ["blockedReason"] } }
+    },
+    {
+      "if": { "properties": { "riskFlags": { "properties": { "migration": { "properties": { "value": { "const": true } } } } } } },
+      "then": { "properties": { "tier": { "properties": { "confirmed": { "const": "L" } } } } }
+    },
+    {
+      "if": { "properties": { "riskFlags": { "properties": { "newProject": { "properties": { "value": { "const": true } } } } } } },
+      "then": { "properties": { "tier": { "properties": { "confirmed": { "const": "L" } } } } }
+    }
+  ],
+  "$defs": {
+    "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "flag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "reason"],
+      "properties": {
+        "value": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 400 }
+      }
+    }
+  }
+}
