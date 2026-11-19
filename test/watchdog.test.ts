@@ -12,7 +12,7 @@ afterEach(() => rmSync(out, { recursive: true, force: true }));
 
 /** Runs the watchdog on the fixture file in `mode`, bounded from here too. */
 async function watchdog(mode: string, seconds = 3): Promise<{ code: number | null; stderr: string; evidence: string[] }> {
-  const p = Bun.spawn(["/bin/sh", join(ROOT, "scripts/test-watchdog.sh"), "test/fixtures/watchdog.test.ts"], {
+  const p = Bun.spawn(["/bin/sh", join(ROOT, "scripts/test-watchdog.sh"), "./test/fixtures/watchdog.fixture.ts"], {
     cwd: ROOT,
     env: { ...process.env, WATCHDOG_FIXTURE: mode, WATCHDOG_SECONDS: String(seconds), WATCHDOG_OUT: out },
     stdout: "ignore",
@@ -45,7 +45,7 @@ describe("test watchdog", () => {
     expect(r.evidence[0]).toContain("-overrun-");
     expect(readFileSync(join(ev, "sample.txt"), "utf8")).toContain("Call graph:");
     expect(readFileSync(join(ev, "ps.txt"), "utf8")).toContain("bun test");
-    expect(running("watchdog.test.ts")).toBe("");
+    expect(running("watchdog.fixture.ts")).toBe("");
   }, 60_000);
 
   test("processes a run leaves in its state directory are recorded and killed", async () => {
