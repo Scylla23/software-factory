@@ -386,3 +386,27 @@ test("owner resume replaces only the interrupted read-only attempt and preserves
     } finally { s.db.close(); }
   }
 });
+
+test("reverification authority requires the persisted escalation and a matching approved code review", () => {
+  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review"]) {
+    const s = new Store(":memory:");
+    try {
+      let t = s.move(spec(s), "building", {}, approved);
+      t = s.move(s.move(t, "checks"), "code_review");
+      if (variation !== "no-review") {
+        const a = s.plan(t, "code-review", {});
+        s.finish(a.id, { verdict: variation === "changes" ? "changes" : "approve",
+          base: variation === "review-base" ? current : t.base, head: variation === "review-head" ? old : t.head });
+      }
+      if (variation !== "previous") t = s.move(t, "verifying");
+      t = s.move(t, "escalated", { reason: variation === "reason" ? "worker disappeared" : "failed verification: AC-1" });
+      const command = { ...comment(82, current), body: "/reverify " + current };
+      expect(s.canReverify(t)).toBe(variation === "valid");
+      expect(!!pendingReverification(s, t, [command], 65, current)).toBe(variation === "valid");
+      if (variation === "valid") {
+        for (const stale of [{ ...t, visit: t.visit - 1 }, { ...t, base: current }, { ...t, head: old }, { ...t, state: "verifying" as const }])
+          expect(s.canReverify(stale)).toBe(false);
+      }
+    } finally { s.db.close(); }
+  }
+});
