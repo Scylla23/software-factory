@@ -21,8 +21,7 @@ export interface VerifyEnv {
 }
 
 export function makeVerifyEnv(): VerifyEnv {
-  const state = join(import.meta.dir, ".state");
-  mkdirSync(state, { recursive: true });
+  const state = STATE_DIR;
   const home = mkdtempSync(join(state, "vhome-"));
   mkdirSync(join(home, ".ssh"), { mode: 0o700 });
   writeFileSync(join(home, ".ssh", "id_test"), "PLANTED-SSH-SECRET\n", { mode: 0o600 });
@@ -53,7 +52,11 @@ export function makeVerifyEnv(): VerifyEnv {
   };
 }
 
-const GIT_ENV = { PATH: "/usr/bin:/bin", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", HOME: "/nonexistent" };
+/** Test state lives inside the factory checkout, so git must never look above it: a test repo missing its `.git` would
+ * otherwise resolve to the factory repo itself, and `add -A` plus `commit` would land on the working branch. */
+export const STATE_DIR = join(import.meta.dir, ".state");
+mkdirSync(STATE_DIR, { recursive: true });
+const GIT_ENV = { PATH: "/usr/bin:/bin", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", HOME: "/nonexistent", GIT_CEILING_DIRECTORIES: realpathSync(STATE_DIR) };
 
 export function git(cwd: string, ...args: string[]): string {
   const r = Bun.spawnSync(["/usr/bin/git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd, env: GIT_ENV, stderr: "pipe" });

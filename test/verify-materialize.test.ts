@@ -10,6 +10,14 @@ beforeEach(() => {
 });
 afterEach(() => env.cleanup());
 
+describe("test helpers", () => {
+  test("test git never finds the factory repo above the test state", () => {
+    const bare = join(env.repos, "no-repo");
+    mkdirSync(bare);
+    expect(() => git(bare, "rev-parse", "--show-toplevel")).toThrow("not a git repository");
+  });
+});
+
 describe("materializeCommit", () => {
   test("checks out exactly the requested commit, detached, and removes it cleanly", () => {
     const repo = makeRepo(env.repos, "app", [{ "a.txt": "one" }, { "a.txt": "two" }]);
