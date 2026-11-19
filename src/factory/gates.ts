@@ -29,7 +29,9 @@ export function pendingSpec(store: Store, task: Task, comments: IssueComment[]) 
 
 export function pendingReverification(store: Store, task: Task, comments: IssueComment[], announcement: number, prHead: string) {
   if (!store.canReverify(task) || prHead !== task.head) return null;
-  for (const c of comments) {
+  let resolution: Approval | null = null;
+  for (const c of [...comments].sort((a, b) => a.id - b.id)) {
+    if (c.id === resolution?.id) continue;
     if (!c.body.startsWith("/reverify") || store.db.query("SELECT id FROM approvals WHERE kind='comment' AND id=?").get(c.id))
       continue;
     const sha = /^\/reverify ([0-9a-f]{40})$/.exec(c.body)?.[1] ?? "";
@@ -46,10 +48,16 @@ export function pendingReverification(store: Store, task: Task, comments: IssueC
               : "owner requested re-verification";
     // accepted records an approval. A resolution authorizes only another verification.
     const event: Approval = { kind: "comment", id: c.id, actor: c.authorId ?? 0, sha, accepted: false, reason };
-    if (reason === "owner requested re-verification") return event;
+    if (reason === "owner requested re-verification") {
+      if (!resolution) {
+        resolution = event;
+        continue;
+      }
+      event.reason = `duplicate of re-verification comment ${resolution.id}`;
+    }
     store.record(task.id, event);
   }
-  return null;
+  return resolution;
 }
 
 export interface Review {

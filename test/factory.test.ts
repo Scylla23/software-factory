@@ -280,15 +280,20 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
       { id: 25, reason: "factory comment" },
     ]);
     expect(pendingReverification(s, t, [cmd(22)], 20, current)).toBeNull();
-    const event = pendingReverification(s, t, [valid], 20, current);
+    const event = pendingReverification(s, t, [cmd(31), valid, valid], 20, current);
     if (!event) throw new Error("expected owner resolution");
+    expect(event.id).toBe(30);
+    expect(s.db.query("SELECT accepted,reason FROM approvals WHERE id=31").get()).toEqual({
+      accepted: 0,
+      reason: "duplicate of re-verification comment 30",
+    });
     expect(event.accepted).toBe(false);
     expect(() => s.move(t, "done", {}, event)).toThrow();
     expect(() => s.move(t, "verifying", { repairCount: 0 }, event)).toThrow();
     t = s.move(t, "verifying", {}, event);
     expect(t.repairCount).toBe(1);
     t = s.move(t, "escalated", { reason: "failed verification: still failing" });
-    expect(pendingReverification(s, t, [valid], 20, current)).toBeNull();
+    expect(pendingReverification(s, t, [valid, cmd(31)], 20, current)).toBeNull();
     expect(() => s.move(t, "verifying", {}, event)).toThrow("consumed");
     expect(s.task(t.id).state).toBe("escalated");
   } finally {

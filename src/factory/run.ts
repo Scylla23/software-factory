@@ -188,8 +188,10 @@ async function resolveVerification(store: Store, git: Publisher, task: Task) {
   store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [id, task.id]);
   const comments = await git.comments(task.pr);
   const pull = await git.boundPull(task);
-  const resolution = pendingReverification(store, task, comments, id, pull.headSha);
-  return resolution ? store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution) : null;
+  return store.db.transaction(() => {
+    const resolution = pendingReverification(store, task, comments, id, pull.headSha);
+    return resolution ? store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution) : null;
+  })();
 }
 
 async function draft(store: Store, git: Publisher, task: Task, observe: Observer) {
