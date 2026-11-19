@@ -65,7 +65,11 @@ test("each case keeps its own rubric and a disclosed planted classification prev
   expect(rows.length).toBe(4);
   expect(rows[0]!.checks.some((c) => c.id === "inherited")).toBe(false);
   expect(rows[1]!.checks.some((c) => c.id === "inherited")).toBe(true);
-  expect(exposesAnswer(lead[1].input.files)).toBe(true);
+  const promotion = lead[1].input.files["triage.json"].inline;
+  expect(promotion.tier).toBe("S");
+  expect(promotion.riskFlags.migration.value).toBe(false);
+  expect(exposesAnswer(lead[1].input.files)).toBe(false);
+  expect(exposesAnswer({reason:"PLANTED: deliberately wrong."})).toBe(true);
   expect(exposesAnswer(lead[0].variants[0].input.files)).toBe(false);
 });
 
