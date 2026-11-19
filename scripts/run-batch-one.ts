@@ -66,7 +66,11 @@ async function inspectBlindStream(stdoutPath: string, canary: string, worktree: 
 }
 
 async function batchOne() {
-  if (!dry) for (const h of ["claude", "codex"] as const) console.log(JSON.stringify(runHomeProofs(h, dispatch)));
+  if (!dry) for (const h of ["claude", "codex"] as const) {
+    const home=runHomeProofs(h,dispatch);
+    console.log(JSON.stringify(home));
+    if(h==="claude" && !home.failures?.includes("claude proof credential not provisioned")) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
+  }
 
   let skipped = 0;
   for (const role of ["triage", "spec-lead"] as const) {

@@ -1,7 +1,8 @@
+import { sourceRead } from "./codex-source-read";
 /** Cheap, isolated Codex proofs. Each invocation uses one disposable account home per arm. */
 import { closeSync, statSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { codexWrites } from "../src/dispatch/codex-writes";
 import { outputDigest } from "../src/dispatch/output";
 import { codexArgs, codexReadable } from "../src/dispatch/codex";
@@ -13,7 +14,7 @@ import { assessCleanup, spawnAgentProcess, superviseRun, sweepWorktree } from ".
 import { createAttempt, checkoutSnapshot } from "../src/dispatch/attempt";
 import { skillPolicy } from "../src/dispatch/skill-policy";
 import { probeBundle } from "./probe-bundle";
-import { proofSource } from "./probe-sources";
+import { expectedSource, proofSource } from "./probe-sources";
 import { withCodexProofLogin } from "./proof-credentials";
 import { config } from "../factory.config";
 
@@ -89,8 +90,9 @@ async function probe(control: boolean) {
       const sourcePrompt = canary && (canary.agent ? `Start one child with agent_type exactly ${canary.name} and return its reply. If unavailable stop.` : test === "S7" ?
         `Start one default child with the inherited model and ask it to use skill ${canary.name} if listed. Wait for it.` :
         `Use the listed skill ${canary.name} if available and report its answer. If unavailable stop.`);
+      const enabledSource = !!canary && control && test?.startsWith("S2-");
       const args = codexArgs({ prompt: native ? callPrompt : sourcePrompt ?? prompts[test as keyof typeof prompts], worktreePath: dirs.worktree,
-        model: "gpt-6-luna", effort: "low", policy, instructions: test === "D1" ? "Report the instruction marker " + marker + " when asked." : null });
+        model: "gpt-6-luna", effort: "low", policy: enabledSource ? {...policy, discoveryRoots:policy.discoveryRoots?.filter(root=>root!==dirs.worktree)} : policy, instructions: test === "D1" ? "Report the instruction marker " + marker + " when asked." : null });
       if ((canary || test === "S3-bundled") && control) {
         if (canary?.agent) args.splice(args.indexOf("--ignore-user-config"), 1);
         for (const flag of ["skills.include_instructions=false", "skills.bundled.enabled=false"]) args.splice(args.indexOf(flag) - 1, 2);
@@ -165,6 +167,7 @@ async function probe(control: boolean) {
       let sawTools = false, spawnOffered = false, sawSkill = false, observedModel = false;
       for (const file of new Bun.Glob("**/*.jsonl").scanSync(join(codexHome, "sessions"))) {
         let identified = false, parent = false, child = false;
+        const loaded = canary && test?.startsWith("S2-") ? sourceRead(dirs.worktree,relative(repo,canary.path),readFileSync(canary.path,"utf8")) : undefined;
         const sessionPath = join(codexHome, "sessions", file);
         if (factoryLogin && statSync(sessionPath).birthtimeMs < started - 1000) continue;
         for await (const line of readJsonl(sessionPath)) {
@@ -176,6 +179,7 @@ async function probe(control: boolean) {
             child = payload.source?.subagent?.thread_spawn?.parent_thread_id === thread;
             if (child) { children.add(payload.id); actualChildRoles.add(payload.source.subagent.thread_spawn.agent_role ?? "unspecified"); }
           }
+          if (parent && type === "response_item" && loaded?.(payload)) sourceLoaded = true;
           if (test === "S3-bundled" && parent && type === "response_item" && payload.type === "message" && payload.role === "developer") {
             for (const part of payload.content ?? []) {
               if (part.type !== "input_text" || typeof part.text !== "string") continue;
@@ -243,7 +247,7 @@ async function probe(control: boolean) {
             ["diff", "show HEAD:math.test.ts"].every(op => commands.some(cmd => cmd.includes(dirs.worktree) && cmd.includes(op))),
         D1: sawSkill && final.includes(marker), D2: observedRead && final.includes(marker), write: exactWrite && digestMatched && nativeStatus === "completed" };
       const sourceObserved = canary?.agent ? actualChildRoles.has(canary.name) : test === "S7" ? childListed : sourceListed;
-      const passed = observedModel && (native ? nativeDenied && checkNativeFiles(native,"codex") : canary ? sourceObserved === control && sourceLoaded === control &&
+      const passed = observedModel && (native ? nativeDenied && checkNativeFiles(native,"codex") : canary ? sourceObserved === expectedSource("codex",test!,control) && sourceLoaded === expectedSource("codex",test!,control) &&
         (test !== "S7" || children.size === 1) : checks[test as keyof typeof checks]);
       console.log(JSON.stringify({ test, control, factoryLogin, thread, children: [...children], observedModel, sawTools, spawnOffered, sawSkill,
         nativeDenied, bundledNames: [...bundledNames], sourceListed, childListed, sourceLoaded, requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));

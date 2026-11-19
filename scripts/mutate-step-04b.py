@@ -6,11 +6,22 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
+    ("discovery", "skill-policy", "lstatSync(path).nlink !== 1", "false"),
+    ("../../scripts/proof-credentials", "proof-credentials", "useDefinitionModel ? {}", "false ? {}"),
+    ("../../scripts/probe-sources", "proof-credentials", 'control && harness === "codex"', 'control'),
+    ("codex", "skill-policy", "policy.discoveryRoots ?? []", "[] as string[]"),
+    ("claude", "skill-policy", "policy.discoveryRoots ? discoveryGlobs", "false ? discoveryGlobs"),
+    ("brief", "skill-brief", '), "Read", "Edit", "Write", "Glob", "Grep"]', '), "Bash", "Read", "Edit", "Write", "Glob", "Grep"]'),
+    ("../factory/worker", "factory-worker", "isDiscoveryPath(path) ||", "false ||"),
+    ("broker", "skill-broker", "protectDiscovery:true", "protectDiscovery:false"),
+    ("home-proof", "home-proof", 'child.effort === "medium"', "true"),
+    ("home-proof", "home-proof", 'child.model === "claude-sonnet-5-5"', "true"),
+    ("../../scripts/codex-source-read", "codex-source-read", "!calls.delete(payload.call_id)", "false"),
     ("../../scripts/eval-budget", "eval-budget", "total.input + input > batchLimit.input", "false"),
     ("../../scripts/eval-budget", "eval-budget", "total.output + output > batchLimit.output", "false"),
     ("../../scripts/eval-budget", "eval-budget", "if (total.pending)", "if (false)"),
     ("../../scripts/eval-budget", "eval-budget", "model !== approvedModel", "false"),
-    ("home-proof", "home-proof", "a.factoryLogin !== false", "false"),
+    ("home-proof", "home-proof", "        a.factoryLogin !== false ||", "        false ||"),
     ("home-proof", "home-proof", "a.sourceLoaded !== control", "false"),
     ("../../scripts/batch-one-cases", "batch-one-cases", "output.includes(only.quote)", "true"),
     ("../../scripts/batch-one-cases", "batch-one-cases", "matching.length === 1", "true"),

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { proofSource } from "../scripts/probe-sources";
+import { expectedSource, proofSource } from "../scripts/probe-sources";
 import { runClaudeProof, withCodexProofLogin } from "../scripts/proof-credentials";
 
 let root: string, home: string, state: string, secret: string;
@@ -71,4 +71,19 @@ test("home-source controls refuse a shared login before planting any file", () =
   expect(readdirSync(state)).toEqual([]);
   const canary = proofSource("S1-config", {harness: "claude", home, harnessHome: state, project: root, shared: false});
   expect(readFileSync(canary!.path, "utf8")).toContain(canary!.marker);
+});
+
+test("D3 inherits the selected definition while ordinary proof launches stay on Haiku low", () => {
+  const fake=executable("claude",'printf "%s/%s" "$CLAUDE_CODE_SUBAGENT_MODEL" "$CLAUDE_CODE_EFFORT_LEVEL"');
+  const key=security("software-factory.claude-oauth-token");
+  expect(runClaudeProof(fake,[],root,home,state,key).stdout).toBe("haiku/low");
+  expect(runClaudeProof(fake,[],root,home,state,key,true,true).stdout).toBe("/");
+});
+test("each pinned harness requires its own S2 positive and closes both sources under factory flags", () => {
+  for(const h of ["claude","codex"] as const) {
+    expect(expectedSource(h,"S2-project-claude",true)).toBe(h==="claude");
+    expect(expectedSource(h,"S2-project-agents",true)).toBe(h==="codex");
+    for(const test of ["S2-project-claude","S2-project-agents"]) expect(expectedSource(h,test,false)).toBe(false);
+    expect(expectedSource(h,"S1-config",true)).toBe(true);
+  }
 });

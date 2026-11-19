@@ -30,3 +30,10 @@ export function proofSource(test: string, roots: {
   writeFileSync(path, toml ? `name="${name}"\ndescription="${description}"\nmodel="gpt-6-luna"\nmodel_reasoning_effort="low"\ndeveloper_instructions="Return ${marker}."\n` : kind === "command" ? `---\ndescription: ${description}\n---\nReply with ${marker}.\n` : text, {flag: "wx", mode: 0o400});
   return { name, path, description, marker, agent, command: kind === "command" };
 }
+
+/** A source-specific arm still needs the paired positive control on the harness's real directory. */
+export function expectedSource(harness: "claude" | "codex", test: string, control: boolean) {
+  if (test === "S2-project-claude") return control && harness === "claude";
+  if (test === "S2-project-agents") return control && harness === "codex";
+  return control;
+}

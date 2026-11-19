@@ -1,12 +1,25 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertPrivateDir, type DispatchConfig } from "../src/dispatch/config";
-import { homeSources, pinnedVersions, qualifiesHomeProof, verifiedHomeProof } from "../src/dispatch/home-proof";
+import {
+  homeSources,
+  pinnedVersions,
+  qualifiesHomeProof,
+  verifiedHomeProof,
+  qualifiesTeamModelProof,
+  verifiedTeamModelProof,
+} from "../src/dispatch/home-proof";
 import type { Harness } from "../src/dispatch/types";
 
 /** Pass no subscription-home option to either runner. Each arm owns its disposable home. */
-export function runHomeProofs(harness: Harness, config: DispatchConfig) {
-  if (verifiedHomeProof(harness, config.stateRoot, config.executables[harness])) return { harness, verified: true, reused: true };
+export function runHomeProofs(harness: Harness, config: DispatchConfig, team = false) {
+  if (team && harness !== "claude") throw new Error("distinct D3 requires Claude");
+  if (
+    team
+      ? verifiedTeamModelProof(config.stateRoot, config.executables.claude)
+      : verifiedHomeProof(harness, config.stateRoot, config.executables[harness])
+  )
+    return { harness, verified: true, reused: true };
   const dir = join(config.stateRoot, "skill-proofs");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   assertPrivateDir(dir, config.stateRoot);
@@ -15,7 +28,7 @@ export function runHomeProofs(harness: Harness, config: DispatchConfig) {
   const script = join(import.meta.dir, harness === "claude" ? "probe-claude-step-04b.ts" : "probe-step-04b.ts");
   const arms: unknown[] = [],
     failures: string[] = [];
-  for (const source of homeSources) {
+  for (const source of team ? ["D3-distinct"] : homeSources) {
     const proof = Bun.spawnSync([process.execPath, script, source], {
       cwd: import.meta.dir,
       // The inner supervisors bound each arm and own its credential teardown.
@@ -33,9 +46,9 @@ export function runHomeProofs(harness: Harness, config: DispatchConfig) {
     }
   }
   const receipt = { harness, version, arms, failures };
-  const verified = !failures.length && qualifiesHomeProof(harness, receipt);
+  const verified = !failures.length && (team ? qualifiesTeamModelProof(receipt) : qualifiesHomeProof(harness, receipt));
   const result = join(dir, crypto.randomUUID() + ".json");
   writeFileSync(result, JSON.stringify(receipt), { mode: 0o600, flag: "wx" });
-  if (verified) renameSync(result, join(dir, harness + "-s1.json"));
-  return { harness, verified, failures, arms: arms.length };
+  if (verified) renameSync(result, join(dir, harness + (team ? "-d3-distinct.json" : "-s1.json")));
+  return { harness, proof: team ? "D3-distinct" : "S1", verified, failures, arms: arms.length };
 }

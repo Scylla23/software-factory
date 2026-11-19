@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { realpathSync } from "node:fs";
+import { linkSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createAttempt } from "../src/dispatch/attempt";
 import { claudeArgs } from "../src/dispatch/claude";
 import { codexConfigArgs } from "../src/dispatch/codex";
 import { runGit } from "../src/dispatch/git";
+import { checkDiscoverySources, discoveryGlobs } from "../src/dispatch/discovery";
+import { requiredProofs } from "../src/dispatch/skill-launch";
 import { skillPolicy } from "../src/dispatch/skill-policy";
 import { makeSandbox, type Sandbox } from "./helpers";
 
@@ -33,6 +35,11 @@ test("Codex permissions close unlisted paths and grant writes to precisely the r
     expect(claude.filter((_, i) => claude[i - 1] === "--add-dir")).toEqual(extra);
     expect(claude[claude.indexOf("--tools") + 1]!.split(",")).not.toContain("Agent");
     const settings = JSON.parse(claude[claude.indexOf("--settings") + 1]!);
+    expect(claude[claude.indexOf("--tools") + 1]!.split(",")).not.toContain("Bash");
+    expect(settings.permissions.deny).toContain("Bash");
+    expect(requiredProofs("claude",role,[],stage).join(" ")).not.toMatch(/S4|R1 direct shell|S2/);
+    expect(requiredProofs("claude",role,[],stage).includes("builder command execution with closed reads")).toBe(role==="builder");
+    for(const pattern of discoveryGlobs) for(const tool of ["Write","Edit","Read"]) expect(settings.permissions.deny).toContain(tool+"(//"+pattern+")");
     expect(settings.sandbox.filesystem.denyRead).toContain("/");
     expect(settings.sandbox.filesystem.allowWrite).toEqual(policy.writable);
     expect(settings.permissions.deny).toContain(`Write(/${dirs.taskDir}/**)`);
@@ -40,6 +47,9 @@ test("Codex permissions close unlisted paths and grant writes to precisely the r
     const args = codexConfigArgs(policy);
     expect(args).toContain("agents.enabled=false");
     const profile = args[1]!;
+    for(const root of [dirs.outDir,dirs.scratchDir,dirs.worktree,dirs.taskDir,dirs.skillsDir]) {
+      for(const pattern of discoveryGlobs) expect(profile).toContain(JSON.stringify(root+"/"+pattern)+'="none"');
+    }
     expect(profile).not.toContain('extends=":workspace"');
     expect(profile).toContain('":root"="none"');
     expect(profile).toContain(`"${dirs.worktree}"="${role === "builder" ? "write" : "read"}"`);
@@ -68,4 +78,16 @@ test("Claude checks submitted agent types in addition to the prelaunch allowlist
   expect(await check("fork", null, ["architect"])).toBe(false);
   expect(await check("architect", "parent-agent", ["architect"])).toBe(false);
   expect(await check("architect", null, [])).toBe(false);
+});
+
+test("a discovery source cannot share its bytes with an independently writable filename", () => {
+  const dir=join(sb.worktree,".claude","rules");mkdirSync(dir,{recursive:true});
+  const ordinary=join(sb.worktree,"ordinary.md");writeFileSync(ordinary,"fixture");
+  const source=join(dir,"guide.md");
+  symlinkSync(ordinary,source);
+  expect(()=>checkDiscoverySources(sb.worktree)).toThrow("unsafe alias");
+  rmSync(source);linkSync(ordinary,source);
+  expect(()=>checkDiscoverySources(sb.worktree)).toThrow("unsafe alias");
+  rmSync(source);writeFileSync(source,"fixture");
+  expect(()=>checkDiscoverySources(sb.worktree)).not.toThrow();
 });

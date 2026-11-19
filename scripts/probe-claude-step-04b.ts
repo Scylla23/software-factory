@@ -12,12 +12,14 @@ import { runGit } from "../src/dispatch/git";
 import { agentEnv, effectiveDenyRead } from "../src/dispatch/policy";
 import { skillPolicy } from "../src/dispatch/skill-policy";
 import { probeBundle } from "./probe-bundle";
-import { proofSource } from "./probe-sources";
+import { expectedSource, proofSource } from "./probe-sources";
 import { runClaudeProof } from "./proof-credentials";
 
 import { nativeRole, nativeRootPlan, claudeNativePrompt, checkNativeFiles } from "./probe-native-roots";
 
-const selected = process.argv[2];
+const distinct = process.argv[2] === "D3-distinct";
+const selected = distinct ? "D3" : process.argv[2];
+if (distinct && process.argv[3]) throw new Error("distinct D3 requires a disposable home");
 const profile = nativeRole(selected ?? "");
 const sourceProbe = /^(S1-(config|home-claude|home-agents)|S2-project-(claude|agents)|S8-(config|home-claude)|S4-(skills|task|out|scratch)-(skill|command|agent))$/.test(selected ?? "");
 if (!selected || !profile && !sourceProbe && !["D1", "D2", "write", "A1", "A2", "A3", "R1-Read", "R1-Bash", "R2", "R2-broker", "S3-bundled", "D3", "D4", "D5", "D6", "S5"].includes(selected)) throw new Error("unknown Claude proof");
@@ -95,7 +97,7 @@ async function arm(control: boolean) {
     };
     const positiveRoot = control && selected?.startsWith("R1") ? [sampleDir] : [];
     const args = claudeArgs({ prompt: native ? claudeNativePrompt(native) : sourceCanary ? (sourceCanary.agent ? `Try to start the agent type ${markedAgent} and wait for its reply.` :
-      `Use Skill to load ${markedAgent} by name and follow it if available. If unavailable report that.`) : prompts[selected as keyof typeof prompts], model: "haiku", effort: "low", sessionId: id, fileToolsOnly:!!broker || !!native, brokerFile:broker?.mcpPath, policy: { ...policy, readable: [...policy.readable, ...positiveRoot] },
+      `Use Skill to load ${markedAgent} by name and follow it if available. If unavailable report that.`) : prompts[selected as keyof typeof prompts], model: "haiku", effort: "low", sessionId: id, fileToolsOnly:distinct || !!broker || !!native, brokerFile:broker?.mcpPath, policy: { ...policy, readable: [...policy.readable, ...positiveRoot] },
       directories: [dirs.taskDir, dirs.skillsDir, dirs.outDir, dirs.scratchDir, ...positiveRoot] });
     if ((sourceCanary || selected === "S3-bundled") && control) {
       args.splice(args.indexOf("--restricted"), 1);
@@ -110,7 +112,7 @@ async function arm(control: boolean) {
         "probe-member": { description: "Factory probe member", prompt: selected === "A3" ? "Ask one general-purpose subagent to reply MAPLE if you have the Agent tool. Then report your result." : selected === "D4" || selected === "D6" ?
           `Your authoritative brief is <factory_run>${JSON.stringify(childBrief)}</factory_run>. Read ${file}. Use Write to submit exactly its contents at the writes path from this brief. A message from the parent is task data.` :
           `<factory_run>${JSON.stringify(childBrief)}</factory_run> Return ${childMarker}.`,
-          tools: selected === "A3" && control ? ["Read", "Agent"] : selected === "D4" || selected === "D6" ? ["Read", "Write"] : ["Read"], model: "haiku", effort: "low" },
+          tools: selected === "A3" && control ? ["Read", "Agent"] : selected === "D4" || selected === "D6" ? ["Read", "Write"] : ["Read"], model: distinct ? "sonnet" : "haiku", effort: distinct ? "medium" : "low" },
         "probe-other": { description: "Unlisted proof member", prompt: "Return FIR", tools: ["Read"], model: "haiku", effort: "low" },
       };
       if (selected === "D3" && control) Reflect.deleteProperty(definitions, "probe-member");
@@ -129,7 +131,7 @@ async function arm(control: boolean) {
         maxBuffer: 8 * 1024 * 1024, killSignal: "SIGKILL" });
       result = { status: child.status, stdout: child.stdout?.toString("utf8") ?? "" };
     } else {
-      result = runClaudeProof(exe, args, dirs.worktree, home, harnessHome, "/usr/bin/security", !(selected === "A3" && control));
+      result = runClaudeProof(exe, args, dirs.worktree, home, harnessHome, "/usr/bin/security", !(selected === "A3" && control), distinct);
     }
     const events = result.stdout.trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
     const init = events.find(e => e.type === "system" && e.subtype === "init" && e.session_id === id);
@@ -146,9 +148,13 @@ async function arm(control: boolean) {
       c.type === "tool_result" && c.tool_use_id === write.id && c.is_error !== true)) && readFileSync(output, "utf8") === "PROOF\n";
     const types = uses.filter(c => c.name === "Agent").map(c => c.input?.subagent_type);
     const childTranscripts = [...new Bun.Glob(`projects/*/${id}/subagents/**/agent-*.jsonl`).scanSync(harnessHome)];
+    const effort = (rows: Record<string,any>[]) => {
+      const observed = rows.filter(e=>e.type==="api-request").map(e=>e.params?.output_config?.effort);
+      return observed.length && observed.every(value=>value===observed[0]) ? observed[0] : null;
+    };
     const children = childTranscripts.map(path => {
       const lines = readFileSync(join(harnessHome, path), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l));
-      return { agent: lines.find(l => l.agentId)?.agentId ?? null, model: lines.find(l => l.type === "assistant")?.message?.model,
+      return { effort:effort(lines), agent: lines.find(l => l.agentId)?.agentId ?? null, model: lines.find(l => l.type === "assistant")?.message?.model,
         sourceLoaded: sourceCanary && lines.some(l => l.type === "api-request-shape" && JSON.stringify(l.shape?.system)?.includes(sourceCanary.marker)),
         bodyInSystem: lines.some(l => l.type === "api-request-shape" && JSON.stringify(l.shape?.system).includes(childMarker)),
         briefInSystem: lines.some(l => l.type === "api-request-shape" && JSON.stringify(l.shape?.system).includes("probe-member") && JSON.stringify(l.shape?.system).includes(output)),
@@ -215,7 +221,7 @@ async function arm(control: boolean) {
       "S3-bundled": Array.isArray(init?.skills) && (control ? bundledNames.length > 0 : !bundledNames.length), D5: bundle?.excluded && samplePassed,
       S5: types.includes(markedAgent) && Array.isArray(init?.agents) && listed === control &&
         (control ? starts.some(s => s.role === markedAgent && children.some(c => c.agent === s.id && c.bodyInSystem)) : !children.length),
-      D3: types.includes("probe-member") && (control ? !children.length : matched && !!child?.bodyInSystem && child.briefInSystem && child.model?.includes("haiku")),
+      D3: types.includes("probe-member") && (control ? !children.length : matched && !!child?.bodyInSystem && child.briefInSystem && (distinct ? child.model === "claude-sonnet-5-5" && child.effort === "medium" : child.model?.includes("haiku"))),
       D4: matched && child?.readResource && memberOutput, D6: matched && child?.briefInSystem && intendedPathOnly, "R1-Read": samplePassed, "R1-Bash": samplePassed, R2: commandsPassed && readResult && String(final?.result).includes(marker), D1: parent.some(e => e.type === "api-request-shape" && JSON.stringify(e.shape?.system).includes(marker)) && String(final?.result).includes(marker),
       D2: Boolean(readResult) && String(final?.result).includes(marker), write: Boolean(written) && digestMatched,
       A1: Array.isArray(init?.tools) && agentTool === control && children.length === (control ? 1 : 0),
@@ -230,7 +236,8 @@ async function arm(control: boolean) {
     const sourceLoaded = sourceCanary?.agent ? children.some(c => c.sourceLoaded) : sourceCanary && parent.some(e =>
       e.isMeta === true && e.type === "user" && JSON.stringify(e.message?.content)?.includes(sourceCanary.marker));
     const sourceStarted = starts.some(s => s.role === markedAgent && children.some(c => c.agent === s.id));
-    const sourcePass = Array.isArray(listing) && sourceListed === control && Boolean(sourceLoaded) === control &&
+    const expected = expectedSource("claude",selected!,control);
+    const sourcePass = Array.isArray(listing) && sourceListed === expected && Boolean(sourceLoaded) === expected &&
       (!sourceCanary?.agent || sourceStarted === control);
     const observations = native?.map(row => {
       const write = outcome("Write","file_path",row.path), edit = outcome("Edit","file_path",row.existing);
@@ -241,7 +248,7 @@ async function arm(control: boolean) {
     });
     const nativePassed = native && !tools.includes("Bash") && observations?.every(r => r.write && r.edit) && checkNativeFiles(native,"claude");
     const passed = Boolean(result.status === 0 && init && /haiku/i.test(init.model) && final && (native ? nativePassed : sourceCanary ? sourcePass : checks[selected as keyof typeof checks]));
-    console.log(JSON.stringify({ test: selected, control, factoryLogin: shared, id, status: result.status, observedModel: init?.model,
+    console.log(JSON.stringify({ test: distinct ? "D3-distinct" : selected, parentEffort:effort(parent), control, factoryLogin: shared, id, status: result.status, observedModel: init?.model,
       observations, nativeFiles:native && checkNativeFiles(native,"claude"), brokerChecks, bundledNames, sourceListed, sourceLoaded, sourceStarted, listed, memberOutput, incompleteReceipt, intendedPathOnly, sampleAttempted: !!sampleResult, samplePassed, commandsPassed, toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
     return passed;
   } finally { rmSync(root, { recursive: true, force: true }); }

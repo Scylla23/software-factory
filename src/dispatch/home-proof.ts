@@ -41,9 +41,67 @@ export function qualifiesHomeProof(harness: Harness, raw: unknown) {
   );
 }
 
+export function qualifiesTeamModelProof(raw: unknown) {
+  if (
+    !isRecord(raw) ||
+    raw.version !== pinnedVersions.claude ||
+    raw.harness !== "claude" ||
+    !Array.isArray(raw.arms) ||
+    raw.arms.length !== 2
+  )
+    return false;
+  if (!Array.isArray(raw.failures) || raw.failures.length) return false;
+  const ids = new Set();
+  const arms = raw.arms;
+  return [true, false].every((control) => {
+    const rows = arms.filter((a: unknown) => isRecord(a) && a.control === control);
+    const a = rows[0];
+    if (
+      rows.length !== 1 ||
+      !a ||
+      a.test !== "D3-distinct" ||
+      a.factoryLogin !== false ||
+      a.passed !== true ||
+      typeof a.id !== "string" ||
+      !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(a.id) ||
+      ids.has(a.id) ||
+      a.observedModel !== "claude-haiku-5-5" ||
+      a.parentEffort !== "low" ||
+      !Array.isArray(a.types) ||
+      !a.types.includes("probe-member") ||
+      !Array.isArray(a.children) ||
+      !Array.isArray(a.starts)
+    )
+      return false;
+    ids.add(a.id);
+    if (control) return !a.children.length && !a.starts.length;
+    const child = a.children[0],
+      start = a.starts[0];
+    return (
+      a.children.length === 1 &&
+      a.starts.length === 1 &&
+      isRecord(child) &&
+      isRecord(start) &&
+      start.role === "probe-member" &&
+      typeof start.id === "string" &&
+      start.id === child.agent &&
+      child.bodyInSystem === true &&
+      child.briefInSystem === true &&
+      child.model === "claude-sonnet-5-5" &&
+      child.effort === "medium"
+    );
+  });
+}
+
 export function verifiedHomeProof(harness: Harness, state: string, executable: string) {
+  return verifiedReceipt(harness, state, executable, "s1", (r) => qualifiesHomeProof(harness, r));
+}
+export function verifiedTeamModelProof(state: string, executable: string) {
+  return verifiedReceipt("claude", state, executable, "d3-distinct", qualifiesTeamModelProof);
+}
+function verifiedReceipt(harness: Harness, state: string, executable: string, kind: string, accepts: (raw: unknown) => boolean) {
   const dir = join(state, "skill-proofs"),
-    path = join(dir, harness + "-s1.json");
+    path = join(dir, harness + "-" + kind + ".json");
   if (!existsSync(path)) return false;
   assertPrivateDir(state, state);
   assertPrivateDir(dir, state);
@@ -56,7 +114,5 @@ export function verifiedHomeProof(harness: Harness, state: string, executable: s
     stderr: "ignore",
     cwd: dir,
   });
-  return (
-    version.exitCode === 0 && version.stdout.toString().trim() === pinnedVersions[harness] && qualifiesHomeProof(harness, receipt)
-  );
+  return version.exitCode === 0 && version.stdout.toString().trim() === pinnedVersions[harness] && accepts(receipt);
 }

@@ -1,6 +1,6 @@
 import type { AttemptDirectories } from "./attempt";
 import type { BriefInput, requiredMembers } from "./brief";
-import { verifiedHomeProof } from "./home-proof";
+import { verifiedHomeProof, verifiedTeamModelProof } from "./home-proof";
 import type { DispatchConfig } from "./config";
 import type { Harness } from "./types";
 
@@ -23,13 +23,15 @@ export function requiredProofs(harness: Harness, role: AttemptDirectories["role"
 
   // S1 covers implicit reads by the harness before any task tool is called.
   // Removing the spawn tool therefore cannot discharge this common control.
-  const missing = ["S2 project skill load control", "S3 system skill discovery"];
+  // All skill profiles deny discovery writes, and Claude exposes no direct Bash.
+  // Code-stage Claude reviewers run their registered checks through the separate broker.
+  const missing = ["S3 system skill discovery"];
   if (!dispatch || !verifiedHomeProof(harness,dispatch.stateRoot,dispatch.executables[harness])) missing.unshift("S1 home skill discovery");
   if (harness === "claude") {
-    missing.push("S4 same-session discovery in writable added directories");
-    const broker = role === "database-auditor" || role === "code-reviewer" || (role === "security-auditor" && stage === "code");
-    if (!broker) missing.push("R1 direct shell positive control");
-    if (members.length) missing.push("S8 home agent discovery", "D3 distinct specialist model and effort");
+    if (members.length) {
+      missing.push("S8 home agent discovery");
+      if (!dispatch || !verifiedTeamModelProof(dispatch.stateRoot,dispatch.executables.claude)) missing.push("D3 distinct specialist model and effort");
+    }
     if (role === "builder") missing.push("builder command execution with closed reads");
   } else {
     if (["spec-reviewer","database-auditor","code-reviewer"].includes(role)) missing.push("native file tool write-root matrix for " + role);

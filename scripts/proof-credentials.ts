@@ -23,11 +23,11 @@ function proofCredential(harness: keyof typeof service, security: string) {
 }
 
 /** Captures CLI output in memory and scrubs it before a caller can log it. */
-export function runClaudeProof(executable: string, args: string[], cwd: string, home: string, configDir: string, security = "/usr/bin/security", limitDepth = true) {
+export function runClaudeProof(executable: string, args: string[], cwd: string, home: string, configDir: string, security = "/usr/bin/security", limitDepth = true, useDefinitionModel = false) {
   const token = proofCredential("claude", security);
   const env = agentEnv(process.env, { harness: "claude", accountHome: home, harnessHome: configDir, trustedPath: "/usr/bin:/bin" });
   const child = spawnSync(executable, args, {
-    cwd, env: { ...env, CLAUDE_CODE_SUBAGENT_MODEL: "haiku", CLAUDE_CODE_EFFORT_LEVEL: "low", ...(limitDepth ? { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1" } : {}), CLAUDE_CODE_OAUTH_TOKEN: token, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1" },
+    cwd, env: { ...env, ...(useDefinitionModel ? {} : {CLAUDE_CODE_SUBAGENT_MODEL: "haiku", CLAUDE_CODE_EFFORT_LEVEL: "low"}), ...(limitDepth ? { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1" } : {}), CLAUDE_CODE_OAUTH_TOKEN: token, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1" },
     stdio: ["ignore", "pipe", "ignore"], timeout: 120_000, killSignal: "SIGKILL", maxBuffer: 8 * 1024 * 1024,
   });
   if (child.error || child.status === null) throw new Error("Claude proof process did not finish cleanly");

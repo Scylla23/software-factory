@@ -33,3 +33,38 @@ test("only independent, isolated positive and negative S1 observations qualify f
       expect(qualifiesHomeProof(harness, { ...receipt, arms: [{ ...arms[0], ...a }, ...arms.slice(1)] })).toBe(false);
   }
 });
+
+test("D3 requires the joined child and actual distinct model and effort on both sides of the definition control", async () => {
+  const { qualifiesTeamModelProof } = await import("../src/dispatch/home-proof");
+  const parent = {
+    test: "D3-distinct",
+    observedModel: "claude-haiku-5-5",
+    parentEffort: "low",
+    factoryLogin: false,
+    passed: true,
+    types: ["probe-member"],
+  };
+  const control = { ...parent, id: crypto.randomUUID(), control: true, starts: [], children: [] };
+  const child = { agent: "child", model: "claude-sonnet-5-5", effort: "medium", briefInSystem: true, bodyInSystem: true };
+  const active = {
+    ...parent,
+    id: crypto.randomUUID(),
+    control: false,
+    starts: [{ id: "child", role: "probe-member" }],
+    children: [child],
+  };
+  const check = (measured: object, absent: object = control) =>
+    qualifiesTeamModelProof({ harness: "claude", version: pinnedVersions.claude, arms: [absent, measured], failures: [] });
+  expect(check(active)).toBe(true);
+  for (const change of [
+    { effort: "low" },
+    { model: parent.observedModel },
+    { agent: "another" },
+    { briefInSystem: false },
+    { bodyInSystem: false },
+  ])
+    expect(check({ ...active, children: [{ ...child, ...change }] })).toBe(false);
+  expect(check({ ...active, parentEffort: null })).toBe(false);
+  expect(check(active, { ...control, starts: active.starts })).toBe(false);
+  expect(check(active, { ...control, id: active.id })).toBe(false);
+});
