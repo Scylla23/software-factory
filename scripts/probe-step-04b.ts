@@ -17,9 +17,12 @@ import { proofSource } from "./probe-sources";
 import { withCodexProofLogin } from "./proof-credentials";
 import { config } from "../factory.config";
 
+import { nativeRole, nativeRootPlan, codexNativeSource, checkNativeFiles } from "./probe-native-roots";
+
 const test = process.argv[2];
+const profile = nativeRole(test ?? "");
 const sourceProbe = /^(S1-(config|home-claude|home-agents)|S2-project-(claude|agents)|S7|S8-config)$/.test(test ?? "");
-if (!test || !sourceProbe && !["A1", "D1", "D2", "write", "R1-shell", "R1-file", "R2", "D5", "D3", "A4", "S6", "S6-project", "S3-bundled"].includes(test)) throw new Error("unknown Codex proof");
+if (!test || !profile && !sourceProbe && !["A1", "D1", "D2", "write", "R1-shell", "R1-file", "R2", "D5", "D3", "A4", "S6", "S6-project", "S3-bundled"].includes(test)) throw new Error("unknown Codex proof");
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const exe = dispatch.executables.codex;
 if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "codex-cli 0.169.0") throw new Error("wrong Codex binary");
@@ -51,9 +54,9 @@ async function probe(control: boolean) {
       }
       git("add", ".");
       git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture");
-      const dirs = createAttempt({ role: test === "R2" ? "code-reviewer" : "triage", stage: test === "R2" ? "code" : "triage", attemptId: crypto.randomUUID(), accountHome: home,
+      const dirs = createAttempt({ role: profile?.[0] ?? (test === "R2" ? "code-reviewer" : "triage"), stage: profile?.[1] ?? (test === "R2" ? "code" : "triage"), attemptId: crypto.randomUUID(), accountHome: home,
         project: repo, runRoot: join(root, "runs"), stateRoot: state });
-      checkoutSnapshot(dispatch.executables.git, repo, git("rev-parse", "HEAD"), dirs.worktree);
+      if (dirs.role !== "builder") checkoutSnapshot(dispatch.executables.git, repo, git("rev-parse", "HEAD"), dirs.worktree);
       if (dirs.scratchRepo) checkoutSnapshot(dispatch.executables.git, repo, git("rev-parse", "HEAD"), dirs.scratchRepo);
       const ownerDeny = effectiveDenyRead({ accountHome: dispatch.accountHome, stateRoot: dispatch.stateRoot, harnessHomes: Object.values(dispatch.harnessHomes) });
       const deny = effectiveDenyRead({ accountHome: home, stateRoot: state, harnessHomes: [codexHome] }, ownerDeny);
@@ -68,7 +71,8 @@ async function probe(control: boolean) {
       const imagePath = join(root, "sample.png");
       if (test === "R1-file") writeFileSync(imagePath, readFileSync(join(import.meta.dir, "../skills/verifier/evals/fixtures/swatch/swatch-head-mobile.png")));
       const command = `/bin/cat "${outside}"`;
-      const callSource = test === "R1-file" ? `const result = await tools.view_image({path:${JSON.stringify(imagePath)}}); image(result.image_url);` :
+      const native = profile && nativeRootPlan(dirs,repo);
+      const callSource = native ? codexNativeSource(native) : test === "R1-file" ? `const result = await tools.view_image({path:${JSON.stringify(imagePath)}}); image(result.image_url);` :
         `const result = await tools.exec_command({cmd:${JSON.stringify(command)},login:false}); text({exit_code:result.exit_code,output:result.output});`;
       const callPrompt = `This is an authorized test with a disposable sample. Submit the following exact JavaScript once to functions.exec, copy it verbatim, then report the observed result.\n${callSource}`;
       const prompts = { "S3-bundled": "Reply MAPLE.", "S6-project": "Call spawn_agent explicitly setting agent_type to probe_member to return its reply. Do not start a child if you cannot specify the agent_type.", D5: callPrompt, "R1-file": callPrompt,
@@ -85,7 +89,7 @@ async function probe(control: boolean) {
       const sourcePrompt = canary && (canary.agent ? `Start one child with agent_type exactly ${canary.name} and return its reply. If unavailable stop.` : test === "S7" ?
         `Start one default child with the inherited model and ask it to use skill ${canary.name} if listed. Wait for it.` :
         `Use the listed skill ${canary.name} if available and report its answer. If unavailable stop.`);
-      const args = codexArgs({ prompt: sourcePrompt ?? prompts[test as keyof typeof prompts], worktreePath: dirs.worktree,
+      const args = codexArgs({ prompt: native ? callPrompt : sourcePrompt ?? prompts[test as keyof typeof prompts], worktreePath: dirs.worktree,
         model: "gpt-6-luna", effort: "low", policy, instructions: test === "D1" ? "Report the instruction marker " + marker + " when asked." : null });
       if ((canary || test === "S3-bundled") && control) {
         if (canary?.agent) args.splice(args.indexOf("--ignore-user-config"), 1);
@@ -155,6 +159,7 @@ async function probe(control: boolean) {
       const sampleCalls = new Set<string>();
       const actualChildRoles = new Set<string>();
       const bundledNames = new Set<string>();
+      let nativeDenied = false;
       let sourceListed = false, childListed = false, sourceLoaded = false;
       let customBody = false, customModel = false, requested = false;
       let sawTools = false, spawnOffered = false, sawSkill = false, observedModel = false;
@@ -171,9 +176,16 @@ async function probe(control: boolean) {
             child = payload.source?.subagent?.thread_spawn?.parent_thread_id === thread;
             if (child) { children.add(payload.id); actualChildRoles.add(payload.source.subagent.thread_spawn.agent_role ?? "unspecified"); }
           }
-          if (test === "S3-bundled" && parent && type === "response_item" && payload.type === "message" && ["developer","user"].includes(payload.role)) {
-            const body = JSON.stringify(payload.content);
-            for (const name of ["skill-creator","skill-installer","openai-docs"]) if (body.includes("/skills/.system/" + name + "/SKILL.md")) bundledNames.add(name);
+          if (test === "S3-bundled" && parent && type === "response_item" && payload.type === "message" && payload.role === "developer") {
+            for (const part of payload.content ?? []) {
+              if (part.type !== "input_text" || typeof part.text !== "string") continue;
+              const lines: string[] = part.text.split("\n");
+              const root = lines.map(line => /^- `(r\d+)` = `([^`]+)`$/.exec(line))
+                .find(match => match?.[2] === join(codexHome, "skills/.system"))?.[1];
+              if (!root) continue;
+              for (const name of ["skill-creator","skill-installer","openai-docs"])
+                if (lines.some(line => line.startsWith("- " + name + ":") && line.endsWith("(file: " + root + "/" + name + "/SKILL.md)"))) bundledNames.add(name);
+            }
           }
           if (canary && type === "response_item" && payload.type === "message" && ["developer","user"].includes(payload.role)) {
             const content = JSON.stringify(payload.content);
@@ -198,6 +210,8 @@ async function probe(control: boolean) {
           if (type === "response_item" && payload.type === "custom_tool_call_output" && sampleCalls.has(payload.call_id)) {
             const parts = Array.isArray(payload.output) ? payload.output : [{type: "input_text", text: payload.output}];
             const output = parts.filter(p => p.type === "input_text").map(p => p.text).join(" ");
+            if (native) nativeDenied = native.filter(r => !r.allowed).every(r => [r.path,r.existing,r.deleted].every(path =>
+              parts.some(p => p.type === "input_text" && typeof p.text === "string" && p.text.includes(path) && /denied|outside|rejected|not approved|not permitted|forbidden|policy/i.test(p.text))));
             if (test === "R1-file" && parts.some(p => p.type === "input_image" && typeof p.image_url === "string")) canaryRead = true;
             if (test === "R1-file" && output.includes(imagePath) && /denied|not permitted/i.test(output)) canaryRead = false;
             if ((test === "R1-shell" || test === "D5") && output.includes(marker) && output.includes('"exit_code":0')) canaryRead = true;
@@ -229,10 +243,10 @@ async function probe(control: boolean) {
             ["diff", "show HEAD:math.test.ts"].every(op => commands.some(cmd => cmd.includes(dirs.worktree) && cmd.includes(op))),
         D1: sawSkill && final.includes(marker), D2: observedRead && final.includes(marker), write: exactWrite && digestMatched && nativeStatus === "completed" };
       const sourceObserved = canary?.agent ? actualChildRoles.has(canary.name) : test === "S7" ? childListed : sourceListed;
-      const passed = observedModel && (canary ? sourceObserved === control && sourceLoaded === control &&
+      const passed = observedModel && (native ? nativeDenied && checkNativeFiles(native,"codex") : canary ? sourceObserved === control && sourceLoaded === control &&
         (test !== "S7" || children.size === 1) : checks[test as keyof typeof checks]);
       console.log(JSON.stringify({ test, control, factoryLogin, thread, children: [...children], observedModel, sawTools, spawnOffered, sawSkill,
-        bundledNames: [...bundledNames], sourceListed, childListed, sourceLoaded, requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
+        nativeDenied, bundledNames: [...bundledNames], sourceListed, childListed, sourceLoaded, requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
       return passed;
     };
     return factoryLogin ? await run(dispatch.harnessHomes.codex) : await withCodexProofLogin(exe, state, home, run);

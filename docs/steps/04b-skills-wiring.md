@@ -76,9 +76,16 @@ S1, S3, S4, S7 and S8 need additional source-specific controls.
 All 24 prelaunch Claude S4 arms ran on the dedicated login and passed for skills, commands and agents in each of the four added directories.
 Same-session discovery after a write remains unverified.
 Claude S3 listed debug, simplify and claude-api in its enabled arm only.
-The Codex bundled-source positive control did not recognize its listing, and neither harness has a disposable system-source result.
+Codex S3 listed skill-creator, skill-installer and openai-docs under its bundled root in `01a1f5be-850d-71c1-ba1f-c946341d2f48` and none in `01a1f5be-9b50-79c0-abd3-a117f9f823a0`.
+Its developer message uses a directory alias for the bundled root.
+Neither harness has a disposable system-source result.
 All nine Codex role and stage profiles passed the pinned CLI shell write matrix in `scripts/probe-write-roots.ts`, without a subscription or API call.
 The deterministic bundle exclusion and collector tests cover parts of D5 and R3.
+The native file-tool matrix uses inert files in throwaway directories and checks their final contents on the host.
+Codex completed create, rename and delete controls for triage, builder, both security audit stages, spec lead and verifier.
+The code reviewer, database auditor and spec reviewer probes returned a model refusal before attempting any native call.
+Claude completed native Write and Edit controls for builder, code reviewer, both security audit stages, spec reviewer, spec lead and verifier.
+The first triage and database auditor runs did not classify an external Edit failure as a permission refusal.
 The final Codex R1 scorer binds the exact factory-supplied tool call to its native return by call ID.
 The earlier scorer missed nested command results that were absent from exec stdout.
 Claude D5 passed in `1a5db030-d5cd-4100-aa2b-38aff85705c0` with a pinned disposable factory tree and the excluded source path refused.
@@ -108,7 +115,11 @@ The collector test uses the archived `changes` verdict and the `review-approve` 
 Both documents pass the verdict schema.
 The collector accepts the authentic bytes and rejects the replacement against the authentic receipt.
 This is a factory-side control.
-The live R3 project-command substitution arm remains open.
+The live R3 positive control on `sort-fix-skips-ac3.patch` passed seven head tests in the disposable checkout, submitted the bound changes verdict with a native tool and archived its exact bytes in SQLite.
+The pinned sessions were Claude `0bdd0c36-fd9b-475d-9311-10643d7e6a13` and Codex `01a1f5c3-c36d-7623-8ad7-c9fff65b21ca`, both on head `1b17905ed9ee1e412a87c9e53d63110989b05983`.
+Replacing the verdict from the host with the schema-valid approve fixture caused collection to reject the replacement and left zero approvals.
+A separate Codex run used shell output and correctly failed the native receipt check.
+The project-command substitution arm remains open.
 D4 separately demonstrated the protected specialist receipt.
 
 `python3 scripts/mutate-step-04b.py` killed 28 of 28 implementation mutants after adding the parent receipt, semantic join and nonmanual criterion controls.
