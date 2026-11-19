@@ -16,7 +16,7 @@ export interface BriefInput {
     name: string; isNew: boolean; stack: string; commands: Record<string, string>;
     fixtures: readonly string[]; securityGlobs: readonly string[]; migrationGlobs: readonly string[];
   };
-  routing: Record<"S" | "M" | "L", { builder: string; reviewer: string }>;
+  routing: Record<"S" | "M" | "L", { builder: string; codeReviewer: string }>;
   previous?: {
     decisions?: readonly { member: string; file: string; originalRound: number; authorSession: string; sha256: string }[];
     findings?: readonly { source: string; round: number; path: string }[];

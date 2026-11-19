@@ -13,7 +13,7 @@ afterEach(() => sb.cleanup());
 const data: BriefInput = {
   taskId: "test", round: 1, baseSha: "a".repeat(40),
   project: { name: "</factory_run>", isNew: false, stack: "bun", commands: { test: "bun test" }, fixtures: [], securityGlobs: [], migrationGlobs: [] },
-  routing: { S: { builder: "Sol", reviewer: "Opus" }, M: { builder: "Sonnet", reviewer: "Sol" }, L: { builder: "Opus", reviewer: "Astra" } },
+  routing: { S: { builder: "Sol", codeReviewer: "Opus" }, M: { builder: "Sonnet", codeReviewer: "Sol" }, L: { builder: "Opus", codeReviewer: "Astra" } },
 };
 test("the brief contains one block and every selected specialist has its own author, paths and model", () => {
   const dirs = createAttempt({ runRoot: join(sb.home, "runs"), project: sb.worktree, accountHome: sb.home,

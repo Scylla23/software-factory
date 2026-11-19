@@ -45,6 +45,7 @@ function prepare(role: WorkerRole) {
 }
 test("triage joins schema-valid areas, task revision and kind to the immutable snapshot", () => {
   const { input, dirs } = prepare("triage");
+  expect(input.brief.routing.L.codeReviewer).toBe("GPT-6.2-Astra");
   const triage = fixture("taskdirs/sort/triage.json");
   triage.taskId = input.brief.taskId;
   const check = (doc: unknown) => validateSkillOutput(input, dirs, new Map([["triage.json", Buffer.from(JSON.stringify(doc))]]), [], "/usr/bin/git", false);

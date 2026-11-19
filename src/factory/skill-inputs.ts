@@ -80,7 +80,7 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
     project: { name: config.pilot.repo, isNew: false, stack: config.pilot.stack, fixtures: Object.keys(config.pilot.fixtures),
       commands: { setup: config.pilot.commands.setup[0].join(" "), ...Object.fromEntries((["test","lint","typecheck","preview"] as const).map(k => [k, config.pilot.commands[k].join(" ")])) },
       securityGlobs: [], migrationGlobs: [] },
-    routing: { S: { builder: "Sol 6.2", reviewer: "Opus 5.5" }, M: { builder: "Sonnet 5.5", reviewer: "Sol 6.2" }, L: { builder: "Opus 5.5", reviewer: "Astra 6.2" } },
+    routing: { S: { builder: "Sol 6.2", codeReviewer: "Opus 5.5" }, M: { builder: "Sonnet 5.5", codeReviewer: "Sol 6.2" }, L: { builder: "Opus 5.5", codeReviewer: "GPT-6.2-Astra" } },
   };
   const triaged = role === "spec" && triage && JSON.parse(Buffer.from(files["triage.json"] ?? "", "base64").toString());
   let members = role === "spec" && triaged ? requiredMembers(triaged.tier, triaged.riskFlags.security.value, brief.project.isNew) : [];
