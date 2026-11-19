@@ -11,7 +11,7 @@ import { gitWriteProtectedPaths } from "../dispatch/git";
 import { effectiveDenyRead } from "../dispatch/policy";
 import { type AgentProcess, assessCleanup, type ProcIdentity, snapshot, spawnAgentProcess, type Supervised, superviseRun, type SweepResult, sweepWorktree, type TerminationReport, Tracker } from "../dispatch/process";
 import { type Materialized, materializeCommit, removeMaterialized } from "./materialize";
-import { type PortRange, taskPort, tcpListeners } from "./port";
+import { leasePort, type PortLease, type PortRange, portIsFree, tcpListeners } from "./port";
 import { assertEgressHosts, type EgressProxy, startEgressProxy } from "./proxy";
 import { canonicalRoots, carveOut, type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv, SYSTEM_READ } from "./sandbox";
 
@@ -118,6 +118,11 @@ export interface Preview {
    * with no network, or with the preview's own profile (`serve`: its loopback port only). Never with egress.
    */
   run(argv: readonly string[], opts: { network: CheckNetwork; name: string; timeoutMs: number }): Promise<CommandResult>;
+  /**
+   * Whether the server that passed readiness still runs and is still the only listener on the port. Evidence is bound
+   * to this server by checking it before and after each capture.
+   */
+  serving(): Readiness;
   /** Idempotent: the first call tears down, later calls return the same report. */
   stop(): Promise<TeardownReport>;
 }
@@ -143,6 +148,8 @@ export class PreviewError extends Error {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const READY_PROBE_TIMEOUT_MS = 2_000;
 const READY_INTERVAL_MS = 200;
+/** Ports one start tries when another process keeps taking the one it leased. */
+const PORT_ROUNDS = 3;
 
 /** Opens a new private log under the state root (never through a symlink, never reusing a name). */
 function openLog(config: VerifyConfig, logDir: string, name: string): { path: string; fd: number } {
@@ -237,6 +244,9 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
   let homeMade = false;
   const logs: string[] = [];
   let preview: SandboxedRun | null = null;
+  let lease: PortLease | null = null;
+  // What servers that lost their port left unverified; the final sweep covers them too.
+  const retired: string[] = [];
   let report: Promise<TeardownReport> | null = null;
   // Commands run one at a time, so one command's sweep can never kill another's processes, and every running command
   // is known, so teardown can stop it before sweeping.
@@ -251,13 +261,14 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       for (const a of active) a.abort();
       await queue;
       let cleanup: TerminationReport | null = null;
-      let unverified: string[] = [];
+      const unverified = [...retired];
       if (preview) {
         preview.abort.abort();
         const s = await preview.supervised;
         cleanup = s.cleanup;
-        unverified = s.unverified;
+        unverified.push(...s.unverified);
       }
+      lease?.release();
       const roots = [...(wt ? [wt.path] : []), ...(homeMade ? [home] : [])];
       const { noKnownSurvivors, quarantineReasons } = await settle(config, unverified, roots);
       let removed = quarantineReasons.length === 0;
@@ -324,6 +335,9 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
         closeSync(log.fd);
       }
       active.add(r.abort);
+      // Spawning waits in Bun.spawnSync, which runs other callbacks meanwhile; a teardown that began then has already
+      // aborted everything it could see, so this command stops itself.
+      if (stopping) r.abort.abort();
       let s: Supervised;
       try {
         s = await r.supervised;
@@ -364,23 +378,45 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       }
     }
 
-    port = await taskPort(spec.project.portRange, spec.taskKey);
-    const origin = `http://127.0.0.1:${port}`;
-    const log = openLog(config, spec.logDir, `${spec.id}.preview.log`);
-    logs.push(log.path);
-    try {
-      preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, worktree, env({ port }), log.fd, spec.maxLifetimeMs);
-    } finally {
-      closeSync(log.fd);
+    // A start that loses its port to another process (it bound first, or answers in the preview's place) stops its
+    // server and tries the next port; a server that fails on a port nobody else holds is the project's failure.
+    let origin = "";
+    let readyMs = 0;
+    let logPath = "";
+    for (let round = 1; ; round++) {
+      lease = await leasePort(spec.project.portRange, spec.taskKey, { dir: join(config.stateRoot, "ports"), stateRoot: config.stateRoot, psPath: config.executables.ps, attempt: spec.id });
+      port = lease.port;
+      origin = `http://127.0.0.1:${port}`;
+      const log = openLog(config, spec.logDir, `${spec.id}.preview${round > 1 ? `-${round}` : ""}.log`);
+      logs.push(log.path);
+      logPath = log.path;
+      try {
+        preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, worktree, env({ port }), log.fd, spec.maxLifetimeMs);
+      } finally {
+        closeSync(log.fd);
+      }
+      const started = Date.now();
+      const ready = await waitReady(`${origin}${spec.project.readyPath}`, spec.readyTimeoutMs, preview.proc.exited);
+      const owned = ready.ok ? listenerOwnership(config, port, preview.proc) : ready;
+      readyMs = Date.now() - started;
+      if (owned.ok) break;
+      const failed = preview;
+      failed.abort.abort();
+      retired.push(...(await failed.supervised).unverified);
+      preview = null;
+      const lost = !(await portIsFree(port));
+      lease.release();
+      lease = null;
+      if (!lost || round >= PORT_ROUNDS) {
+        const what = ready.ok ? `port ${port} is not served by the preview: ${owned.reason}` : `preview not ready: ${owned.reason}`;
+        return await fail(`${what}${lost ? ` (another process holds port ${port}; ${round} ports tried)` : ""}`, logPath);
+      }
     }
-    // The server ending, by itself or at the maximum lifetime, ends the preview: worktree and home go with it.
-    void preview.supervised.then(() => teardown());
-    const started = Date.now();
-    const ready = await waitReady(`${origin}${spec.project.readyPath}`, spec.readyTimeoutMs, preview.proc.exited);
-    if (!ready.ok) return await fail(`preview not ready: ${ready.reason}`, log.path);
-    const owned = listenerOwnership(config, port, preview.proc);
-    if (!owned.ok) return await fail(`port ${port} is not served by the preview: ${owned.reason}`, log.path);
-    return { id: spec.id, sha: spec.sha, port, origin, worktree, home: base.writable[1]!, logs, readyMs: Date.now() - started, run, stop: teardown };
+    // From here the server ending, by itself or at the maximum lifetime, ends the preview: worktree and home go with it.
+    const live = preview;
+    void live.supervised.then(() => teardown());
+    const serving = (): Readiness => (report ? { ok: false, reason: "preview was stopped" } : listenerOwnership(config, port!, live.proc));
+    return { id: spec.id, sha: spec.sha, port: port!, origin, worktree, home: base.writable[1]!, logs, readyMs, run, serving, stop: teardown };
   } catch (err) {
     if (err instanceof PreviewError) throw err;
     const t = await teardown();

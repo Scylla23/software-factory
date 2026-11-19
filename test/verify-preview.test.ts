@@ -2,17 +2,19 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, toolchainRoots } from "../src/verify/preview";
+import { portIsFree } from "../src/verify/port";
 import { gone } from "./helpers";
 import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, type VerifyEnv } from "./verify-helpers";
 
 let env: VerifyEnv;
-let started: Preview[] = [];
+let started: Promise<Preview>[] = [];
 beforeEach(() => {
   env = makeVerifyEnv();
   started = [];
 });
 afterEach(async () => {
-  for (const p of started) await p.stop();
+  // Waits for starts a failed test never awaited, so nothing still runs in the env once it is removed.
+  for (const r of await Promise.allSettled(started)) if (r.status === "fulfilled") await r.value.stop();
   env.cleanup();
 });
 
@@ -32,8 +34,8 @@ function spec(repo: string, sha: string, extra: Partial<PreviewSpec["project"]> 
   };
 }
 
-async function start(s: PreviewSpec): Promise<Preview> {
-  const p = await startPreview(s, env.config);
+function start(s: PreviewSpec): Promise<Preview> {
+  const p = startPreview(s, env.config);
   started.push(p);
   return p;
 }
@@ -43,6 +45,12 @@ async function startError(s: PreviewSpec): Promise<PreviewError> {
   const r = await start(s).catch((e: unknown) => e);
   expect(r).toBeInstanceOf(PreviewError);
   return r as PreviewError;
+}
+
+/** Two adjacent free ports, for a range a test fully controls. */
+async function freePair(): Promise<number> {
+  for (let low = 42000 + Math.floor(Math.random() * 500) * 2; low < 43000; low += 2) if ((await portIsFree(low)) && (await portIsFree(low + 1))) return low;
+  throw new Error("no two adjacent free ports in 42000-43000");
 }
 
 /** The pid listening on the preview's port, by asking lsof. */
@@ -211,6 +219,18 @@ describe("startPreview", () => {
     rmSync(join(previews(), p.id), { recursive: true, force: true });
   });
 
+  test("a stop that lands while a check is still being spawned stops that check too", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    const long = p.run(["/bin/sleep", "300"], { network: "none", name: "long", timeoutMs: 600_000 });
+    // The check is spawned on the next microtask; its spawn waits in Bun.spawnSync, which runs this due timer meanwhile.
+    const stopped = new Promise<unknown>((resolve) => setTimeout(() => resolve(p.stop()), 0));
+    const t = Date.now();
+    while (Date.now() - t < 5) {}
+    expect(await long).toMatchObject({ stopped: "cancelled" });
+    expect(await stopped).toMatchObject({ noKnownSurvivors: true, removed: true });
+  }, 20_000);
+
   test("concurrent checks run one at a time, so one check's sweep never kills another's process", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
@@ -220,6 +240,66 @@ describe("startPreview", () => {
     ]);
     expect([a.exitCode, a.quarantineReasons, b.exitCode, b.quarantineReasons]).toEqual([0, [], 0, []]);
     expect(readFileSync(b.logPath, "utf8")).toBe("B\n");
+  });
+
+  test("a start whose port another process takes before the server binds retries on the next port", async () => {
+    const low = await freePair();
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("ours") }]);
+    const s = spec(repo.path, repo.shas[0]!, { preview: ["/bin/sh", "-c", "sleep 1; exec bun server.ts"], portRange: [low, low + 1] });
+    const ports = join(env.stateRoot, "ports");
+    const starting = start(s);
+    // The preview log is opened only after the lease and its probe succeeded; the server then waits 1s to bind.
+    for (let i = 0; i < 200 && !existsSync(join(env.logDir, `${s.id}.preview.log`)); i++) await Bun.sleep(20);
+    const taken = Number(readdirSync(ports).find((n) => n.endsWith(".lease"))!.split(".")[0]);
+    const stranger = Bun.serve({ hostname: "127.0.0.1", port: taken, fetch: () => new Response("stranger") });
+    try {
+      const p = await starting;
+      expect(p.port).toBe(taken === low ? low + 1 : low);
+      expect(await (await bounded(p.origin)).text()).toBe("ours");
+      expect(p.logs.some((l) => l.endsWith(".preview-2.log"))).toBe(true);
+      expect(readdirSync(ports)).toEqual([`${p.port}.lease`]);
+      expect(await p.stop()).toMatchObject({ noKnownSurvivors: true, removed: true });
+      expect(readdirSync(ports)).toEqual([]);
+    } finally {
+      stranger.stop(true);
+    }
+  });
+
+  test("two starts of the same task at once get different ports", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    // Each server binds a second after its port is chosen, so both choose before either binds.
+    const s = spec(repo.path, repo.shas[0]!, { preview: ["/bin/sh", "-c", "sleep 1; exec bun server.ts"] });
+    const [a, b] = await Promise.all([start(s), start({ ...s, id: crypto.randomUUID() })]);
+    expect(a.port).not.toBe(b.port);
+    // The leases kept them apart from the start: neither had to lose a bind and retry.
+    expect([...a.logs, ...b.logs].filter((l) => l.includes(".preview-"))).toEqual([]);
+    expect([await (await bounded(`${a.origin}/health`)).text(), await (await bounded(`${b.origin}/health`)).text()]).toEqual(["ok", "ok"]);
+  });
+
+  test("serving() tells whether the ready server still holds its port alone", async () => {
+    const repo = makeRepo(env.repos, "app", [
+      {
+        "server.ts": `const s = Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch(req) {
+  if (new URL(req.url).pathname === "/close") { setTimeout(() => s.stop(true), 10); return new Response("bye"); }
+  return new Response("up");
+} });
+setInterval(() => {}, 1000);
+`,
+      },
+    ]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    expect(p.serving()).toMatchObject({ ok: true });
+    await (await bounded(`${p.origin}/close`)).text();
+    await Bun.sleep(200);
+    expect(p.serving()).toMatchObject({ ok: false, reason: "nothing of this user listens on it" });
+    const stranger = Bun.serve({ hostname: "127.0.0.1", port: p.port, fetch: () => new Response("stranger") });
+    try {
+      expect((p.serving() as { reason: string }).reason).toContain("outside the preview's process tree");
+    } finally {
+      stranger.stop(true);
+    }
+    await p.stop();
+    expect(p.serving()).toEqual({ ok: false, reason: "preview was stopped" });
   });
 
   test("a failing setup command stops everything and removes the worktree", async () => {
