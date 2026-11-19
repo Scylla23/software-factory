@@ -123,7 +123,7 @@ A separate Codex run used shell output and correctly failed the native receipt c
 The project-command substitution arm remains open.
 D4 separately demonstrated the protected specialist receipt.
 
-`python3 scripts/mutate-step-04b.py` killed 28 of 28 implementation mutants after adding the parent receipt, semantic join and nonmanual criterion controls.
+`python3 scripts/mutate-step-04b.py` killed 40 of 40 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins and blind plan digest.
 The three development suites passed with 331, 342 and 355 tests.
 The third suite ran in 97.37 seconds under the external watchdog.
 Typecheck and the later focused team, scratch setup and integrity receipt controls passed.
@@ -153,14 +153,39 @@ The fixture repository is rebuilt under a neutral name with the patch outside it
 The preflight does not dispatch an agent, grade an output or establish that a planted pilot matches a case.
 No production contestant, cross-vendor judge or end-to-end pilot has run.
 
+### Claude evaluation budget request
+
+Every variant requires three contestant runs.
+The IDs below omit the role prefix shown in the first column.
+
+| Role and configured model | Case IDs and variants | Contestant runs |
+| --- | --- | --- |
+| Triage, Sonnet 5.5 low | 01-single-area-bug, 02-schema-change-called-tiny, 03-injected-instructions | 9 |
+| Spec lead, Opus 5.5 high with `--agent spec-lead` | 01-draft-and-revise (bug-reproduce-first and revision-answers-both-reviewers), 02-tier-promotion-runs-team, 03-ac-changing-conflict-escalates | 12 |
+| Architect, Opus 5.5 high | 01-new-project, 02-split-temptation, 03-existing-project-delta | 9 |
+| Infra, Sonnet 5.5 high | 01-new-project, 02-catalog-gap, 03-existing-project-wins | 9 |
+| Frontend, Sonnet 5.5 high | 01-new-project, 02-palette-and-ai-surface, 03-gap-not-substitute | 9 |
+| Threat modeler, Sonnet 5.5 high | 01-per-user-data, 02-mitigation-changes-criteria, 03-small-flagged-task | 9 |
+| Code reviewer, Opus 5.5 high on the configured pilot route | 01-good-fix-approves, 02-untested-unmet-criterion, 03-test-integrity (undeclared-skip and declared-deletion) | 12 |
+| Database auditor, Opus 5.5 high | 01-unsafe-migration, 02-safe-migration-approves, 03-edited-applied-migration | 9 |
+| Verifier, proposed Sonnet 5.5 high opposite the configured Codex builder | 01-plan-by-tag, 02-judge-test-evidence (missing-and-contrary-evidence, stale-evidence, base-fails-for-the-wrong-reason and sound-evidence), 03-judge-ui-capture | 18 |
+
+The proposed schedule uses 96 measured Claude sessions, plus their lead or specialist invocations.
+The 36 measured specialist sessions each need a native lead and the three tier-promotion runs each need four members.
+The Codex builder, spec reviewer and security auditor have 33 trial outputs with model-judged checks across three repetitions.
+The proposed cross-vendor judge for those outputs is Sonnet 5.5 low with all checks for one output grouped in one request.
+The planning estimate including those judges is 1.7 to 4.3 million input tokens and 0.15 to 0.66 million output tokens before retries.
+The estimate has no measured production usage.
+The pilot requires separate authorization after the evals pass.
+
 ## Open issues
 
 | Issue | Status |
 | --- | --- |
-| #15 | Open pending complete per-harness author receipts, cleanup and live collection through the store |
+| #15 | Open pending the project-command substitution arm of R3, with native receipts, specialist attribution and real reviewer archival verified |
 | #16 | Closed after restoring the review validator and reproducing its 221 checks |
 | #17 | Open pending the remaining pinned proof matrix |
-| #18 | Open pending the remaining native tool and integrity controls, with Codex R1, Claude native Read and the R2 broker verified |
+| #18 | Closed after proving Codex R1 separately for shell and native reads and passing Codex R2 in the closed profile |
 | #19 | Open pending authorized blind spec lead evals under the selected lead definition, with D1 verified separately |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |

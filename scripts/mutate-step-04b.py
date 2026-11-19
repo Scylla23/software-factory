@@ -6,8 +6,21 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
+    ("claude-writes", "claude-writes", "live.resultUuid === e.uuid", "true"),
+    ("claude-writes", "claude-writes", "e.parent_tool_use_id !== stream.startCall", "false"),
+    ("claude-writes", "claude-writes", "e.subagent_type !== identity.role", "false"),
+    ("claude-writes", "claude-writes", "meta.id === c.tool_use_id", "true"),
+    ("claude-writes", "claude-writes", "req.uuid !== e.sourceToolAssistantUUID", "false"),
+    ("broker", "skill-broker", "Object.keys(args).length !== 1", "false"),
+    ("broker", "skill-broker", 'writeFileSync(pending, name, {flag: "wx"', 'writeFileSync(pending, name, {flag: "w"'),
+    ("../../scripts/proof-credentials", "proof-credentials", 'CLAUDE_CODE_OAUTH_TOKEN: token', 'CLAUDE_CODE_OAUTH_TOKEN: ""'),
+    ("../../scripts/proof-credentials", "proof-credentials", 'rmSync(codexHome, { recursive: true, force: true });', ''),
+    ("../../scripts/proof-credentials", "proof-credentials", 'if (result.status === 44)', 'if (false)'),
+    ("../../scripts/probe-sources", "proof-credentials", 'if (homeSource && roots.shared)', 'if (false)'),
+    ("../../scripts/eval-inputs", "eval-inputs", 'return [key,plan];', 'return [key,v];'),
+
     ("claude-writes", "claude-writes", "submitted.assistant !== e.sourceToolAssistantUUID", "false"),
-    ("claude-writes", "claude-writes", "result.content !== submitted.content", "false"),
+    ("claude-writes", "claude-writes", "result.content === submitted.content", "true"),
     ("claude-writes", "claude-writes", "if (requests.size)", "if (false)"),
     ("../factory/skill-validation", "skill-validation", "document.taskRevision === task.revision", "true"),
     ("../factory/skill-validation", "skill-validation", "document.taskId === brief.taskId", "true"),
@@ -52,6 +65,7 @@ def main():
         directory = Path(tmp)
         shutil.copy(ROOT / "factory.config.ts", directory)
         shutil.copytree(ROOT / "src", directory / "src")
+        shutil.copytree(ROOT / "scripts", directory / "scripts")
         shutil.copytree(ROOT / "test", directory / "test", ignore=shutil.ignore_patterns(".state"))
         shutil.copytree(ROOT / "skills", directory / "skills")
         (directory / "node_modules").symlink_to(ROOT / "node_modules", target_is_directory=True)
