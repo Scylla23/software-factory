@@ -47,12 +47,20 @@ A fix can introduce a contradiction, drop a requirement, or weaken a test, and n
 
 ## What the schema cannot check, and the factory does
 
-- `n` values are 1 to k with no gaps.
-- `taskId`, `round`, and the SHAs in `covers` equal the run brief's.
-- `resolutions` covers every blocking finding of the previous round exactly once.
-- Every `location.file` exists, and every `acIds` entry exists in the spec.
+The factory joins every verdict to the run brief, the approved spec file set, and its own records before it acts on it.
+The full list is in [factory-contract.md](factory-contract.md), section 6; the joins you can get wrong are these:
 
-Getting any of these wrong fails validation the same way a schema error does.
+- `n` values are 1 to k with no gaps and no repeats.
+- `taskId`, `round`, the SHAs, and `specSetSha256` in `covers` equal the run brief's.
+  `specSetSha256` is `specSet.sha256` copied from the brief, at both stages.
+- `resolutions` covers every blocking finding of your previous verdict exactly once.
+- Every `acIds` entry is a criterion of the spec or an id in `spec-lead.json` `retiredCriteria`.
+  Cite a retired id when the finding is that it should not have been retired.
+- Every `location.file` exists at the commit you reviewed.
+  For a file the diff deletes, cite its base path and line and set `location.side` to `base`; that is how a finding about a deletion is located.
+- A code review has one `checks.acCoverage` row per criterion, in the spec's order, and an approval has none that is unimplemented or untested.
+
+A reference to a path or a criterion that never existed is an invalid reference, and it fails validation the same way a schema error does.
 
 ## Untrusted text
 

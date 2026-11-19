@@ -9,18 +9,18 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "role": { "enum": ["spec-reviewer", "code-reviewer", "security-auditor", "database-auditor"] },
-    "stage": { "description": "spec: the verdict is on the spec folder. code: the verdict is on the diff baseSha..headSha.", "enum": ["spec", "code"] },
+    "stage": { "description": "spec: the verdict is on the spec file set. code: the verdict is on the diff baseSha..headSha.", "enum": ["spec", "code"] },
     "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
     "round": { "description": "1 for the first review of this stage, then 1 higher for each re-review.", "type": "integer", "minimum": 1 },
     "covers": {
-      "description": "Exactly what was reviewed, so the factory can bind the verdict to a revision.",
+      "description": "Exactly what was reviewed, so the factory can bind the verdict to a revision. The factory rejects a verdict whose values differ from the run brief's.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["baseSha"],
+      "required": ["baseSha", "specSetSha256"],
       "properties": {
         "baseSha": { "$ref": "#/$defs/sha" },
         "headSha": { "$ref": "#/$defs/sha" },
-        "specSha256": { "description": "SHA-256 of spec.md as reviewed.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "specSetSha256": { "description": "specSet.sha256 from the run brief: the hash of the whole spec file set (spec.md, spec-lead.json, the team brief, and every decision file), at both stages.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "verdict": { "description": "approve: no blocking finding. changes: at least one blocking finding.", "enum": ["approve", "changes"] },
@@ -47,11 +47,11 @@
       "if": { "properties": { "stage": { "const": "code" } } },
       "then": {
         "properties": {
-          "covers": { "required": ["baseSha", "headSha"] },
+          "covers": { "required": ["baseSha", "headSha", "specSetSha256"] },
           "findings": { "items": { "properties": { "location": { "required": ["file", "line"] } } } }
         }
       },
-      "else": { "properties": { "covers": { "required": ["baseSha", "specSha256"] } } }
+      "else": { "properties": { "covers": { "not": { "required": ["headSha"] } }, "findings": { "items": { "properties": { "location": { "not": { "required": ["side"] } } } } } } }
     },
     {
       "if": { "properties": { "role": { "const": "spec-reviewer" } } },
@@ -63,7 +63,26 @@
     },
     {
       "if": { "properties": { "role": { "const": "code-reviewer" } } },
-      "then": { "properties": { "stage": { "const": "code" }, "checks": { "required": ["commands", "acCoverage"] } } }
+      "then": {
+        "properties": {
+          "stage": { "const": "code" },
+          "checks": { "required": ["commands", "acCoverage"], "properties": { "commands": { "minItems": 1 }, "acCoverage": { "minItems": 1 } } }
+        }
+      }
+    },
+    {
+      "description": "A code review cannot approve a criterion it found unimplemented or untested.",
+      "if": { "properties": { "role": { "const": "code-reviewer" }, "verdict": { "const": "approve" } } },
+      "then": {
+        "properties": {
+          "checks": { "properties": { "acCoverage": { "items": { "properties": { "implemented": { "const": true }, "tested": { "enum": [true, null] } } } } } }
+        }
+      }
+    },
+    {
+      "description": "At code stage the auditors run the project's tests too, so an audit with no command recorded did not happen.",
+      "if": { "properties": { "role": { "enum": ["security-auditor", "database-auditor"] }, "stage": { "const": "code" } } },
+      "then": { "properties": { "checks": { "required": ["commands"], "properties": { "commands": { "minItems": 1 } } } } }
     },
     {
       "if": { "properties": { "role": { "const": "security-auditor" } } },
@@ -77,6 +96,7 @@
   "$defs": {
     "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "repoPath": { "description": "A relative path with forward slashes and no . or .. segment.", "type": "string", "minLength": 1, "maxLength": 400, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$" },
     "finding": {
       "type": "object",
       "additionalProperties": false,
@@ -99,13 +119,14 @@
           "additionalProperties": false,
           "required": ["file"],
           "properties": {
-            "file": { "description": "Repo-relative path, or a file name inside the task folder such as spec.md.", "type": "string", "minLength": 1 },
+            "file": { "description": "Repo-relative path, or a file name inside the task folder such as spec.md.", "$ref": "#/$defs/repoPath" },
+            "side": { "description": "Code stage only. base: the file existed at baseSha and the diff deletes it, so line counts in the base version. Omit for a file that exists at headSha.", "const": "base" },
             "line": { "type": "integer", "minimum": 1 },
             "endLine": { "type": "integer", "minimum": 1 },
             "section": { "description": "Heading of the spec or decision file section.", "type": "string", "minLength": 1 }
           }
         },
-        "acIds": { "description": "Every acceptance criterion the finding bears on. Empty only when it bears on none.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
+        "acIds": { "description": "Every acceptance criterion the finding bears on, current or retired. Empty only when it bears on none.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
         "detail": { "description": "What is wrong and what goes wrong because of it.", "type": "string", "minLength": 1, "maxLength": 2000 },
         "evidence": { "description": "What the reviewer observed: the quoted line, or the command and its relevant output.", "type": "string", "minLength": 1, "maxLength": 2000 },
         "requiredChange": { "description": "The smallest change that would resolve the finding.", "type": "string", "minLength": 1, "maxLength": 1000 }
@@ -138,13 +159,14 @@
       "additionalProperties": false,
       "properties": {
         "grounding": {
-          "description": "spec-reviewer: every path the spec cites was looked up at baseSha.",
+          "description": "spec-reviewer: every path the spec cites as existing was looked up at baseSha. Paths the plan creates are counted in newPaths and are never missing.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["pathsChecked", "missingPaths"],
+          "required": ["pathsChecked", "missingPaths", "newPaths"],
           "properties": {
             "pathsChecked": { "type": "integer", "minimum": 0 },
-            "missingPaths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+            "missingPaths": { "description": "Paths cited as existing or reused that are absent at baseSha.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "newPaths": { "description": "Paths the plan says it creates, each checked to be absent at baseSha and to sit beside existing code.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
           }
         },
         "tier": {
@@ -158,9 +180,9 @@
             "reason": { "type": "string", "minLength": 1, "maxLength": 600 }
           }
         },
-        "revisionDiffReviewed": { "description": "spec-reviewer, round 2 and later: the full diff against the previously reviewed spec was read.", "const": true },
+        "revisionDiffReviewed": { "description": "spec-reviewer, round 2 and later: the full diff of every member of the spec file set against the set previously reviewed was read.", "const": true },
         "commands": {
-          "description": "Every command run to reach the verdict, including ones that failed to start.",
+          "description": "Every command run to reach the verdict, including ones that failed to start. Required and non-empty for the code reviewer and for the auditors at code stage.",
           "type": "array",
           "items": {
             "type": "object",
@@ -207,7 +229,7 @@
             "additionalProperties": false,
             "required": ["file", "reversible", "note"],
             "properties": {
-              "file": { "type": "string", "minLength": 1 },
+              "file": { "$ref": "#/$defs/repoPath" },
               "reversible": { "enum": ["yes", "no", "declared-irreversible", "not-applicable"] },
               "note": { "type": "string", "maxLength": 600 }
             }

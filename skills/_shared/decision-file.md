@@ -4,6 +4,10 @@ The four specialists of the spec team each write exactly one decision file in th
 The spec lead merges them into the spec, and for a new project the factory copies them to the project's `docs/decisions/`, where they bind later work.
 Write for that later reader: a builder a month from now who has only this file.
 
+Each file is a member of the spec file set, so it is reviewed, hashed, and approved with the spec, and only its author may change it.
+When two decision files disagree and the spec lead resolved it, the files stay as written and the resolution governs: it is recorded in the spec under Conflicts resolved and in `spec-lead.json`, and the factory writes it to `docs/decisions/resolutions.md` beside the copied files.
+A later reader who finds a decision file and `resolutions.md` in disagreement follows `resolutions.md`.
+
 ## Format
 
 Use these headings, in this order, and no others at level 2.
@@ -55,6 +59,9 @@ A pick outside the catalog silently spends the owner's review attention on a tec
 3. `kind` decides what an entry permits.
    `inspiration` is reference only: name it as a pointer for humans, and never copy its assets, text, or code.
    `library` may be added as a dependency, using exactly the names in `packages` and the method in `install`.
+   `install: "npm"` is the only method the factory can carry out: it installs the package from the registry at the version the entry's evidence records, so do not state a version of your own.
+   `install: "cli"` and `install: "copy-paste"` put source into the repository from the entry's own site, which the factory cannot reach.
+   Pick such an entry only when that source is already in the repository, and cite its path; otherwise still name it as your decision, and say under Assumptions that the owner must add its source to the repository before any build, which the lead takes to the owner as a blocking question.
    `service` may be adopted, and needs an account and credentials only the owner can provide, so list it under owner prerequisites.
    `pattern` is a preferred approach; `anti-pattern` is something to name when you reject a tempting option.
 4. Packages that an approved entry's own installer adds are covered by that entry.

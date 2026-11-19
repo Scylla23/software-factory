@@ -2,17 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://software-factory.local/schemas/verification-plan.schema.json",
   "title": "Verification plan",
-  "description": "Written by the verifier in mode plan, before any evidence exists. The factory executes it: it runs the tests, starts the preview, and takes the captures. Expectations are committed here so the judgment cannot be fitted to the evidence afterwards.",
+  "description": "Written by the verifier in mode plan, before any evidence exists. The factory joins it to the approved spec (one entry per criterion, in order, with the spec's tags; unique ids and names; confined test paths) and only then executes it: it runs the tests, starts the preview, and takes the captures. Expectations are committed here so the judgment cannot be fitted to the evidence afterwards.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "specSha256", "criteria"],
+  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "specSetSha256", "criteria"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
     "round": { "type": "integer", "minimum": 1 },
     "baseSha": { "$ref": "#/$defs/sha" },
     "headSha": { "$ref": "#/$defs/sha" },
-    "specSha256": { "description": "SHA-256 of spec.md as planned against.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "specSetSha256": { "description": "specSet.sha256 from the run brief: the approved spec file set the plan was written against.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "criteria": {
       "description": "One entry per criterion in spec.md, in order. None may be left out.",
       "type": "array",
@@ -64,9 +64,9 @@
       "required": ["id", "file", "name", "reproduction"],
       "properties": {
         "id": { "description": "Unique in the plan: t1, t2, and so on.", "type": "string", "pattern": "^t[1-9][0-9]{0,3}$" },
-        "file": { "description": "Repo-relative path of the test file at headSha.", "type": "string", "minLength": 1 },
+        "file": { "description": "Repo-relative path of the test file at headSha. The factory runs a test only by a path that is confined to the repository and tracked at headSha.", "$ref": "#/$defs/repoPath" },
         "name": { "description": "The full test name as the runner prints it.", "type": "string", "minLength": 1, "maxLength": 300 },
-        "reproduction": { "description": "True for the AC-1 test of a bug: the factory also runs it with the head's test files on the base's code, where it must fail.", "type": "boolean" }
+        "reproduction": { "description": "True for the AC-1 test of a bug: the factory also runs it with the head's test files on the base's code, where it must fail by the assertion the criterion describes.", "type": "boolean" }
       }
     },
     "capture": {
@@ -118,6 +118,7 @@
         }
       ]
     },
-    "snippet": { "type": "string", "minLength": 1, "maxLength": 200 }
+    "snippet": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "repoPath": { "description": "A relative path with forward slashes and no . or .. segment.", "type": "string", "minLength": 1, "maxLength": 400, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$" }
   }
 }

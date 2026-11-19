@@ -5,13 +5,15 @@
   "description": "What the builder changed and ran. The factory reruns every check itself; this report tells it and the reviewers where to look, and is never taken as proof.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "taskId", "mode", "round", "baseSha", "status", "acceptanceCriteria", "reproduction", "commands", "filesChanged", "existingTestsChanged", "dependenciesAdded", "deviations", "findingsAddressed", "blockers", "notes"],
+  "required": ["schemaVersion", "taskId", "mode", "round", "baseSha", "inputSha", "specSetSha256", "status", "acceptanceCriteria", "reproduction", "commands", "filesChanged", "existingTestsChanged", "dependenciesAdded", "deviations", "findingsAddressed", "blockers", "notes"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "mode": { "description": "build: first implementation of the approved spec. repair: a rerun against findings.", "enum": ["build", "repair"] },
+    "mode": { "description": "build: first implementation of the approved spec, from baseSha. repair: a rerun against findings, from the reviewed head. resume: the continuation of a build or repair after the factory installed a dependency.", "enum": ["build", "repair", "resume"] },
     "round": { "type": "integer", "minimum": 1 },
     "baseSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "inputSha": { "description": "The commit the worktree was at when this run started: baseSha in mode build, and the head commit named by the run brief in modes repair and resume.", "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "specSetSha256": { "description": "specSet.sha256 from the run brief: the approved spec file set that was built.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "status": {
       "description": "complete: every criterion is implemented and the project's test, lint, and typecheck commands exit 0. partial: work was done but something in blockers remains. blocked: nothing usable was produced.",
       "enum": ["complete", "partial", "blocked"]
@@ -40,7 +42,7 @@
       }
     },
     "reproduction": {
-      "description": "For a bug: the run of the AC-1 test before the fix. null for a feature.",
+      "description": "For a bug: the run of the AC-1 test before the fix, recorded in the run where the test first went red and copied unchanged by every later repair or resume. null for a feature. The factory repeats the red run itself; this block is a claim, not proof.",
       "oneOf": [
         { "type": "null" },
         {
@@ -72,17 +74,18 @@
         }
       }
     },
-    "filesChanged": { "description": "Every repo-relative path created, modified, or deleted.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "filesChanged": { "description": "Every repo-relative path created, modified, or deleted since inputSha.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/repoPath" } },
     "existingTestsChanged": {
-      "description": "Every test that existed at baseSha and was edited or removed. Each needs a criterion that changes the behavior it asserted.",
+      "description": "Every test that existed at baseSha and whose assertions were edited. Each needs an approved criterion that changes the behavior it asserted, and the test must still assert that behavior's new expected result. A test that existed at baseSha is never removed or skipped; there is no entry that makes that acceptable.",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["test", "change", "acIds", "reason"],
+        "required": ["test", "change", "acIds", "nowAsserts", "reason"],
         "properties": {
           "test": { "$ref": "#/$defs/testRef" },
-          "change": { "enum": ["assertion-updated", "removed"] },
+          "change": { "const": "assertion-updated" },
+          "nowAsserts": { "description": "The expected result the test asserts after the edit, in the criterion's terms.", "type": "string", "minLength": 1, "maxLength": 400 },
           "acIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
           "reason": { "type": "string", "minLength": 1, "maxLength": 600 }
         }
@@ -93,12 +96,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "version", "specReference", "installed"],
+        "required": ["name", "catalogEntry", "specReference", "installed"],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "version": { "type": "string", "minLength": 1 },
+          "name": { "description": "The package name, exactly as the catalog entry's packages lists it.", "type": "string", "minLength": 1 },
+          "catalogEntry": { "description": "The id of the catalog entry the spec cites for this package.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "version": { "description": "Only when spec.md states a version. Otherwise the factory installs the version recorded in the catalog entry.", "type": "string", "minLength": 1 },
           "specReference": { "description": "Where spec.md names this dependency, such as 'Design choices' or 'Implementation plan step 2'.", "type": "string", "minLength": 1, "maxLength": 200 },
-          "installed": { "description": "False when the package is declared in the manifest but not present in the worktree.", "type": "boolean" }
+          "installed": { "description": "True when the package is already present in the worktree. False asks the factory to install it, with an install-needed blocker.", "type": "boolean" }
         }
       }
     },
@@ -117,7 +121,7 @@
       }
     },
     "findingsAddressed": {
-      "description": "Repair mode: one entry per finding or failed check the run was given. Empty in build mode.",
+      "description": "Repair mode: one entry per finding, failed check, and owner comment the run was given. Empty in build mode. A resume of a repair carries the repair's entries.",
       "type": "array",
       "items": {
         "type": "object",
@@ -140,8 +144,8 @@
         "required": ["kind", "detail"],
         "properties": {
           "kind": {
-            "description": "spec-defect: the spec cannot be built as written. bug-not-reproduced: the AC-1 test passes on base. install-needed: a declared dependency is not installed. failing-command: test, lint, or typecheck still fails. environment: a command cannot start.",
-            "enum": ["spec-defect", "bug-not-reproduced", "install-needed", "failing-command", "environment"]
+            "description": "spec-defect: the spec cannot be built as written. bug-not-reproduced: the AC-1 test passes on base. install-needed: a package the spec names is not installed, and the factory can install it from the registry. owner-prerequisite: the spec relies on source or setup only the owner can add, such as a copy-paste or generator-installed component that is not in the repository. failing-command: test, lint, or typecheck still fails. environment: a command cannot start.",
+            "enum": ["spec-defect", "bug-not-reproduced", "install-needed", "owner-prerequisite", "failing-command", "environment"]
           },
           "acIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
           "detail": { "type": "string", "minLength": 1, "maxLength": 800 }
@@ -165,18 +169,27 @@
     },
     {
       "if": { "properties": { "mode": { "const": "build" } } },
-      "then": { "properties": { "findingsAddressed": { "maxItems": 0 } } },
-      "else": { "properties": { "findingsAddressed": { "minItems": 1 } } }
+      "then": { "properties": { "findingsAddressed": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "repair" } } },
+      "then": { "properties": { "findingsAddressed": { "minItems": 1 } } }
+    },
+    {
+      "description": "An install request is a partial run with an install-needed blocker, never a complete one.",
+      "if": { "properties": { "dependenciesAdded": { "contains": { "properties": { "installed": { "const": false } }, "required": ["installed"] } } } },
+      "then": { "properties": { "status": { "const": "partial" }, "blockers": { "contains": { "properties": { "kind": { "const": "install-needed" } }, "required": ["kind"] } } } }
     }
   ],
   "$defs": {
     "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "repoPath": { "description": "A relative path with forward slashes and no . or .. segment.", "type": "string", "minLength": 1, "maxLength": 400, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$" },
     "testRef": {
       "type": "object",
       "additionalProperties": false,
       "required": ["file", "name"],
       "properties": {
-        "file": { "description": "Repo-relative path of the test file.", "type": "string", "minLength": 1 },
+        "file": { "description": "Repo-relative path of the test file.", "$ref": "#/$defs/repoPath" },
         "name": { "description": "The full test name as the runner prints it. A test the builder adds for a criterion starts with that criterion's id.", "type": "string", "minLength": 1, "maxLength": 300 }
       }
     }

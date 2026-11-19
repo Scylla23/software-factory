@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://software-factory.local/schemas/spec-lead.schema.json",
   "title": "Spec lead result",
-  "description": "What the spec stage decided, for the factory to act on without parsing prose.",
+  "description": "What the spec stage decided, for the factory to act on without parsing prose. It is a member of the spec file set, so a change to it alone makes a new set that needs review and approval again.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "taskId", "round", "status", "tier", "riskFlags", "acceptanceCriteria", "retiredCriteria", "team", "conflicts", "escalations", "catalogGaps", "changes"],
@@ -53,7 +53,7 @@
     },
     "retiredCriteria": { "description": "Ids removed in any round. Never reused.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
     "team": {
-      "description": "One entry per team member when the team was required; empty otherwise.",
+      "description": "One entry per team member the task triggers: all four for a new project or a confirmed tier L, the threat modeler alone for the security flag at tier S or M, and none otherwise. A triggered member always runs; there is no skipped status.",
       "type": "array",
       "items": {
         "type": "object",
@@ -61,7 +61,7 @@
         "required": ["member", "status"],
         "properties": {
           "member": { "enum": ["architect", "infra", "frontend", "threat-modeler"] },
-          "status": { "enum": ["ran", "skipped", "failed"] },
+          "status": { "enum": ["ran", "failed"] },
           "file": { "enum": ["architecture.md", "infra.md", "frontend.md", "threat-model.md"] },
           "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
           "reason": { "type": "string", "minLength": 1, "maxLength": 400 }
@@ -125,17 +125,23 @@
       }
     },
     "changes": {
-      "description": "From round 2: how each finding or owner comment was answered. Empty in round 1.",
+      "description": "From round 2: how each blocking finding of every verdict in previous.findings, and each owner comment, was answered. Empty in round 1.",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["inResponseTo", "action", "note"],
+        "required": ["source", "round", "action", "note"],
         "properties": {
-          "inResponseTo": { "description": "For example 'spec-reviewer round 1 finding 2' or 'owner comment'.", "type": "string", "minLength": 1, "maxLength": 200 },
+          "source": { "description": "Whose feedback this answers. Findings from both spec-stage reviewers and owner comments are answered separately.", "enum": ["spec-reviewer", "security-auditor", "owner"] },
+          "round": { "description": "The round of the verdict or gate the feedback came from.", "type": "integer", "minimum": 1 },
+          "n": { "description": "The finding's n in that verdict. Required unless the source is owner.", "type": "integer", "minimum": 1 },
+          "ref": { "description": "For owner feedback: a short label for the comment answered, in the lead's own words.", "type": "string", "minLength": 1, "maxLength": 200 },
           "action": { "enum": ["changed", "declined"] },
           "note": { "type": "string", "minLength": 1, "maxLength": 600 }
-        }
+        },
+        "allOf": [
+          { "if": { "properties": { "source": { "const": "owner" } } }, "then": { "required": ["ref"] }, "else": { "required": ["n"] } }
+        ]
       }
     }
   },

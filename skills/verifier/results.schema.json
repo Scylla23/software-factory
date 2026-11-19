@@ -2,16 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://software-factory.local/schemas/verification-results.schema.json",
   "title": "Verification results",
-  "description": "Written by the verifier in mode judge. Each row is one row of the pull request's acceptance evidence table. The factory renders rows into the PR after redaction, so no field may hold raw page text, command output, or a secret.",
+  "description": "Written by the verifier in mode judge. Each row is one row of the pull request's acceptance evidence table. Before publishing, the factory joins every row and proof entry to the approved spec, the plan, and the evidence index, and rejects a result that fails any join. It renders rows into the PR after redaction, so no field may hold raw page text, command output, or a secret.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "attemptId", "planSha256", "overall", "rows", "ownerChecklist", "untrustedTextFlagged", "notes"],
+  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "specSetSha256", "attemptId", "planSha256", "overall", "rows", "ownerChecklist", "untrustedTextFlagged", "notes"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
     "round": { "type": "integer", "minimum": 1 },
     "baseSha": { "$ref": "#/$defs/sha" },
     "headSha": { "$ref": "#/$defs/sha" },
+    "specSetSha256": { "description": "specSet.sha256 from the run brief, which must equal the plan's.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "attemptId": { "description": "Copied from the evidence index.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
     "planSha256": { "description": "SHA-256 of plan.json, which must equal the evidence index's.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "overall": {
@@ -74,10 +75,11 @@
     "row": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["acId", "tag", "fixture", "action", "expected", "observed", "proof", "commit", "verdict", "rubric"],
+      "required": ["acId", "tag", "method", "fixture", "action", "expected", "observed", "proof", "commit", "verdict", "rubric"],
       "properties": {
         "acId": { "$ref": "#/$defs/acId" },
         "tag": { "enum": ["test", "browser", "computer-use", "manual"] },
+        "method": { "description": "Copied from the plan's entry for this criterion.", "enum": ["test", "capture", "manual", "unsupported"] },
         "fixture": { "description": "Copied from the spec.", "type": "string", "minLength": 1, "maxLength": 600 },
         "action": { "description": "Copied from the spec.", "type": "string", "minLength": 1, "maxLength": 600 },
         "expected": { "description": "Copied from the spec.", "type": "string", "minLength": 1, "maxLength": 600 },
@@ -113,11 +115,16 @@
         { "if": { "properties": { "tag": { "const": "manual" } } }, "then": { "properties": { "verdict": { "const": "manual-pending" }, "proof": { "maxItems": 0 } } } },
         { "if": { "properties": { "verdict": { "const": "manual-pending" } } }, "then": { "properties": { "tag": { "const": "manual" } } } },
         { "if": { "properties": { "tag": { "const": "computer-use" } } }, "then": { "properties": { "verdict": { "const": "blocked" } } } },
+        { "description": "A criterion the plan could not observe is never a pass and never a failure of the build.", "if": { "properties": { "method": { "const": "unsupported" } } }, "then": { "properties": { "verdict": { "const": "blocked" }, "proof": { "maxItems": 0 } } } },
+        { "if": { "properties": { "method": { "const": "manual" } } }, "then": { "properties": { "tag": { "const": "manual" } } }, "else": { "properties": { "tag": { "enum": ["test", "browser", "computer-use"] } } } },
+        { "if": { "properties": { "method": { "const": "test" } } }, "then": { "properties": { "tag": { "const": "test" } } } },
+        { "if": { "properties": { "method": { "const": "capture" } } }, "then": { "properties": { "tag": { "const": "browser" } } } },
         { "if": { "properties": { "rubric": { "minItems": 1 } }, "required": ["rubric"] }, "then": { "properties": { "verdict": { "const": "fail" } } } },
         {
           "if": { "properties": { "tag": { "const": "browser" }, "verdict": { "const": "pass" } } },
           "then": {
             "properties": {
+              "method": { "const": "capture" },
               "proof": {
                 "allOf": [
                   { "contains": { "properties": { "kind": { "const": "screenshot" }, "side": { "const": "head" }, "viewport": { "const": "desktop" } }, "required": ["kind", "side", "viewport"] } },
@@ -128,8 +135,23 @@
           }
         },
         {
+          "description": "A test row passes on a passing head result. A base run can only add to that, and only as the failing half of a reproduction.",
           "if": { "properties": { "tag": { "const": "test" }, "verdict": { "const": "pass" } } },
-          "then": { "properties": { "proof": { "contains": { "properties": { "kind": { "const": "test" } }, "required": ["kind"] } } } }
+          "then": {
+            "properties": {
+              "method": { "const": "test" },
+              "proof": {
+                "contains": { "properties": { "kind": { "const": "test" }, "side": { "const": "head" }, "status": { "const": "pass" } }, "required": ["kind", "side", "status"] },
+                "items": {
+                  "allOf": [
+                    { "properties": { "kind": { "const": "test" } } },
+                    { "if": { "properties": { "side": { "const": "head" } } }, "then": { "properties": { "status": { "const": "pass" } } } },
+                    { "if": { "properties": { "side": { "const": "base-with-head-tests" } } }, "then": { "properties": { "status": { "const": "fail" } } } }
+                  ]
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -139,16 +161,20 @@
       "required": ["kind", "ref"],
       "properties": {
         "kind": { "description": "test: a test result. screenshot: a capture's PNG. console: a capture's console errors. network: a capture's failed requests. page-text: a capture's page text.", "enum": ["test", "screenshot", "console", "network", "page-text"] },
+        "planId": { "description": "The id of the planned test (t1) or capture (c1) the entry is evidence for.", "type": "string", "pattern": "^[ct][1-9][0-9]{0,3}$" },
         "ref": { "description": "For test: the test name. Otherwise the capture record's name.", "type": "string", "minLength": 1, "maxLength": 300 },
-        "file": { "description": "For test: the test file.", "type": "string", "minLength": 1 },
+        "file": { "description": "For test: the test file.", "$ref": "#/$defs/repoPath" },
         "side": { "enum": ["base", "head", "base-with-head-tests"] },
+        "status": { "description": "For test: the status the evidence index records for this test on this side.", "enum": ["pass", "fail", "skip"] },
         "viewport": { "enum": ["desktop", "mobile"] },
         "sha256": { "description": "For screenshot: the screenshotSha256 of the record.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
       },
       "allOf": [
-        { "if": { "properties": { "kind": { "const": "screenshot" } } }, "then": { "required": ["kind", "ref", "side", "viewport", "sha256"] } },
-        { "if": { "properties": { "kind": { "const": "test" } } }, "then": { "required": ["kind", "ref", "file", "side"] } }
+        { "if": { "properties": { "kind": { "const": "screenshot" } } }, "then": { "required": ["kind", "planId", "ref", "side", "viewport", "sha256"], "properties": { "planId": { "pattern": "^c" }, "side": { "enum": ["base", "head"] } } } },
+        { "if": { "properties": { "kind": { "const": "test" } } }, "then": { "required": ["kind", "planId", "ref", "file", "side", "status"], "properties": { "planId": { "pattern": "^t" }, "side": { "enum": ["head", "base-with-head-tests"] } } } },
+        { "if": { "properties": { "kind": { "enum": ["console", "network", "page-text"] } } }, "then": { "required": ["kind", "planId", "ref", "side", "viewport"], "properties": { "planId": { "pattern": "^c" } } } }
       ]
-    }
+    },
+    "repoPath": { "description": "A relative path with forward slashes and no . or .. segment.", "type": "string", "minLength": 1, "maxLength": 400, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$" }
   }
 }
