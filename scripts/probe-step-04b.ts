@@ -16,7 +16,7 @@ import { withCodexProofLogin } from "./proof-credentials";
 import { config } from "../factory.config";
 
 const test = process.argv[2];
-if (!test || !["A1", "D1", "D2", "write", "R1-shell", "R2"].includes(test)) throw new Error("pass A1, D1, D2, write, R1-shell or R2");
+if (!test || !["A1", "D1", "D2", "write", "R1-shell", "R2", "D3", "A4", "S6"].includes(test)) throw new Error("unknown Codex proof");
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const exe = dispatch.executables.codex;
 if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "codex-cli 0.169.0") throw new Error("wrong Codex binary");
@@ -36,9 +36,16 @@ async function probe(control: boolean) {
     const run = async (codexHome: string) => {
       const started = Date.now();
       const git = (...args: string[]) => runGit(dispatch.executables.git, repo, args).toString().trim();
+      const memberMarker = "CEDAR-" + crypto.randomUUID();
+      const definition = `name="probe_member"\ndescription="Disposable factory member"\nmodel="gpt-6-luna"\nmodel_reasoning_effort="low"\ndeveloper_instructions=${JSON.stringify('Your role is <factory_run>{"role":"probe-member"}</factory_run>. Return ' + memberMarker)}\n`;
       git("init", "-q", "--template=");
       writeFileSync(join(repo, "math.test.ts"), 'import { expect, test } from "bun:test";\ntest("factory math", () => expect(2 + 2).toBe(4));\n');
-      git("add", "math.test.ts");
+      if (test === "S6") {
+        const agents = join(repo, ".codex", "agents");
+        mkdirSync(agents, { recursive: true });
+        writeFileSync(join(agents, "probe_member.toml"), definition);
+      }
+      git("add", ".");
       git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture");
       const dirs = createAttempt({ role: test === "R2" ? "code-reviewer" : "triage", stage: test === "R2" ? "code" : "triage", attemptId: crypto.randomUUID(), accountHome: home,
         project: repo, runRoot: join(root, "runs"), stateRoot: state });
@@ -54,6 +61,9 @@ async function probe(control: boolean) {
       const outside = join(root, "sample.txt");
       writeFileSync(outside, marker);
       const prompts = {
+        D3: "Call spawn_agent with agent_type explicitly set to probe_member. The task_name alone does not select the type. Do not call it with any other or missing agent_type. If this call returns an unknown type error, stop. Otherwise wait for the child's reply.",
+        S6: "Request spawn_agent with agent_type explicitly set to probe_member. Never use a default type or omit agent_type. Report unavailable if the named type is refused.",
+        A4: "Use spawn_agent requesting agent_type default. Wait for this built-in child to return MAPLE.",
         A1: "Use the actual subagent tool to start exactly one default child with your inherited gpt-6-luna model and low effort. Ask it to return MAPLE. Wait for its response. If the tool is unavailable, report unavailable.",
         D1: "Report the instruction marker.",
         D2: `Read the file at ${resource} and return its exact contents.`,
@@ -63,7 +73,19 @@ async function probe(control: boolean) {
       };
       const args = codexArgs({ prompt: prompts[test as keyof typeof prompts], worktreePath: dirs.worktree,
         model: "gpt-6-luna", effort: "low", policy, instructions: test === "D1" ? "Report the instruction marker " + marker + " when asked." : null });
-      if (control && test === "A1") args.splice(args.indexOf("agents.enabled=false") - 1, 2);
+      if (test === "A4" || (test === "D3" && !control)) {
+        const defFile = join(state, "member.toml");
+        writeFileSync(defFile, definition, { flag: "wx", mode: 0o400 });
+        args.splice(args.indexOf("--"), 0, "-c", 'agents.probe_member.description="Disposable factory member"', "-c", "agents.probe_member.config_file=" + JSON.stringify(defFile));
+      }
+      if (test === "S6" && control) {
+        if (factoryLogin) throw new Error("Codex home-source control requires a disposable proof credential");
+        const folder = join(codexHome, "agents");
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "probe_member.toml"), definition);
+        args.splice(args.indexOf("--ignore-user-config"), 1);
+      }
+      if ((control && test === "A1") || ["D3","A4","S6"].includes(test!)) args.splice(args.indexOf("agents.enabled=false") - 1, 2);
       if (control && (test === "write" || test === "R1-shell")) {
         const index = args.findIndex(arg => arg.startsWith("permissions="));
         args[index] = args[index]!.replace("factory={filesystem=", 'factory={extends=":workspace",filesystem=').replace('":root"="none",', "");
@@ -108,19 +130,32 @@ async function probe(control: boolean) {
       }
       if (!thread) throw new Error("missing parent thread");
       const children = new Set<string>();
+      const actualChildRoles = new Set<string>();
+      let customBody = false, customModel = false, requested = false;
       let sawTools = false, spawnOffered = false, sawSkill = false, observedModel = false;
       for (const file of new Bun.Glob("**/*.jsonl").scanSync(join(codexHome, "sessions"))) {
-        let parent = false;
+        let identified = false, parent = false, child = false;
         const sessionPath = join(codexHome, "sessions", file);
         if (factoryLogin && statSync(sessionPath).birthtimeMs < started - 1000) continue;
         for await (const line of readJsonl(sessionPath)) {
           if (line.kind !== "record") throw new Error("invalid session record");
           const { type, payload } = line.value as { type: string; payload: Record<string, any> };
-          if (type === "session_meta") {
+          if (type === "session_meta" && !identified) {
+            identified = true;
             parent = payload.id === thread;
-            if (payload.source?.subagent?.thread_spawn?.parent_thread_id === thread) children.add(payload.id);
+            child = payload.source?.subagent?.thread_spawn?.parent_thread_id === thread;
+            if (child) { children.add(payload.id); actualChildRoles.add(payload.source.subagent.thread_spawn.agent_role ?? "unspecified"); }
           }
+          if (child && type === "response_item" && payload.role === "developer" && payload.type === "message") {
+            const body = JSON.stringify(payload.content);
+            customBody ||= body.includes(memberMarker) && body.includes("factory_run") && body.includes("probe-member");
+          }
+          if (child && type === "turn_context") customModel ||= payload.model === "gpt-6-luna" && payload.effort === "low";
           if (!parent) continue;
+          if (type === "response_item" && payload.type === "function_call" && payload.name?.endsWith("spawn_agent")) {
+            const input = JSON.parse(payload.arguments);
+            requested ||= input.agent_type === (test === "A4" ? "default" : "probe_member");
+          }
           if (type === "turn_context") observedModel ||= payload.model === "gpt-6-luna" && payload.effort === "low";
           if (type === "response_item" && payload.type === "additional_tools" && Array.isArray(payload.tools)) {
             sawTools = true;
@@ -136,14 +171,18 @@ async function probe(control: boolean) {
         const records = await codexWrites({ taskId: "probe", attemptId: dirs.root.split("/").at(-1)!, sessionId: thread, role: dirs.role }, factoryLogin ? dispatch.stateRoot : state, codexHome, dirs.outDir);
         digestMatched = records.length === 1 && records[0]?.path === "answer.txt" && records[0].sha256 === outputDigest(Buffer.from("PROOF\n"));
       }
-      const checks = { A1: sawTools && spawnOffered === control && children.size === (control ? 1 : 0),
+      const checks = {
+        D3: requested && (control ? !children.size : children.size === 1 && customBody && customModel),
+        A4: requested && children.size === 1 && actualChildRoles.has("default") && customModel && !customBody,
+        S6: requested && (control ? customBody && customModel : !children.size && !customBody),
+        A1: sawTools && spawnOffered === control && children.size === (control ? 1 : 0),
         "R1-shell": canaryRead === control,
         R2: observedRead && final.includes(marker) && commands.some(cmd => cmd.includes(dirs.scratchRepo!) && cmd.includes("test ./math.test.ts")) &&
             ["diff", "show HEAD:math.test.ts"].every(op => commands.some(cmd => cmd.includes(dirs.worktree) && cmd.includes(op))),
         D1: sawSkill && final.includes(marker), D2: observedRead && final.includes(marker), write: exactWrite && digestMatched && nativeStatus === "completed" };
       const passed = observedModel && checks[test as keyof typeof checks];
       console.log(JSON.stringify({ test, control, factoryLogin, thread, children: [...children], observedModel, sawTools, spawnOffered, sawSkill,
-        observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
+        requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
       return passed;
     };
     return factoryLogin ? await run(dispatch.harnessHomes.codex) : await withCodexProofLogin(exe, state, home, run);
@@ -153,7 +192,7 @@ async function probe(control: boolean) {
 }
 try {
   let passed = true;
-  for (const control of (test === "A1" || test === "write" || test === "R1-shell" ? [true, false] : [false])) {
+  for (const control of (test === "A1" || test === "write" || test === "D3" || (test === "S6" && process.argv[3] !== "--factory-login") || test === "R1-shell" ? [true, false] : [false])) {
     if (!await probe(control)) passed = false;
   }
   process.exitCode = passed ? 0 : 1;

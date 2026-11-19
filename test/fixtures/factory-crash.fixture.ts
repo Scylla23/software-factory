@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../factory.config";
+import { InvalidSkillOutput } from "../../src/factory/skill-validation";
 import { Uncertain } from "../../src/factory/machine";
 import { runStages } from "../../src/factory/run";
 import { Store, type Task, type Attempt } from "../../src/factory/store";
@@ -108,6 +109,8 @@ try {
   const final = await runStages(s, initial, {
     git, stateRoot: root, observe: () => {},
     dispatch: async (_s, t, a, role, prompt) => {
+      if (role === "reviewer" && scenario === "invalid-verdict") throw new InvalidSkillOutput("wrong spec digest");
+      if (role === "reviewer" && scenario === "replacement") throw new Uncertain("skill output integrity escalation: output bytes changed after authenticated final write");
       if (scenario === "login" && a.action === "dispatch-spec") {
         remote(a.action, "login refused", a.id);
         throw new WorkerLoginError("fixture login");

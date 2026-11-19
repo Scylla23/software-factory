@@ -6,6 +6,15 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
+    ("claude-writes", "claude-writes", "submitted.assistant !== e.sourceToolAssistantUUID", "false"),
+    ("claude-writes", "claude-writes", "result.content !== submitted.content", "false"),
+    ("claude-writes", "claude-writes", "if (requests.size)", "if (false)"),
+    ("../factory/skill-validation", "skill-validation", "document.taskRevision === task.revision", "true"),
+    ("../factory/skill-validation", "skill-validation", "document.taskId === brief.taskId", "true"),
+    ("../factory/skill-validation", "skill-validation", "v.covers.headSha === brief.headSha", "true"),
+    ("../factory/skill-validation", "skill-validation", "testPassed && v.checks", "true && v.checks"),
+    ("../factory/skill-validation", "skill-validation", "|| row.tested", "|| true"),
+    ("../factory/skill-validation", "skill-validation", "if (!validate(parsed))", "if (false)"),
     ("codex-writes", "codex-writes", 'payload.thread_id !== identity.sessionId', 'false'),
     ("codex-writes", "codex-writes", 'item.status !== "completed"', 'false'),
     ("codex-writes", "codex-writes", 'writes.delete(rel);', ''),
@@ -41,6 +50,7 @@ def main():
     state.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=state, prefix="mutations-") as tmp:
         directory = Path(tmp)
+        shutil.copy(ROOT / "factory.config.ts", directory)
         shutil.copytree(ROOT / "src", directory / "src")
         shutil.copytree(ROOT / "test", directory / "test", ignore=shutil.ignore_patterns(".state"))
         shutil.copytree(ROOT / "skills", directory / "skills")

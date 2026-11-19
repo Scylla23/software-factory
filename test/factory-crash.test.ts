@@ -147,3 +147,21 @@ for (const scenario of ["tier-L", "security-M"]) test("unproven spec team stops 
     } finally { store.db.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const scenario of ["invalid-verdict", "replacement"]) test("reviewer " + scenario + " cannot advance past review", async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-review-escalation-"));
+  try {
+    expect(await invoke(root, scenario)).toBe(true);
+    const s = new Store(join(root, "state.sqlite"));
+    try {
+      const t = s.task(1);
+      expect(t.state).toBe("escalated");
+      expect(t.reason).toContain(scenario === "replacement" ? "output integrity escalation" : "validation twice");
+      expect(s.db.query("SELECT result FROM attempts WHERE action LIKE 'code-review%' AND result IS NULL").all())
+        .toHaveLength(scenario === "replacement" ? 1 : 2);
+      expect(s.db.query("SELECT id FROM attempts WHERE action='verify'").all()).toEqual([]);
+      expect(s.db.query("SELECT id FROM approvals WHERE kind='review'").all()).toEqual([]);
+      expect(s.db.query("SELECT attempt FROM skill_collections WHERE role='code-reviewer'").all()).toEqual([]);
+    } finally { s.db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

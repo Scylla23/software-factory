@@ -79,8 +79,8 @@ test("review stages full approved bytes, computes the contract hash and accepts 
   expect(() => check(doc, false)).toThrow("independent");
   expect(() => check({...doc, covers: {...doc.covers, headSha: "b".repeat(40)}})).toThrow("coverage");
   expect(() => check({...doc, checks: {...doc.checks, acCoverage: doc.checks.acCoverage.toReversed()}})).toThrow("ordered");
-  doc.checks.acCoverage[0]!.tested = false;
-  expect(() => check(doc)).toThrow("tested");
+  const untested = {...doc, checks: {...doc.checks, acCoverage: doc.checks.acCoverage.map((r,i) => i ? r : {...r, tested: null})}};
+  expect(() => check(untested)).toThrow("independent head check and tested criteria");
 });
 test("builder joins the complete diff and test names before storing changes", () => {
   predecessors();
