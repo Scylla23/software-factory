@@ -92,3 +92,13 @@ No live subagent was launched.
 `bun run typecheck` passed.
 `python3 scripts/mutate-step-08.py` ran each affected test against the baseline, applied one change at a time in a private source copy, and required the named test to fail.
 All 21 [mutants](../../scripts/mutations/step-08.json) were killed, covering message and response deduplication, session ownership, unknown cost, prices, token subsets, reported totals, coverage, receipt adoption and feedback attribution.
+
+One full run caught a concurrency defect in the existing watchdog test.
+Its machine-wide `pgrep` matched two processes from another suite after its own wedged runner had exited.
+The separate watchdog test fix copies the script and fixture into a private test root and checks the exact runner and leftover PIDs from that invocation's evidence.
+Two simultaneously launched watchdog test suites passed all six checks.
+
+On code revision `49ffd54`, 20 consecutive full suites passed under the watchdog using Bun 1.2.10.
+Each run passed 347 tests across 23 files with 5,170 assertions.
+Wall times ranged from 88.2 to 107.4 seconds and all watchdogs exited zero.
+The run index and individual logs are in `~/.software-factory/step-08-test-runs/final-49ffd54/`.
