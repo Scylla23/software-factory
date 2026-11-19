@@ -13,6 +13,8 @@ import { verifyPilot } from "./verify";
 import { Store, type Attempt, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError, type WorkerOutput } from "./worker";
 
+import { requiredMembers } from "../dispatch/brief";
+import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
 import { InvalidSkillOutput } from "./skill-validation";
 import { drive, effect, Uncertain } from "./machine";
 
@@ -25,6 +27,7 @@ interface Services {
   test: ProjectChecks["test"];
   verify: (task: Task, attempt: Attempt, prior: Check[]) => Promise<EvidenceSummary>;
   dispatch: typeof dispatchWorker;
+  authorizeTeam?: typeof requireSkillProofs;
   observe: Observer;
 }
 
@@ -258,7 +261,17 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
   })();
 }
 
-async function draft(store: Store, task: Task, { git, dispatch, observe }: Services) {
+class TeamHandoff extends Error {
+  constructor(readonly members: ReturnType<typeof requiredMembers>) { super("team required"); }
+}
+function parseHandoff(text: string) {
+  const tier = /\btier\s*[:=]?\s*([SML])\b/i.exec(text)?.[1]?.toUpperCase() as "S" | "M" | "L" | undefined;
+  if (!tier) throw new Uncertain("spec team required: ambiguous confirmed tier");
+  const members = requiredMembers(tier, /\bsecurity\b/i.test(text), false);
+  if (!members.length || !members.every(m => text.includes(m))) throw new Uncertain("spec team required: incomplete specialist list");
+  return members;
+}
+async function draft(store: Store, task: Task, { git, dispatch, observe, authorizeTeam = requireSkillProofs }: Services) {
   if (!task.spec) {
     await skillEffect(store, task, "dispatch-triage", { base: task.base, revision: task.issue.revision }, async a => {
       await git.fetch(task.base);
@@ -268,25 +281,37 @@ async function draft(store: Store, task: Task, { git, dispatch, observe }: Servi
     });
   }
   const prompt = specPrompt(task);
-  const writeSpec = (action: string) =>
-    skillEffect(store, task, action, { head: task.head, prompt }, async (a) => {
+  const writeSpec = (action: string, team: ReturnType<typeof requiredMembers> = []) => {
+    const context = team.length ? JSON.stringify({...JSON.parse(prompt), team}) : prompt;
+    return skillEffect(store, task, action, { head: task.head, prompt: context }, async (a) => {
       await git.fetch(task.head);
-      const output = await dispatch(store, task, a, "spec", prompt, observe);
+      const output = await dispatch(store, task, a, "spec", context, observe);
       const text = output.result.resultText?.trim() ?? "";
-      // No harness has passed the prelaunch team allowlist and depth controls yet.
-      if (text.startsWith("BLOCKED: team required"))
-        throw new Uncertain("spec team required but no proven team-capable launch is available: " + text.slice(0, 600));
+      if (text.startsWith("BLOCKED: team required")) {
+        if (team.length) throw new Uncertain("spec team required again after fresh team launch");
+        throw new TeamHandoff(parseHandoff(text.slice(0, 1000)));
+      }
       if (text.startsWith("BLOCKED: ")) throw new Uncertain("spec lead blocked: " + text.slice(9, 609));
       const spec = submittedText(output, "spec.md");
       if (!spec.includes("AC-1") || spec.length > 32_000) throw new InvalidSkillOutput("invalid spec writer output");
       return spec;
     });
+  };
   let spec: string;
   try {
-    spec = await writeSpec("dispatch-spec");
+    try { spec = await writeSpec("dispatch-spec"); }
+    catch (e) {
+      if (!(e instanceof WorkerLoginError)) throw e;
+      spec = await writeSpec("dispatch-spec-after-login");
+    }
   } catch (e) {
-    if (!(e instanceof WorkerLoginError)) throw e;
-    spec = await writeSpec("dispatch-spec-after-login");
+    if (!(e instanceof TeamHandoff)) throw e;
+    try { authorizeTeam(config.agents.spec.harness, "spec-lead", e.members); }
+    catch (denied) {
+      if (!(denied instanceof SkillProofMissing)) throw denied;
+      throw new Uncertain("spec team required but no proven team-capable launch is available: " + denied.message);
+    }
+    spec = await writeSpec("dispatch-spec-with-team", e.members);
   }
   const head = await effect(store, task, "commit-spec", { head: task.head, spec }, (a) =>
     git.commit(

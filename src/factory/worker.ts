@@ -141,7 +141,7 @@ async function work(id: string) {
           const writes = await (agent.harness === "claude" ? claudeWrites : codexWrites)(identity, dispatch.stateRoot, home, dirs.outDir);
           captured = collectOutputs(dirs, identity, expected, writes);
         } catch (error) {
-          throw new OutputIntegrityError("skill output integrity escalation: " + (error as Error).message);
+          throw new OutputIntegrityError((error as Error).message);
         }
         const files = wt ? changes(wt.path) : [];
         validateSkillOutput(job.input, dirs, captured, files.map(f => f.path), dispatch.executables.git, job.testPassed);
@@ -159,8 +159,16 @@ async function work(id: string) {
     }
     finish({ output });
   } catch (e) {
-    finish({ error: String(e), invalid: e instanceof InvalidSkillOutput, escalated: e instanceof Uncertain || e instanceof SkillProofMissing || e instanceof OutputIntegrityError });
+    finish(workerFailure(e));
   }
+}
+
+export function workerFailure(error: unknown) {
+  return {
+    error: error instanceof OutputIntegrityError ? "skill output integrity escalation: " + error.message : String(error),
+    invalid: error instanceof InvalidSkillOutput,
+    escalated: error instanceof Uncertain || error instanceof SkillProofMissing || error instanceof OutputIntegrityError,
+  };
 }
 
 function launchSupervisor(dir: string, id: string, stateRoot: string) {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { Readable } from "node:stream";
 import { join } from "node:path";
-import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
+import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, prepareScratchRepo, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
 import { portIsFree } from "../src/verify/port";
 import { gone } from "./helpers";
 import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, settlingTest, spawnBounded, type VerifyEnv } from "./verify-helpers";
@@ -525,4 +525,17 @@ describe("bounded reads", () => {
     expect(() => writeSync(fd, "x")).toThrow(); // closed
     copy.close(); // idempotent
   });
+});
+
+test("scratch dependency setup sees the registry proxy only during setup and leaves the pinned checkout available", async () => {
+  const scratch = join(env.home, "scratch");
+  mkdirSync(scratch);
+  const checkout = makeRepo(scratch, "repo", [{"source.txt": "pinned"}]);
+  const id = crypto.randomUUID();
+  await prepareScratchRepo(env.config, {id, checkout: checkout.path, scratch, logDir: env.logDir,
+    commands: {setup: [["/bin/sh", "-c", 'test -n "$HTTPS_PROXY" && echo prepared > setup-ran']], egress: ["registry.npmjs.org"]}});
+  expect(readFileSync(join(checkout.path, "source.txt"), "utf8")).toBe("pinned");
+  expect(readFileSync(join(checkout.path, "setup-ran"), "utf8")).toBe("prepared\n");
+  expect(existsSync(join(scratch, "setup-home"))).toBe(false);
+  expect(readdirSync(env.logDir).sort()).toEqual([id + ".scratch-egress.log", id + ".scratch-setup-0.log"]);
 });

@@ -100,8 +100,15 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (monitor) diagnostics.push(...(await monitor.close()).map((d) => `monitor: ${d}`));
   if (status?.error) diagnostics.push(`spawn failed: ${status.error}`);
   // Anything still running in the worktree now outlived the run, wherever it sits in the process tree.
-  const sweep = await sweepWorktree(worktree, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
-  const { noKnownSurvivors, quarantineReasons } = assessCleanup(unverified, sweep);
+  const sweepRoots = skill ? [skill.dirs.root, ...(skill.dirs.role === "builder" ? [worktree] : [])] : [worktree];
+  const quarantineReasons: string[] = [];
+  let noKnownSurvivors = true;
+  for (const root of sweepRoots) {
+    const sweep = await sweepWorktree(root, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
+    const verdict = assessCleanup(unverified, sweep);
+    noKnownSurvivors &&= verdict.noKnownSurvivors;
+    quarantineReasons.push(...verdict.quarantineReasons.filter(reason => !quarantineReasons.includes(reason)));
+  }
   if (skill && bundleHash) {
     try { if (bundleDigest(skill.dirs.skillsDir) !== bundleHash) throw new Error("digest mismatch"); }
     catch { quarantineReasons.push("pinned skill bundle changed during the run"); }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, realpathSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../factory.config";
@@ -7,8 +7,8 @@ import { checkAbandonedPreviews, previewId, ProjectChecks } from "../src/factory
 import { Uncertain } from "../src/factory/machine";
 import { Store } from "../src/factory/store";
 import { verifyPilot } from "../src/factory/verify";
-import { outputDigest } from "../src/dispatch/output";
-import { dispatchWorker } from "../src/factory/worker";
+import { collectOutputs, outputDigest } from "../src/dispatch/output";
+import { dispatchWorker, workerFailure } from "../src/factory/worker";
 
 function triageOutput(id: string, base: string, session: string) {
   return { attempt: id, role: "triage", round: 1, base, head: base, bundleHash: "a".repeat(64),
@@ -91,3 +91,29 @@ test("a live launcher can take longer than five seconds to claim its attempt", a
     rmSync(root, { recursive: true, force: true });
   }
 }, 15_000);
+
+test("post-submission byte mismatch survives the supervisor receipt without a ledger or verdict", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "factory-output-receipt-")));
+  const s = new Store(":memory:");
+  try {
+    const t = s.intake({ source: "github", repoId: 1, issueId: 2, number: 4, title: "repro", body: "", sender: config.ownerId, revision: "r", url: "fixture" }, "a".repeat(40));
+    const a = s.plan(t, "code-review", {});
+    const dir = join(root, "jobs", a.id), outDir = join(dir, "out"), path = "verdict.json";
+    mkdirSync(outDir, {recursive: true});
+    const author = {sessionId: "review-session", role: "code-reviewer"};
+    const identity = {taskId: String(t.id), attemptId: a.id};
+    writeFileSync(join(outDir, path), "other bytes");
+    const outputIdentity = lstatSync(outDir, {bigint: true});
+    try {
+      collectOutputs({outDir, outputIdentity}, identity, new Map([[path,author]]),
+        [{...author,...identity,path,sha256: outputDigest(Buffer.from("submitted bytes"))}]);
+      throw new Error("collector accepted a mismatch");
+    } catch (error) {
+      writeFileSync(join(dir, "result.json"), JSON.stringify(workerFailure(error)));
+    }
+    await expect(dispatchWorker(s,t,a,"reviewer","{}",() => {},root)).rejects.toThrow("skill output integrity escalation: output bytes changed");
+    expect(s.db.query("SELECT attempt FROM skill_collections").all()).toEqual([]);
+    expect(s.db.query("SELECT attempt FROM audit").all()).toEqual([]);
+    expect(s.db.query("SELECT id FROM approvals").all()).toEqual([]);
+  } finally { s.db.close(); rmSync(root, {recursive: true, force: true}); }
+});

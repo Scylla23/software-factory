@@ -108,6 +108,7 @@ try {
   if (scenario === "feedback-store") s.db.exec("CREATE TRIGGER bad_feedback BEFORE INSERT ON owner_feedback BEGIN SELECT RAISE(ABORT, 'fixture write refused'); END;");
   const final = await runStages(s, initial, {
     git, stateRoot: root, observe: () => {},
+    ...(scenario.startsWith("eligible-") ? {authorizeTeam: () => {}} : {}),
     dispatch: async (_s, t, a, role, prompt) => {
       if (role === "reviewer" && scenario === "invalid-verdict") throw new InvalidSkillOutput("wrong spec digest");
       if (role === "reviewer" && scenario === "replacement") throw new Uncertain("skill output integrity escalation: output bytes changed after authenticated final write");
@@ -118,8 +119,12 @@ try {
       if (role !== "triage" && scenario === "revision" && t.state === "spec_drafting" &&
           (role !== "spec" || config.agents[role].model !== "claude-opus-5-5" || config.agents[role].effort !== "high"))
         throw Error("the spec and its revision require Opus high");
-      const teamHandoff = scenario === "tier-L" ? "tier L, members architect, infra, frontend, threat-modeler" :
-        scenario === "security-M" ? "tier M, security flag, member threat-modeler" : null;
+      const teamHandoff = a.action === "dispatch-spec-with-team" ? null : scenario.endsWith("tier-L") ? "tier L, members architect, infra, frontend, threat-modeler" :
+        scenario.endsWith("security-M") ? "tier M, security flag, member threat-modeler" : null;
+      if (a.action === "dispatch-spec-with-team") {
+        const expected = scenario === "eligible-tier-L" ? ["architect", "infra", "frontend", "threat-modeler"] : ["threat-modeler"];
+        if (JSON.stringify(JSON.parse(prompt).team) !== JSON.stringify(expected)) throw new Error("wrong fresh team");
+      }
       const body = role === "spec" ? teamHandoff ? `BLOCKED: team required, ${teamHandoff}, affects AC-1` : "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
       if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
         throw Error("reviewer did not see both reproduction results");

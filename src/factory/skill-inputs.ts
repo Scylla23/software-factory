@@ -32,13 +32,15 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
   const latest = (name: string) => all.findLast(c => c.role === name);
   const triage = latest("triage"), spec = latest("spec-lead"), build = latest("builder");
   const round = 1 + (latest(roleName)?.round ?? 0);
+  const observations = context ? JSON.parse(context) : {};
+  const {team, ...stageObservations} = observations;
   const files: Record<string, string> = {};
   const text = (path: string, value: unknown) => { files[path] = Buffer.from(JSON.stringify(value, null, 2) + "\n").toString("base64"); };
   const externalId = config.pilot.owner + "/" + config.pilot.repo + "#" + task.issue.number;
   text("task.json", { source: task.issue.source, externalId, project: config.pilot.repo, kind: "bug", title: task.issue.title,
     body: task.issue.body, attachments: [{ path: "pilot-checks.json" }], sender: String(task.issue.sender), revision: 1 });
   text("pilot-checks.json", { reproduction: { file: "repro.test.ts", criterion: "AC-1", result: "named assertion failure on base and pass on head" },
-    fixture: config.pilot.fixtures.inventory, stageObservations: context ? JSON.parse(context) : {} });
+    fixture: config.pilot.fixtures.inventory, stageObservations });
   const requireCollection = (c: Collection | undefined, name: string) => {
     if (!c || c.base !== task.base) throw new Uncertain("missing validated skill input: " + name);
     for (const f of c.files) files[f.path] = f.base64;
@@ -81,7 +83,13 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
     routing: { S: { builder: "Sol 6.2", reviewer: "Opus 5.5" }, M: { builder: "Sonnet 5.5", reviewer: "Sol 6.2" }, L: { builder: "Opus 5.5", reviewer: "Astra 6.2" } },
   };
   const triaged = role === "spec" && triage && JSON.parse(Buffer.from(files["triage.json"] ?? "", "base64").toString());
-  const members = role === "spec" && triaged ? requiredMembers(triaged.tier, triaged.riskFlags.security.value, brief.project.isNew) : [];
+  let members = role === "spec" && triaged ? requiredMembers(triaged.tier, triaged.riskFlags.security.value, brief.project.isNew) : [];
+  if (team !== undefined) {
+    if (role !== "spec" || !Array.isArray(team) ||
+        ![requiredMembers("L",false,false), requiredMembers("M",true,false)].some(allowed => JSON.stringify(allowed) === JSON.stringify(team)) ||
+        !members.every(m => team.includes(m))) throw new Uncertain("invalid team handoff");
+    members = team;
+  }
   return { role: roleName, stage, members, files, brief, inputSha: stage === "repair" || stage === "code" ? task.head : task.base };
 }
 

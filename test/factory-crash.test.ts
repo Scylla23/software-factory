@@ -165,3 +165,17 @@ for (const scenario of ["invalid-verdict", "replacement"]) test("reviewer " + sc
     } finally { s.db.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const trigger of ["tier-L", "security-M"]) test("eligible team handoff uses a fresh scoped attempt for " + trigger, async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-team-handoff-"));
+  try {
+    expect(await invoke(root, "eligible-" + trigger)).toBe(true);
+    const s = new Store(join(root, "state.sqlite"));
+    try {
+      expect(s.task(1).state).toBe("done");
+      expect(s.db.query("SELECT id FROM attempts WHERE action='dispatch-spec' AND result IS NULL").all()).toHaveLength(1);
+      expect(s.db.query("SELECT id FROM attempts WHERE action='dispatch-spec-with-team' AND result IS NOT NULL").all()).toHaveLength(1);
+      expect(s.db.query("SELECT id FROM approvals WHERE accepted=1").all()).toHaveLength(2);
+    } finally { s.db.close(); }
+  } finally { rmSync(root, {recursive: true, force: true}); }
+});
