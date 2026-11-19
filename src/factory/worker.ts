@@ -42,9 +42,9 @@ function jobDir(id: string) {
   return join(config.stateRoot, "jobs", id);
 }
 
-function changes(path: string): WorkerOutput["files"] {
+export function changes(path: string): WorkerOutput["files"] {
   const list = (...args: string[]) => runGit("/usr/bin/git", path, args).toString().split("\0").filter(Boolean);
-  if (list("diff", "--diff-filter=D", "--name-only", "-z", "HEAD").length) throw new Error("file deletion requires escalation");
+  if (list("diff", "--diff-filter=D", "--name-only", "-z", "HEAD").length) throw new Uncertain("builder deleted a tracked file");
   const paths = [
     ...new Set([...list("diff", "--name-only", "-z", "HEAD"), ...list("ls-files", "--others", "--exclude-standard", "-z")]),
   ];
@@ -105,7 +105,7 @@ async function work(id: string) {
     }
     finish({ output });
   } catch (e) {
-    finish({ error: String(e) });
+    finish({ error: String(e), escalated: e instanceof Uncertain });
   }
 }
 
@@ -162,7 +162,8 @@ export async function dispatchWorker(
     }
     await Bun.sleep(150);
   }
-  const reply: { output?: WorkerOutput; error?: string } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+  const reply: { output?: WorkerOutput; error?: string; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+  if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
   if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;
   store.db.run("INSERT OR IGNORE INTO audit VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
