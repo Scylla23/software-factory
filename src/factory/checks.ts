@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../factory.config";
 import { loadDispatchConfig } from "../dispatch";
@@ -137,7 +137,7 @@ export class ProjectChecks {
         // Read project-controlled paths only in the project sandbox. Its separate capped log contains just the report.
         const read = await p.run(["/bin/cat", report], { name: "read-junit", network: "none", timeoutMs: 5_000 });
         requireHealthyInfrastructure([commandCheck("read JUnit", read)]);
-        const xml = tail(read.logPath, 65_537);
+        const xml = read.exitCode === 0 && statSync(read.logPath).size <= 65_536 ? readFileSync(read.logPath, "utf8") : "";
         const assertion = /error: expect\(/.test(output);
         const ok = read.exitCode === 0 && junitReproduction(xml, !!baseTest) &&
           (baseTest ? result.exitCode === 1 && assertion : result.exitCode === 0);
