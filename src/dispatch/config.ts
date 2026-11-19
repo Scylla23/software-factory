@@ -10,7 +10,7 @@ import type { Harness } from "./types";
  */
 export interface DispatchConfig {
   /** Absolute, canonical paths. */
-  executables: Record<Harness | "ps" | "orca" | "git", string>;
+  executables: Record<Harness | "ps" | "orca" | "git" | "lsof", string>;
   /** Canonical account home from the user database (getpwuid), never $HOME; owner-protection paths derive from it. */
   accountHome: string;
   /** Canonical factory state dir; run logs must live under it. */
@@ -86,7 +86,7 @@ export function loadDispatchConfig(opts: LoadOptions): DispatchConfig {
   const homes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
   for (const home of Object.values(homes)) assertPrivateDir(home, stateRoot);
   return {
-    executables: { claude: find("claude", true), codex: find("codex", true), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted), git: assertTrustedExecutable("/usr/bin/git", untrusted) },
+    executables: { claude: find("claude", true), codex: find("codex", true), orca: find("orca"), ps: assertTrustedExecutable("/bin/ps", untrusted), git: assertTrustedExecutable("/usr/bin/git", untrusted), lsof: assertTrustedExecutable("/usr/sbin/lsof", untrusted) },
     accountHome,
     stateRoot,
     harnessHomes: homes,

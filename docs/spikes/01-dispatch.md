@@ -8,6 +8,7 @@ Home paths are shown as `~` and spike worktree names are shortened.
 A repair round after review changed the deny-list, process handling, executable resolution, log location, and parsing; [section 7](#7-repair-round) has what changed and its evidence, and sections 1 to 6 are updated where behavior changed.
 A second round implemented the owner's decisions on dedicated harness homes, the monitor tab, and explicit project instructions; [section 8](#8-decisions-implemented) has them and their evidence.
 A third round (repair round 2) hardened instructions, the deny-list, PATH, the monitor, and cleanup; [section 9](#9-repair-round-2) has it, and earlier sections are updated where behavior changed.
+A targeted round after that added the worktree sweep and git dir write protection; [section 10](#10-worktree-sweep-and-git-dir-writes) has it.
 
 ## Verdict
 
@@ -178,7 +179,7 @@ A process is tracked as (pid, `ps` start time) and re-verified against a fresh s
 A group member counts as ours only while the root is unreaped or if it started no later than the root's exit, because a pgid is only reused after the group empties.
 Darwin's `killpg` returns EPERM while the group holds a zombie; that is ignored for the group signal, because every member is also signalled individually.
 Residual gap: macOS has no cgroups, so a tool that calls `setsid()` and whose parent exits before the first snapshot ends up in its own session under launchd and is not found.
-Cleanup verification (section 9) has the same limit: "verified" never covers such a detached descendant (issue #3).
+The worktree sweep (section 10) finds such a process while its cwd is still inside the worktree; one that also changed its cwd out of the worktree remains undetectable (issue #3), so `noKnownSurvivors` never claims proof of absence.
 `runAgent` calls it on `AbortSignal` abort (outcome `cancelled`) and on `timeoutMs` (outcome `timed_out`).
 Evidence through the module (spike step 4):
 
@@ -543,7 +544,7 @@ Tests use an alternate state root and an alternate `HOME` with harmless files.
 - H: every `ps` call is bounded (5 seconds, then SIGKILL), and `superviseRun` races the root's exit against termination finishing, so a root that never exits returns with null exit status instead of hanging dispatch.
 - I: parser diagnostics keep the first 20 plus a count of the rest.
 - J: any Claude managed-settings source refuses dispatch (section 7).
-- K: `RunResult.cleanupVerified` is true only when the root exited and termination left no survivor and hit no error, or a root that exited by itself left no live member of its group; otherwise `quarantineWorktree` is set and a `cleanup unverified:` diagnostic says why.
+- K: `RunResult.noKnownSurvivors` (named `cleanupVerified` in this round; renamed in section 10) is true only when the root exited and termination left no survivor and hit no error, or a root that exited by itself left no live member of its group; otherwise `quarantineWorktree` is set and a `cleanup unverified:` diagnostic says why.
   A descendant that detached with `setsid()` before it was seen is outside what can be verified.
 
 ### Verification
@@ -551,8 +552,8 @@ Tests use an alternate state root and an alternate `HOME` with harmless files.
 Real runs through `runAgent`, `haiku` and `gpt-6-luna` at effort `low`, each in a fresh Orca worktree removed afterwards, with the monitor tab on for the probe:
 
 ```
-claude  probe: 23 DENIED, INDIRECT-HIDDEN, ENV-HIDDEN, NET-BLOCKED, RESULT PASS   cleanupVerified true, diagnostics []
-codex   probe: 23 DENIED, INDIRECT-HIDDEN, ENV-HIDDEN, NET-BLOCKED, RESULT PASS   cleanupVerified true, diagnostics []
+claude  probe: 23 DENIED, INDIRECT-HIDDEN, ENV-HIDDEN, NET-BLOCKED, RESULT PASS   noKnownSurvivors true, diagnostics []
+codex   probe: 23 DENIED, INDIRECT-HIDDEN, ENV-HIDDEN, NET-BLOCKED, RESULT PASS   noKnownSurvivors true, diagnostics []
 ```
 
 Codeword test with instructions from a scratch repo: the base commit had PELICAN in `AGENTS.md` and CORMORANT in `CLAUDE.md`, the working tree was then edited to ALBATROSS, and the worktree had OSPREY and HERON.
@@ -565,6 +566,28 @@ The monitor tab was listed during each run with the factory title as both `title
 `orca search --index-status` lists indexed sessions per agent but no setting for extra roots, and searches for this round's codeword prompt returned only older sessions under `~/.claude/projects` and `~/.codex/sessions`, never the factory sessions under `~/.software-factory/claude-home` or `codex-home`.
 The resume commands in section 5 do work: `claude -p --resume <runId> --tools "" --no-session-persistence` with `CLAUDE_CONFIG_DIR` set, and `codex exec resume <threadId>` with `CODEX_HOME` set, both run from a different cwd after the worktree was removed, answered PELICAN and CORMORANT from the earlier turn.
 The Codex resume appended that turn to its test session.
+
+## 10. Worktree sweep and git dir writes
+
+An owner-approved targeted round after review of section 9, one commit per item, each with tests that fail when the fix is reverted.
+
+### Worktree sweep
+
+`cleanupVerified` is renamed `noKnownSurvivors`, because no check here can prove that nothing survived.
+After the run (and after the monitor tab is closed), `sweepWorktree` looks for anything still running in the worktree, wherever it sits in the process tree:
+
+1. A full `ps` snapshot, then `/usr/sbin/lsof -w -n -P -a -u <uid> -d cwd -F pn` with `LC_ALL=C PATH=/usr/bin:/bin` and a 10 second bound, keeping the processes whose cwd is the canonical worktree or under it.
+2. `ps` runs first, so a pid that `lsof` reports can only map to an identity taken before it, and the tracker re-verifies (pid, start time) before every signal, so a pid recycled in between is never signalled.
+3. A process counts only if every ancestor up to launchd (or the factory itself) also has its cwd in the worktree: a run's leftovers are reparented to launchd, while Orca's terminal shells in the worktree and Orca's own helpers there descend from the Orca app.
+4. Everything found, and its descendants, goes through the same freeze, SIGTERM, SIGKILL escalation as a cancelled run (`terminateTree` with seeded identities and no root handle or group).
+
+Any process found, a failed or timed-out scan, and any survivor or error of that termination sets `quarantineWorktree`, with the reasons in `RunResult.quarantineReasons` and as `quarantine:` diagnostics.
+`noKnownSurvivors` is false when the scan failed or the sweep could not kill something, besides the cases of section 9.
+The sweep takes about 0.3 seconds when it finds nothing.
+
+Tests: a real detached child (Perl `fork`, `setsid`, `fork`, so it is reparented to launchd in a session and group of its own) left in the worktree by a fake CLI that then exits is found, killed, and quarantines the worktree, and a direct check shows that supervision alone reports nothing for it; one in a subdirectory of the worktree is found; a process in the worktree whose live parent is outside it (like an Orca terminal shell) is skipped; a failing `lsof` and a hanging one quarantine the worktree.
+
+A detached process that changes its cwd out of the worktree remains undetectable, as does anything it starts later from outside the worktree (issue #3).
 
 ## Proposed design changes
 
@@ -612,7 +635,7 @@ These contradict or refine [design.md](../design.md); 1, 3, and 4 are now decide
 
 ## Tests
 
-`bun test` runs 135 tests in `test/`.
+`bun test` runs 140 tests in `test/`.
 Parser tests use fixtures captured from the spike runs in `test/fixtures` (Claude stream, Codex JSONL, and a Codex session file trimmed to its metadata, turn context, and token records), with home paths and personal skill and plugin lists scrubbed and account ids replaced.
 `test/run.test.ts` drives `runAgent` and `terminateTree` against a fake CLI (`test/helpers.ts`) whose behavior is chosen by its last argument; the fake is passed through `DispatchConfig.executables`, never `PATH`.
 `test/config.test.ts` covers executable trust, harness home checks, managed settings, and log creation; `test/policy.test.ts` covers the deny-list merge for both harnesses, the Codex carve-out and hermetic flags, and the env allowlist.

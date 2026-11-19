@@ -26,6 +26,12 @@ case "$last" in
     trap 'sleep 301 & echo $! > "$arg"; exit 0' TERM
     sleep 300 &
     wait ;;
+  detach:*)
+    # A real detached child: setsid in a forked child, then fork again so it is reparented to launchd in a group
+    # and session of its own, with its cwd still the worktree; the CLI exits once the pid is written.
+    /usr/bin/perl -MPOSIX -e 'exit 0 if fork; POSIX::setsid(); exit 0 if fork; open(my $f, ">", $ARGV[0]); print $f $$; close $f; exec "/bin/sleep", "304"' "$arg"
+    while [ ! -s "$arg" ]; do sleep 0.05; done
+    cat "${fixture("claude-headless.stream.jsonl")}" ;;
   orphan:*)
     (sleep 302 & echo $! > "$arg")
     sleep 300 &
@@ -89,7 +95,7 @@ export function makeSandbox(): Sandbox {
   for (const dir of Object.values(harnessHomes)) mkdirSync(dir, { mode: 0o700 });
   const config: DispatchConfig = {
     // Fake executables come in explicitly here, never through PATH.
-    executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps", git: "/usr/bin/git" },
+    executables: { claude: join(bin, "fake-cli"), codex: join(bin, "fake-cli"), orca: join(bin, "fake-orca"), ps: "/bin/ps", git: "/usr/bin/git", lsof: "/usr/sbin/lsof" },
     accountHome: home,
     stateRoot,
     harnessHomes,

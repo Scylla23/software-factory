@@ -134,8 +134,10 @@ export function spawnAgentProcess(input: SpawnInput): AgentProcess {
 export class Tracker {
   readonly tracked = new Map<number, string>();
 
-  constructor(readonly root: Pick<AgentProcess, "pid" | "identity" | "exitedAt">) {
+  /** `seeds` are further identities to own from the start, such as processes found in the worktree after the run. */
+  constructor(readonly root: Pick<AgentProcess, "pid" | "identity" | "exitedAt">, seeds: readonly ProcIdentity[] = []) {
     if (root.identity) this.tracked.set(root.pid, root.identity.start);
+    for (const s of seeds) this.tracked.set(s.pid, s.start);
   }
 
   private matches(row: ProcRow | undefined): row is ProcRow {
@@ -214,10 +216,10 @@ const FREEZE_ROUNDS = 5;
  * Freeze, SIGTERM, wait, SIGKILL, verify.
  * Never throws: enumeration and signalling failures land in the report, and the handle is always signalled.
  */
-export async function terminateTree(root: AgentProcess, opts: TerminateOptions): Promise<TerminationReport> {
+export async function terminateTree(root: AgentProcess, opts: TerminateOptions, seeds: readonly ProcIdentity[] = []): Promise<TerminationReport> {
   const { psPath, graceMs = 5_000, killWaitMs = 2_000, psTimeoutMs = PS_TIMEOUT_MS } = opts;
   const errors: string[] = [];
-  const tracker = new Tracker(root);
+  const tracker = new Tracker(root, seeds);
 
   const discover = (): { snap: Snapshot; added: number } | null => {
     try {
@@ -334,11 +336,113 @@ export function verifyGone(root: AgentProcess, status: ExitStatus | null, cleanu
   }
 }
 
+/** Bound on one `lsof` call; it answers in well under a second for one user's processes. */
+export const LSOF_TIMEOUT_MS = 10_000;
+
+export interface SweepOptions extends TerminateOptions {
+  lsofPath: string;
+  lsofTimeoutMs?: number;
+}
+
+export interface SweepResult {
+  /** Processes found running in the worktree after the run, which the sweep then terminated. */
+  found: ProcIdentity[];
+  /** Set when anything was found. */
+  cleanup: TerminationReport | null;
+  /** Set when the scan itself failed or timed out, so nothing is known about what is left. */
+  scanError: string | null;
+}
+
+
+/**
+ * The user's processes whose cwd is inside the worktree, as (pid, start time) identities.
+ * `ps` runs before `lsof`, so a pid that lsof sees in the worktree can only map to an identity the tracker re-verifies
+ * before every signal, never to a process that took the pid later.
+ * A process counts only if every ancestor up to launchd (or this factory) is itself in the worktree: Orca's terminal
+ * shells and Orca's own helpers there descend from the Orca app, and a run's leftovers are reparented to launchd.
+ * A detached process that changed its cwd out of the worktree is not found (issue #3).
+ */
+export function scanWorktree(worktree: string, opts: SweepOptions): ProcIdentity[] {
+  const snap = snapshot(opts.psPath, undefined, opts.psTimeoutMs);
+  const timeoutMs = opts.lsofTimeoutMs ?? LSOF_TIMEOUT_MS;
+  const r = Bun.spawnSync([opts.lsofPath, "-w", "-n", "-P", "-a", "-u", String(process.getuid!()), "-d", "cwd", "-F", "pn"], {
+    env: { LC_ALL: "C", PATH: "/usr/bin:/bin" },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+  });
+  if (r.exitedDueToTimeout) throw new Error(`lsof gave no answer within ${timeoutMs}ms`);
+  if (r.exitCode !== 0) throw new Error(`lsof exited ${r.exitCode}: ${r.stderr.toString().trim().slice(0, 200)}`);
+  const inWorktree = new Set<number>();
+  let pid = 0;
+  for (const line of r.stdout.toString().split("\n")) {
+    if (line.startsWith("p")) pid = Number(line.slice(1));
+    else if (line.startsWith("n") && pid > 0 && isUnderPath(line.slice(1), worktree)) inWorktree.add(pid);
+  }
+  inWorktree.delete(process.pid);
+  const tops = new Set([1, process.pid]);
+  const found: ProcIdentity[] = [];
+  for (const p of inWorktree) {
+    const row = snap.get(p);
+    if (!row || row.zombie) continue; // started after the snapshot, or already gone
+    let ok = true;
+    for (let cur = row, steps = 0; !tops.has(cur.ppid); steps++) {
+      const parent = snap.get(cur.ppid);
+      if (!parent || !inWorktree.has(parent.pid) || steps > 1_000) {
+        ok = false;
+        break;
+      }
+      cur = parent;
+    }
+    if (ok) found.push({ pid: row.pid, start: row.start });
+  }
+  return found;
+}
+
+/** Finds what the run left running in the worktree and terminates it with the same escalation as a cancelled run. */
+export async function sweepWorktree(worktree: string, opts: SweepOptions): Promise<SweepResult> {
+  let found: ProcIdentity[];
+  try {
+    found = scanWorktree(worktree, opts);
+  } catch (err) {
+    return { found: [], cleanup: null, scanError: (err as Error).message };
+  }
+  if (found.length === 0) return { found, cleanup: null, scanError: null };
+  // No root here: a stand-in with no handle and no group (pid -1, never signalled) that counts as exited once every
+  // found process is gone, so termination's waits end early.
+  let done = false;
+  const allGone = (async () => {
+    while (!done) {
+      try {
+        const snap = snapshot(opts.psPath, found.map((p) => p.pid), opts.psTimeoutMs);
+        if (found.every((p) => { const row = snap.get(p.pid); return !row || row.zombie || row.start !== p.start; })) break;
+      } catch {
+        // termination reports snapshot failures itself
+      }
+      await Bun.sleep(50);
+    }
+    return { code: null, signal: null, error: null };
+  })();
+  const standIn: AgentProcess = { pid: -1, identity: null, exited: allGone, exitedAt: () => 0, kill: () => {} };
+  try {
+    return { found, cleanup: await terminateTree(standIn, opts, found), scanError: null };
+  } finally {
+    done = true;
+  }
+}
+
+function isUnderPath(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
 /**
  * Darwin's killpg can fail with EPERM while the group holds a zombie.
  * Every member is also signalled one by one, where a real EPERM is reported, so EPERM here is not an error.
  */
 function signalGroup(pgid: number, sig: NodeJS.Signals, errors: string[]): void {
+  if (pgid <= 1) return; // kill(-1) would signal every process of the user
   try {
     process.kill(-pgid, sig);
   } catch (err) {
