@@ -31,5 +31,6 @@
   ["usage/sessions", "usage", "Claude rejects a reported session", "session !== run.runId", "false"],
   ["usage/sessions", "usage", "Claude excludes synthetic", "model === \"<synthetic>\"", "false"],
   ["usage/sessions", "usage", "Claude refuses a hardlinked child", "if (!safeFile(path)) continue;", ""],
-  ["usage/sessions", "usage", "Claude ignores the entire child", " || !safeFile(paths[0]!)", ""]
+  ["usage/sessions", "usage", "Claude ignores the entire child", " || !safeFile(paths[0]!)", ""],
+  ["usage/sessions", "usage", "live Haiku child", "if (child && lines.has(id) && !localIds.has(id)) continue;", ""]
 ]

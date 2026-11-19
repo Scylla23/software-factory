@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { appendFileSync, linkSync, renameSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, linkSync, renameSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { config } from "../factory.config";
@@ -242,4 +242,25 @@ test("Claude ignores the entire child directory when its root transcript is untr
   writeFileSync(child,JSON.stringify({ ...JSON.parse(readFileSync(path,"utf8")), isSidechain:true, agentId:"child" }));
   linkSync(path,join(root,"elsewhere.jsonl"));
   expect((await captureRun(run,root)).capture.lines).toEqual([]);
+});
+
+test("live Haiku child and parent reconcile to the provider total and copied parent IDs remain single charges", async () => {
+  const src = join(import.meta.dir, "fixtures/usage/claude-native-child");
+  const result = await parseClaudeStream(readJsonl(join(src, "result.jsonl")));
+  const session = result.sessionId!;
+  const project = join(root, "claude-home/projects/fixture");
+  mkdirSync(project,{ recursive:true, mode:0o700 });
+  cpSync(src,project,{ recursive:true });
+  const run: RunUsage = { harness:"claude", runId:session, sessionId:session, requestedModel:"haiku", observedModel:null, usage:null, outcome:"cancelled" };
+  const read = () => captureRun(run, root);
+  const initial = await read();
+  const totals = initial.capture.lines.reduce((a,l) => [a[0]! + l.input,a[1]! + l.cacheRead,a[2]! + l.cacheWrite!,a[3]! + l.output], [0,0,0,0]);
+  expect(totals).toEqual([6,2966,4806,209]);
+  expect(initial.capture.lines).toHaveLength(3);
+  expect(initial.capture.costUsd).toBeCloseTo(result.usage!.totalCostUsd!,12);
+  const parent = JSON.parse(readFileSync(join(project,session + ".jsonl"),"utf8").split("\n")[0]!);
+  const agentId = "a9fc78e873b88a229";
+  parent.message.usage.output_tokens += 200;
+  appendFileSync(join(project,session,"subagents","agent-" + agentId + ".jsonl"),JSON.stringify({ ...parent, isSidechain:true, agentId }));
+  expect(await read()).toEqual(initial);
 });
