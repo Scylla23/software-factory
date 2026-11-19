@@ -1,3 +1,7 @@
+import Ajv2020 from "ajv/dist/2020";
+import verdictSchema from "../skills/_shared/verdict.schema.json";
+import reviewChanges from "../skills/builder/evals/fixtures/sort-skips-ac3-review.json";
+import mutations from "../skills/_shared/evals/mutations.json";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -90,4 +94,25 @@ test("review baseline and disposable checkout have independent files, git histor
   expect(runGit("/usr/bin/git", attempt.worktree, ["show", "HEAD:example"]).toString()).toBe("committed");
   expect(runGit("/usr/bin/git", attempt.scratchRepo!, ["diff"]).toString()).toContain("changed in scratch");
   expect(() => checkoutSnapshot("/usr/bin/git", repo, sha, attempt.worktree)).toThrow("empty");
+});
+
+test("collector rejects the other schema-valid verdict for the same task and head", () => {
+  const ajv = new Ajv2020({ strictTypes: false, allowUnionTypes: true });
+  const validate = ajv.compile(verdictSchema);
+  const attempt = create();
+  mkdirSync(join(attempt.outDir, "verdicts"));
+  const bytes = (document: unknown) => Buffer.from(JSON.stringify(document) + "\n", "utf8");
+  const authentic = bytes(reviewChanges);
+  const replacement = bytes(mutations.bases["review-approve"].inline);
+  expect(reviewChanges.taskId).toBe(mutations.bases["review-approve"].inline.taskId);
+  expect(reviewChanges.covers).toEqual(mutations.bases["review-approve"].inline.covers);
+  expect([reviewChanges.verdict, mutations.bases["review-approve"].inline.verdict]).toEqual(["changes", "approve"]);
+  expect(validate(JSON.parse(authentic.toString()))).toBe(true);
+  expect(validate(JSON.parse(replacement.toString()))).toBe(true);
+  const receipt = { ...record, taskId: reviewChanges.taskId, sha256: outputDigest(authentic) };
+  const capture = () => collectOutputs(attempt, { ...identity, taskId: reviewChanges.taskId }, expected, [receipt]);
+  writeFileSync(join(attempt.outDir, path), authentic);
+  expect(capture().get(path)).toEqual(authentic);
+  writeFileSync(join(attempt.outDir, path), replacement);
+  expect(capture).toThrow("output bytes changed after authenticated final write");
 });
