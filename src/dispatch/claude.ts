@@ -14,11 +14,13 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
  */
 export function claudeSettings(policy: SandboxPolicy): object {
   const denyRead = [...policy.denyRead];
-  const denyWrite = [...policy.denyWrite];
+  const denyWrite = [...new Set([...policy.denyWrite, ...(policy.writable ? policy.readable.filter(p => !policy.writable!.includes(p)) : [])])];
   const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
   return {
     permissions: {
-      allow: [...CLAUDE_BUILDER_TOOLS],
+      allow: policy.writable
+        ? ["Read", "Glob", "Grep", "Bash", ...policy.writable.flatMap(p => [...rules("Write", p), ...rules("Edit", p)])]
+        : [...CLAUDE_BUILDER_TOOLS],
       deny: [
         "WebFetch",
         "WebSearch",
@@ -34,7 +36,9 @@ export function claudeSettings(policy: SandboxPolicy): object {
       allowUnsandboxedCommands: false,
       network: { allowedDomains: [] },
       // Claude's sandbox makes a linked worktree's shared git dir writable for Bash; denyWrite takes it back.
-      filesystem: { denyRead, denyWrite },
+      filesystem: policy.writable
+        ? { denyRead: ["/", ...denyRead], allowRead: [...policy.readable, ...policy.writable], denyWrite, allowWrite: policy.writable }
+        : { denyRead, denyWrite },
     },
   };
 }
@@ -55,6 +59,8 @@ export interface ClaudeCommandInput {
    * `--restricted` already stops Claude from loading the worktree's CLAUDE.md on its own.
    */
   instructionsFile?: string | null;
+  /** Factory-selected attempt directories, excluding the definitions and the run root. */
+  directories?: readonly string[];
 }
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
@@ -74,6 +80,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
     "--settings", JSON.stringify(claudeSettings(input.policy)),
+    ...(input.directories ?? []).flatMap(p => ["--add-dir", p]),
     ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",
     input.prompt,

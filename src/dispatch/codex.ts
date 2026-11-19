@@ -39,11 +39,13 @@ export function codexConfigArgs(policy: SandboxPolicy): string[] {
   // A write-denied path that is also read-denied stays "none"; anything else would be a duplicate key.
   const readOnly = [...policy.readable, ...policy.denyWrite.filter((p) => !policy.denyRead.includes(p) && !policy.readable.includes(p))];
   const filesystem = [
+    ...(policy.writable ? ['":root"="none"', '":minimal"="read"'] : []),
+    ...(policy.writable ?? []).map((p) => `${tomlString(p)}="write"`),
     ...policy.denyRead.map((p) => `${tomlString(p)}="none"`),
-    ...readOnly.map((p) => `${tomlString(p)}="read"`),
+    ...readOnly.filter(p => !policy.writable?.includes(p)).map((p) => `${tomlString(p)}="read"`),
   ].join(",");
   return [
-    "-c", `permissions={${PROFILE}={extends=":workspace", filesystem={${filesystem}}}}`,
+    "-c", `permissions={${PROFILE}={${policy.writable ? "" : 'extends=":workspace", '}filesystem={${filesystem}}}}`,
     "-c", `default_permissions="${PROFILE}"`,
     "-c", `shell_environment_policy.inherit="core"`,
     "-c", "allow_login_shell=false",
@@ -57,6 +59,7 @@ export function codexConfigArgs(policy: SandboxPolicy): string[] {
  * and the hosted `web__run` tool, which the sandbox's network block does not cover.
  */
 export const CODEX_HERMETIC_CONFIG: readonly string[] = [
+  "agents.enabled=false",
   `web_search="disabled"`,
   // No skill listing at all: the owner's ~/.agents/skills, plugin skills, and the bundled system skills.
   "skills.include_instructions=false",
