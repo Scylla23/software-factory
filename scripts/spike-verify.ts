@@ -22,6 +22,7 @@ import { orcaJson } from "../src/orca/cli";
 import { captureEvidence, createVerificationProfile, deleteVerificationProfile, githubSession, withVerificationTab } from "../src/verify/browser";
 import { type EvidenceRecord, VIEWPORTS } from "../src/verify/evidence";
 import { loadVerifyConfig, type Preview, type ProjectCommands, startPreview } from "../src/verify/preview";
+import { REGISTRY_HOSTS } from "../src/verify/proxy";
 
 const [before, after, prArg] = process.argv.slice(2);
 if (!before || !after || !prArg) throw new Error("usage: spike-verify.ts <before sha> <after sha> <pr number>");
@@ -45,6 +46,7 @@ const log = (...parts: unknown[]) => console.log(...parts.map((p) => (typeof p =
 
 const project: ProjectCommands = {
   setup: [["bun", "install", "--frozen-lockfile"]],
+  egress: REGISTRY_HOSTS.npm,
   preview: ["bun", "server.ts"],
   readyPath: "/health",
   portRange: [4100, 4199],
@@ -67,18 +69,18 @@ async function preview(sha: string, taskKey: string): Promise<Preview> {
 }
 
 async function probes(p: Preview): Promise<void> {
-  const sh = (name: string, network: "none" | "outbound" | "serve", script: string) => p.run(["/bin/sh", "-c", script], { network, name, timeoutMs: 120_000 });
+  const sh = (name: string, network: "none" | "serve", script: string) => p.run(["/bin/sh", "-c", script], { network, name, timeoutMs: 120_000 });
   const show = async (label: string, r: Awaited<ReturnType<typeof sh>>) => {
     log(`--- ${label}: exit ${r.exitCode}, quarantine ${JSON.stringify(r.quarantineReasons)}`);
     console.log(readFileSync(r.logPath, "utf8").trimEnd());
   };
   await show("canary probe, preview profile", await sh("probe-canary-serve", "serve", `HOME=${HOME} sh ${FACTORY}/scripts/canary-probe.sh; echo EXIT=$?`));
-  await show("canary probe, setup profile", await sh("probe-canary-setup", "outbound", `HOME=${HOME} sh ${FACTORY}/scripts/canary-probe.sh 2>&1 | grep -cE '^DENIED' | sed 's/^/DENIED-COUNT /'; HOME=${HOME} sh ${FACTORY}/scripts/canary-probe.sh 2>&1 | grep -E 'READABLE|MISSING|INDIRECT|NET-|RESULT|ENV-'`));
+  await show("canary probe, no-network profile", await sh("probe-canary-setup", "none", `HOME=${HOME} sh ${FACTORY}/scripts/canary-probe.sh 2>&1 | grep -cE '^DENIED' | sed 's/^/DENIED-COUNT /'; HOME=${HOME} sh ${FACTORY}/scripts/canary-probe.sh 2>&1 | grep -E 'READABLE|MISSING|INDIRECT|NET-|RESULT|ENV-'`));
   await show("git-write probe, preview profile", await sh("probe-git-serve", "serve", `sh ${FACTORY}/scripts/git-write-probe.sh 2>&1 | grep -v '^xcrun\\|confstr'; echo EXIT=$?`));
   await show("keychain, preview profile", await sh("probe-keychain", "serve", `/usr/bin/security find-generic-password -s software-factory.github-app.pem >/dev/null 2>&1; echo KEYCHAIN-RC=$?`));
   const outbound = `curl -sS -m 8 -o /dev/null -w 'HTTPS %{http_code}\\n' https://registry.npmjs.org/ 2>&1 | tail -1; curl -sS -m 3 -o /dev/null -w 'LOOPBACK-SELF %{http_code}\\n' ${p.origin}/health 2>&1 | tail -1`;
   await show("network, preview profile (serve)", await sh("probe-net-serve", "serve", outbound));
-  await show("network, setup profile (outbound)", await sh("probe-net-setup", "outbound", outbound));
+  await show("network, no-network profile", await sh("probe-net-setup", "none", outbound));
 }
 
 let profileId: string | null = null;

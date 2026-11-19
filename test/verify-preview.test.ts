@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, startPreview, toolchainRoots } from "../src/verify/preview";
 import { gone } from "./helpers";
-import { BUN_DIR, makeRepo, makeVerifyEnv, serverSource, type VerifyEnv } from "./verify-helpers";
+import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, type VerifyEnv } from "./verify-helpers";
 
 let env: VerifyEnv;
 let started: Preview[] = [];
@@ -24,7 +24,7 @@ function spec(repo: string, sha: string, extra: Partial<PreviewSpec["project"]> 
     sha,
     previewRoot: env.previewRoot,
     logDir: env.logDir,
-    project: { setup: [["/bin/sh", "-c", "echo set-up > setup-ran"]], preview: ["bun", "server.ts"], readyPath: "/health", portRange: [41000, 41999], ...extra },
+    project: { setup: [["/bin/sh", "-c", "echo set-up > setup-ran"]], egress: ["registry.npmjs.org"], preview: ["bun", "server.ts"], readyPath: "/health", portRange: [41000, 41999], ...extra },
     setupTimeoutMs: 20_000,
     readyTimeoutMs: 3_000,
     maxLifetimeMs: 60_000,
@@ -78,7 +78,7 @@ describe("startPreview", () => {
     expect(existsSync(p.worktree)).toBe(false);
     expect(existsSync(p.home)).toBe(false);
     expect(await p.stop()).toBe(report);
-    expect(readdirSync(env.logDir).sort()).toEqual([`${p.id}.preview.log`, `${p.id}.setup-0.log`]);
+    expect(readdirSync(env.logDir).sort()).toEqual([`${p.id}.egress.log`, `${p.id}.preview.log`, `${p.id}.setup-0.log`]);
   });
 
   test("a command beside the running preview cannot read denied files or the factory's env, and leaves the preview up", async () => {
@@ -109,6 +109,51 @@ describe("startPreview", () => {
     expect(leftovers.length).toBe(1);
     expect(await allGone(leftovers)).toBe(true);
     expect(await (await fetch(`${p.origin}/`)).text()).toBe("up");
+  });
+
+  test("setup egress dies with the phase: a detached setup child that escaped the sweeps loses the proxy when setup ends", async () => {
+    // The leaker moves to / at once, so no sweep finds it by its working directory (the documented blind spot), and
+    // keeps asking the proxy for a host outside the allowlist, logging the CONNECT status it gets.
+    const leak = `cd / || exit 1; echo $$ > "$HOME/leak.pid"; i=0; while [ $i -lt 150 ]; do
+  c=$(/usr/bin/curl -s -m 2 -o /dev/null -w '%{http_connect}' -p -x "$HTTPS_PROXY" http://denied.example:443/); echo "$c" >> "$HOME/leak.log"; i=$((i+1)); sleep 0.1; done`;
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up"), "leak.sh": leak }]);
+    const setup = [["/bin/sh", "-c", `/usr/bin/perl -MPOSIX -e 'exit 0 if fork; POSIX::setsid(); exit 0 if fork; exec "/bin/sh", "leak.sh"'; sleep 1`]];
+    const p = await start(spec(repo.path, repo.shas[0]!, { setup }));
+    const logPath = join(p.home, "leak.log");
+    const codes = () => (existsSync(logPath) ? readFileSync(logPath, "utf8").trim().split("\n") : []);
+    // A curl can also time out (000) while the factory's event loop is briefly busy, so judge a whole window after the
+    // phase ended: every attempt in it must fail, where a proxy still alive would answer 403 again.
+    const atPhaseEnd = codes().length;
+    await Bun.sleep(1_500);
+    const pid = Number(readFileSync(join(p.home, "leak.pid"), "utf8"));
+    process.kill(pid, "SIGKILL");
+    const seen = codes();
+    const after = seen.slice(atPhaseEnd);
+    expect(seen[0]).toBe("403"); // during setup: the proxy answers, and refuses the host
+    expect(after.length).toBeGreaterThanOrEqual(3);
+    expect(after).toEqual(after.map(() => "000")); // after setup: nothing listens; the profile allows no other destination
+    expect(readFileSync(p.logs.find((l) => l.endsWith(".egress.log"))!, "utf8")).toContain("DENY denied.example:443 host not in the allowlist");
+  });
+
+  test("the preview may call itself on its port, but no other loopback service and nothing outbound", async () => {
+    const owner = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("owner-service") });
+    try {
+      const repo = makeRepo(env.repos, "app", [{ "server.ts": probingServerSource(owner.port!) }]);
+      const p = await start(spec(repo.path, repo.shas[0]!));
+      const get = async (path: string) => (await bounded(`${p.origin}${path}`)).text();
+      expect(await get("/self")).toBe("self:api");
+      expect(await get("/lateral")).toBe("lateral:DENIED");
+      expect(await get("/out")).toBe("out:DENIED");
+    } finally {
+      owner.stop(true);
+    }
+  });
+
+  test("a command beside the preview can never get egress", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    await expect(p.run(["/usr/bin/true"], { network: "proxy" as never, name: "sneaky", timeoutMs: 5_000 })).rejects.toThrow("may not have network");
+    await expect(p.run(["/usr/bin/true"], { network: "outbound" as never, name: "sneaky", timeoutMs: 5_000 })).rejects.toThrow("may not have network");
   });
 
   test("a failing setup command stops everything and removes the worktree", async () => {

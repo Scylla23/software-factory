@@ -1,7 +1,7 @@
 /**
  * The sandbox for project commands (setup, preview, and later test, lint, and typecheck): a Seatbelt profile the factory
  * writes itself and applies with `/usr/bin/sandbox-exec`, chosen over `codex sandbox` and Claude's sandbox runtime in
- * spike 02 because it is the only one that lets a preview bind its own port while making no outbound connection at all.
+ * spike 02 because it is the only one that lets a preview bind its own port while connecting nowhere but to itself.
  *
  * Closed by default. Reads only in the readable roots (the project, its private home, its git dirs, the toolchain) and
  * the system list below, with the dispatch deny-list applied again on top; writes only in the writable roots, never in
@@ -38,7 +38,11 @@ export const SYSTEM_READ = [
 /** Device files every command may read and write. */
 const DEVICES = ["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/dtracehelper"];
 
-export type NetworkMode = { kind: "none" } | { kind: "outbound" } | { kind: "serve"; port: number };
+/**
+ * none: no network. proxy: outbound only to the factory's egress proxy on that loopback port (setup). serve: bind and
+ * accept on the preview's loopback port, and connect only to that same port, so an app can call itself (preview).
+ */
+export type NetworkMode = { kind: "none" } | { kind: "proxy"; port: number } | { kind: "serve"; port: number };
 
 export interface ProjectSandbox {
   /** Canonical roots the command may read besides the writable roots and SYSTEM_READ: git dirs and the toolchain. */
@@ -141,21 +145,16 @@ function networkRules(n: NetworkMode): string[] {
   switch (n.kind) {
     case "none":
       return [];
-    case "outbound":
-      // IP connections and the system DNS socket only: a bare `network-outbound` would also open every unix socket
-      // (ssh-agent, Docker, the Orca runtime), which reaches outside the sandbox. Loopback is denied too, so an install
-      // script cannot talk to the owner's local servers.
-      return [
-        "(allow system-socket)",
-        `(allow network-outbound (remote ip) (literal "/private/var/run/mDNSResponder"))`,
-        `(deny network-outbound (remote ip "localhost:*"))`,
-      ];
+    case "proxy":
+      assertPort(n.port);
+      // No DNS, no unix sockets, no other port: the proxy resolves names and decides which hosts are reachable.
+      return ["(allow system-socket)", `(allow network-outbound (remote ip "localhost:${n.port}"))`];
     case "serve":
       assertPort(n.port);
-      // Bind and accept on this loopback port only; no outbound connection, not even to another local port.
       return [
         "(allow system-socket)",
         `(allow network-bind network-inbound (local ip "localhost:${n.port}"))`,
+        `(allow network-outbound (remote ip "localhost:${n.port}"))`,
       ];
   }
 }
@@ -167,8 +166,8 @@ export function sandboxArgv(sandboxExec: string, s: ProjectSandbox, command: rea
   return [sandboxExec, "-p", profile, ...params, "--", ...command];
 }
 
-/** Names a project may set in its declared env; the factory's own variables can never be overridden. */
-const RESERVED_ENV = new Set(["HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "PORT", "SHELL"]);
+/** Names a project may not set in its declared env; the factory's own variables can never be overridden. */
+const RESERVED_ENV = new Set(["HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "PORT", "SHELL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"]);
 
 export interface ProjectEnvInput {
   /** The preview's private home; TMPDIR is `<home>/tmp`. */
@@ -179,6 +178,8 @@ export interface ProjectEnvInput {
   /** The project's declared variables: plain values, never secrets. */
   declared?: Readonly<Record<string, string>>;
   port?: number;
+  /** The egress proxy URL of the setup phase, with its credential. */
+  proxy?: string;
 }
 
 /** The whole environment of a project command; nothing is inherited from the factory. */
@@ -200,6 +201,11 @@ export function projectEnv(input: ProjectEnvInput): Record<string, string> {
   if (input.port !== undefined) {
     assertPort(input.port);
     env.PORT = String(input.port);
+  }
+  if (input.proxy !== undefined) {
+    if (!/^http:\/\/factory:[0-9a-f]+@127\.0\.0\.1:\d+$/.test(input.proxy)) throw new Error("proxy must be the factory egress proxy URL");
+    // Both spellings: curl and pip read the lowercase names, Bun and npm the uppercase ones.
+    for (const k of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]) env[k] = input.proxy;
   }
   return env;
 }

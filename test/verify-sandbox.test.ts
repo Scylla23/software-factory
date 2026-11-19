@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { startEgressProxy } from "../src/verify/proxy";
 import { canonicalRoots, type NetworkMode, projectEnv, type ProjectSandbox, sandboxArgv, sandboxProfile } from "../src/verify/sandbox";
 import { BUN_DIR } from "./verify-helpers";
 
@@ -122,26 +123,53 @@ function ownerService(): { port: number; stop: () => void } {
   return { port: s.port!, stop: () => s.stop(true) };
 }
 
-describe("network", () => {
-  const curl = (url: string) => `/usr/bin/curl -sS -m 3 -o /dev/null -w '%{http_code}' ${url} 2>/dev/null; echo`;
+/** Like `run`, without blocking the event loop, for commands that talk to a server in this test process. */
+async function runAsync(p: ProjectSandbox, script: string, env: Record<string, string> = { PATH: `${BUN_DIR}:/usr/bin:/bin` }): Promise<string> {
+  const proc = Bun.spawn(sandboxArgv("/usr/bin/sandbox-exec", p, ["/bin/sh", "-c", script]), { env, cwd: writable, stdout: "pipe", stderr: "ignore" });
+  const timer = setTimeout(() => proc.kill("SIGKILL"), 20_000);
+  const out = await new Response(proc.stdout).text();
+  await proc.exited;
+  clearTimeout(timer);
+  return out;
+}
 
-  test("serve: binds and accepts on its own port only, with no outbound connection even to loopback", async () => {
+describe("network", () => {
+  const curl = (url: string, extra = "") => `/usr/bin/curl -sS -m 3 ${extra} -o /dev/null -w '%{http_code}' ${url} 2>/dev/null; echo`;
+  const connect = (path: string) => `${process.execPath} -e 'try { await Bun.connect({unix:"${path}",socket:{data(){}}}); console.log("UNIX-OPEN") } catch { console.log("UNIX-DENIED") } process.exit(0)'`;
+
+  test("serve: binds its own port and may call itself, but no other port, no other loopback service, and no outbound", async () => {
     const owner = ownerService();
     const port = 20_000 + Math.floor(Math.random() * 20_000);
+    const app = `const tryFetch = (u) => fetch(u, { signal: AbortSignal.timeout(3000) }).then((r) => r.text(), () => "DENIED");
+Bun.serve({ hostname: "127.0.0.1", port: ${port}, async fetch(req) {
+  const path = new URL(req.url).pathname;
+  if (path === "/api") return new Response("api");
+  if (path === "/self") return new Response("self:" + await tryFetch("http://127.0.0.1:${port}/api"));
+  if (path === "/lateral") return new Response("lateral:" + await tryFetch("http://127.0.0.1:${owner.port}/"));
+  if (path === "/out") return new Response("out:" + await tryFetch("http://1.1.1.1/"));
+  return new Response("in-sandbox");
+} });
+setTimeout(() => process.exit(0), 15000);`;
+    writeFileSync(join(writable, "app.js"), app);
+    const p = policy({ kind: "serve", port });
+    const proc = Bun.spawn(sandboxArgv("/usr/bin/sandbox-exec", p, [process.execPath, "app.js"]), { env: { PATH: "/usr/bin:/bin" }, cwd: writable, stdout: "ignore", stderr: "ignore" });
     try {
-      const p = policy({ kind: "serve", port });
-      const proc = Bun.spawn(sandboxArgv("/usr/bin/sandbox-exec", p, [process.execPath, "-e", `Bun.serve({hostname:"127.0.0.1",port:${port},fetch:()=>new Response("in-sandbox")}); setTimeout(()=>process.exit(0), 8000)`]), { env: { PATH: "/usr/bin:/bin" }, cwd: writable, stdout: "ignore", stderr: "pipe" });
+      const get = (path: string) => fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.text(), () => "");
       let body = "";
       for (let i = 0; i < 50 && body !== "in-sandbox"; i++) {
         await Bun.sleep(100);
-        body = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.text(), () => "");
+        body = await get("/");
       }
-      proc.kill();
       expect(body).toBe("in-sandbox");
+      expect(await get("/self")).toBe("self:api");
+      expect(await get("/lateral")).toBe("lateral:DENIED");
+      expect(await get("/out")).toBe("out:DENIED");
       expect(run(p, curl(`http://127.0.0.1:${owner.port}/`))).toBe("000\n");
-      const other = run(p, `${process.execPath} -e 'try { Bun.serve({hostname:"127.0.0.1",port:${port + 1},fetch:()=>new Response("")}); console.log("BOUND") } catch (e) { console.log("BIND-DENIED") }'`);
+      expect(run(p, connect(DNS_SOCKET)).trim()).toBe("UNIX-DENIED");
+      const other = run(p, `${process.execPath} -e 'try { Bun.serve({hostname:"127.0.0.1",port:${port + 1},fetch:()=>new Response("")}); console.log("BOUND") } catch (e) { console.log("BIND-DENIED") }; process.exit(0)'`);
       expect(other.trim()).toBe("BIND-DENIED");
     } finally {
+      proc.kill("SIGKILL");
       owner.stop();
     }
   });
@@ -155,22 +183,29 @@ describe("network", () => {
     }
   });
 
-  test("outbound: no loopback and no unix sockets (ssh-agent, Docker, Orca), but the DNS socket stays open", async () => {
+  test("proxy: reaches allowlisted hosts through the factory proxy only; no direct connection, DNS, or unix socket", async () => {
     const owner = ownerService();
+    const registry = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("registry") });
+    const logFd = openSync(join(dir, "egress.log"), "wx", 0o600);
+    const proxy = startEgressProxy({ allow: ["registry.test"], logFd, upstream: async () => ({ address: "127.0.0.1", port: registry.port! }) });
     const sock = `/tmp/vsock-${process.pid}`;
     const listener = Bun.listen({ unix: sock, socket: { data() {} } });
     try {
-      const p = policy({ kind: "outbound" });
-      expect(run(p, curl(`http://127.0.0.1:${owner.port}/`))).toBe("000\n");
-      expect(run(p, curl(`http://localhost:${owner.port}/`))).toBe("000\n");
-      const connect = (path: string) => `${process.execPath} -e 'try { await Bun.connect({unix:"${path}",socket:{data(){}}}); console.log("UNIX-OPEN") } catch { console.log("UNIX-DENIED") } process.exit(0)'`;
-      expect(run(p, connect(sock)).trim()).toBe("UNIX-DENIED");
-      // Name resolution goes through the system DNS socket, the one unix socket allowed; without it, installs fail.
-      expect(run(p, connect(DNS_SOCKET)).trim()).toBe("UNIX-OPEN");
-      expect(run(policy({ kind: "serve", port: 20_000 }), connect(DNS_SOCKET)).trim()).toBe("UNIX-DENIED");
+      const p = policy({ kind: "proxy", port: proxy.port });
+      expect(await runAsync(p, curl("http://registry.test:443/", `-p -x '${proxy.url}'`))).toBe("200\n");
+      expect(await runAsync(p, curl("http://evil.example:443/", `-p -x '${proxy.url}'`))).toBe("000\n");
+      expect(await runAsync(p, curl(`http://127.0.0.1:${owner.port}/`))).toBe("000\n");
+      expect(await runAsync(p, curl(`http://127.0.0.1:${registry.port}/`))).toBe("000\n");
+      expect(await runAsync(p, curl("https://1.1.1.1/"))).toBe("000\n");
+      expect((await runAsync(p, connect(sock))).trim()).toBe("UNIX-DENIED");
+      expect((await runAsync(p, connect(DNS_SOCKET))).trim()).toBe("UNIX-DENIED");
+      expect(readFileSync(join(dir, "egress.log"), "utf8")).toContain("DENY evil.example:443 host not in the allowlist");
     } finally {
+      proxy.stop();
+      closeSync(logFd);
       listener.stop(true);
       rmSync(sock, { force: true });
+      registry.stop(true);
       owner.stop();
     }
   });
@@ -190,8 +225,9 @@ describe("projectEnv", () => {
   });
 
   test("a project cannot override the factory's variables or set odd names", () => {
-    for (const k of ["HOME", "PATH", "PORT", "TMPDIR", "lower", "A B"]) {
+    for (const k of ["HOME", "PATH", "PORT", "TMPDIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "lower", "A B"]) {
       expect(() => projectEnv({ home: "/h", path: "/p", user: "u", declared: { [k]: "x" } })).toThrow("may not set");
     }
+    expect(() => projectEnv({ home: "/h", path: "/p", user: "u", proxy: "http://evil.example:8080" })).toThrow("factory egress proxy");
   });
 });

@@ -1,6 +1,6 @@
 /**
- * Preview lifecycle: materialize an exact commit, run the project's setup commands sandboxed with outbound network,
- * start its preview command sandboxed with only its own loopback port, wait until it answers, check that the listener
+ * Preview lifecycle: materialize an exact commit, run the project's setup commands sandboxed with egress only through
+ * the factory's proxy, start its preview command sandboxed with only its own loopback port, wait until it answers, check that the listener
  * is ours, and tear everything down with the same supervision and worktree sweep as an agent run.
  */
 import { closeSync, constants, mkdirSync, openSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -12,6 +12,7 @@ import { effectiveDenyRead } from "../dispatch/policy";
 import { type AgentProcess, assessCleanup, type ProcIdentity, snapshot, spawnAgentProcess, type Supervised, superviseRun, type SweepResult, sweepWorktree, type TerminationReport, Tracker } from "../dispatch/process";
 import { type Materialized, materializeCommit, removeMaterialized } from "./materialize";
 import { type PortRange, taskPort, tcpListeners } from "./port";
+import { assertEgressHosts, type EgressProxy, startEgressProxy } from "./proxy";
 import { canonicalRoots, type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv, SYSTEM_READ } from "./sandbox";
 
 /** What verification trusts, resolved once from factory-controlled sources like DispatchConfig. */
@@ -63,9 +64,11 @@ export function toolchainRoots(toolDirs: readonly string[], roots: readonly stri
 
 /** A project's declared commands; each is an argv run under the sandbox with the tool PATH, never through a shell. */
 export interface ProjectCommands {
-  /** Run in order with outbound network, before the preview starts (dependency install). */
+  /** Run in order before the preview starts (dependency install), with egress only through the factory's proxy. */
   setup: readonly (readonly string[])[];
-  /** Serves the app on `$PORT` at 127.0.0.1, with no outbound network. */
+  /** Hosts setup may reach through the proxy, on 443 only, such as REGISTRY_HOSTS.npm. */
+  egress: readonly string[];
+  /** Serves the app on `$PORT` at 127.0.0.1, and may connect to that port only. */
   preview: readonly string[];
   /** Answers 200 once the preview is ready, such as `/health`. */
   readyPath: string;
@@ -113,13 +116,16 @@ export interface Preview {
   /** ms from spawn until the ready path answered 200. */
   readyMs: number;
   /**
-   * Runs one more command in the preview's worktree under the same sandbox, with the network of the given phase
-   * (`serve` is the preview's own profile and port), such as a probe or, later, a project check.
+   * Runs one more command in the preview's worktree under the same sandbox, such as a probe or, later, a project check:
+   * with no network, or with the preview's own profile (`serve`: its loopback port only). Never with egress.
    */
-  run(argv: readonly string[], opts: { network: "none" | "outbound" | "serve"; name: string; timeoutMs: number }): Promise<CommandResult>;
+  run(argv: readonly string[], opts: { network: CheckNetwork; name: string; timeoutMs: number }): Promise<CommandResult>;
   /** Idempotent: the first call tears down, later calls return the same report. */
   stop(): Promise<TeardownReport>;
 }
+
+/** The networks a command beside the live preview may have; egress exists only in the setup phase. */
+export type CheckNetwork = "none" | "serve";
 
 export interface CommandResult {
   /** Null when it was stopped or killed by a signal. */
@@ -200,6 +206,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
   if (!UUID.test(spec.id)) throw new Error(`preview id must be a lowercase UUID: ${spec.id}`);
   if (!/^\/[A-Za-z0-9._~\/-]*$/.test(spec.project.readyPath)) throw new Error(`ready path must be a plain absolute path: ${spec.project.readyPath}`);
   if (spec.project.preview.length === 0) throw new Error("project has no preview command");
+  assertEgressHosts(spec.project.egress);
   const previewRoot = realpathSync(spec.previewRoot);
   if (isUnder(previewRoot, config.stateRoot) || isUnder(config.stateRoot, previewRoot)) throw new Error(`preview root ${previewRoot} overlaps the state root`);
   assertSafeDir(previewRoot, config.accountHome);
@@ -251,20 +258,19 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     const sandbox = (network: NetworkMode): ProjectSandbox => ({ ...base, network });
     const user = userInfo().username;
     let port: number | null = null;
-    const env = (withPort: boolean) => projectEnv({ home: base.writable[1]!, path: config.toolPath, user, declared: spec.project.env, ...(withPort && port !== null ? { port } : {}) });
+    const env = (extra: { port?: number; proxy?: string }) => projectEnv({ home: base.writable[1]!, path: config.toolPath, user, declared: spec.project.env, ...extra });
 
-    const run = async (argv: readonly string[], opts: { network: "none" | "outbound" | "serve"; name: string; timeoutMs: number }): Promise<CommandResult> => {
+    const runCommand = async (argv: readonly string[], opts: { network: NetworkMode; name: string; timeoutMs: number; proxy?: string }): Promise<CommandResult> => {
       if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(opts.name)) throw new Error(`command name must be [a-z0-9-]: ${opts.name}`);
       if (report) throw new Error("preview was stopped");
-      if (opts.network === "serve" && port === null) throw new Error("no preview port yet");
       // The sweep after the command spares the live preview by identity; without one it could not tell them apart.
       if (preview && preview.proc.exitedAt() === null && !preview.proc.identity) throw new Error("the running preview has no recorded identity, so a command beside it cannot be swept safely");
-      const network: NetworkMode = opts.network === "serve" ? { kind: "serve", port: port! } : { kind: opts.network };
       const log = openLog(config, spec.logDir, `${spec.id}.${opts.name}.log`);
       logs.push(log.path);
       let r: SandboxedRun;
       try {
-        r = spawnSandboxed(config, sandbox(network), argv, wt.path, env(opts.network === "serve"), log.fd, opts.timeoutMs);
+        const e = env({ ...(opts.network.kind === "serve" ? { port: opts.network.port } : {}), ...(opts.proxy ? { proxy: opts.proxy } : {}) });
+        r = spawnSandboxed(config, sandbox(opts.network), argv, wt.path, e, log.fd, opts.timeoutMs);
       } finally {
         closeSync(log.fd);
       }
@@ -275,11 +281,31 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       return { exitCode: s.status?.code ?? null, stopped: s.stopped, quarantineReasons: reasons, logPath: log.path };
     };
 
-    for (const [i, argv] of spec.project.setup.entries()) {
-      const r = await run(argv, { network: "outbound", name: `setup-${i}`, timeoutMs: spec.setupTimeoutMs });
-      if (r.stopped || r.exitCode !== 0 || r.quarantineReasons.length > 0) {
-        const why = r.stopped ?? `exit ${r.exitCode ?? "by signal"}`;
-        return await fail(`setup command ${i} (${argv[0]}) did not succeed: ${why}${r.quarantineReasons.length ? `; ${r.quarantineReasons.join("; ")}` : ""}`, r.logPath);
+    const run = (argv: readonly string[], opts: { network: CheckNetwork; name: string; timeoutMs: number }): Promise<CommandResult> => {
+      // Checked at run time too: a caller outside the type system must not get the setup phase's egress back.
+      if (opts.network !== "none" && opts.network !== "serve") return Promise.reject(new Error(`a command beside the preview may not have network ${JSON.stringify(opts.network)}`));
+      if (opts.network === "serve" && port === null) return Promise.reject(new Error("no preview port yet"));
+      return runCommand(argv, { name: opts.name, timeoutMs: opts.timeoutMs, network: opts.network === "serve" ? { kind: "serve", port: port! } : { kind: "none" } });
+    };
+
+    // The setup phase: egress only through a proxy that lives exactly as long as the phase. Stopping it revokes the
+    // network of every process the phase started, including any the sweeps did not find.
+    if (spec.project.setup.length > 0) {
+      const egressLog = openLog(config, spec.logDir, `${spec.id}.egress.log`);
+      logs.push(egressLog.path);
+      let proxy: EgressProxy | null = null;
+      try {
+        proxy = startEgressProxy({ allow: spec.project.egress, logFd: egressLog.fd });
+        for (const [i, argv] of spec.project.setup.entries()) {
+          const r = await runCommand(argv, { network: { kind: "proxy", port: proxy.port }, proxy: proxy.url, name: `setup-${i}`, timeoutMs: spec.setupTimeoutMs });
+          if (r.stopped || r.exitCode !== 0 || r.quarantineReasons.length > 0) {
+            const why = r.stopped ?? `exit ${r.exitCode ?? "by signal"}`;
+            return await fail(`setup command ${i} (${argv[0]}) did not succeed: ${why}${r.quarantineReasons.length ? `; ${r.quarantineReasons.join("; ")}` : ""}`, r.logPath);
+          }
+        }
+      } finally {
+        proxy?.stop();
+        closeSync(egressLog.fd);
       }
     }
 
@@ -288,7 +314,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     const log = openLog(config, spec.logDir, `${spec.id}.preview.log`);
     logs.push(log.path);
     try {
-      preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, wt.path, env(true), log.fd, spec.maxLifetimeMs);
+      preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, wt.path, env({ port }), log.fd, spec.maxLifetimeMs);
     } finally {
       closeSync(log.fd);
     }

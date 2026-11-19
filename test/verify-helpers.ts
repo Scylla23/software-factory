@@ -89,3 +89,24 @@ export function serverSource(marker: string, opts: { healthStatus?: number; exit
 } });
 `;
 }
+
+/** Every HTTP call in tests is bounded, so a stuck server fails the test instead of hanging it. */
+export function bounded(url: string, ms = 5_000): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(ms) });
+}
+
+/** An app that tries, server side, to call itself, a loopback service on `ownerPort`, and an outside host. */
+export function probingServerSource(ownerPort: number): string {
+  return `const port = Number(process.env.PORT);
+const tryFetch = (u) => fetch(u, { signal: AbortSignal.timeout(3000) }).then((r) => r.text(), () => "DENIED");
+Bun.serve({ hostname: "127.0.0.1", port, async fetch(req) {
+  const { pathname } = new URL(req.url);
+  if (pathname === "/health") return new Response("ok");
+  if (pathname === "/api") return new Response("api");
+  if (pathname === "/self") return new Response("self:" + await tryFetch(\`http://127.0.0.1:\${port}/api\`));
+  if (pathname === "/lateral") return new Response("lateral:" + await tryFetch("http://127.0.0.1:${ownerPort}/"));
+  if (pathname === "/out") return new Response("out:" + await tryFetch("http://1.1.1.1/"));
+  return new Response("probing");
+} });
+`;
+}
