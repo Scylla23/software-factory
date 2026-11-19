@@ -333,3 +333,16 @@ test("repeated Claude fragments retain each token bucket maximum independently",
   expect(capture.lines).toMatchObject([{ input:11,cacheRead:30,cacheWrite:12,output:27,reasoning:8 }]);
   expect(capture.costUsd).toBeCloseTo((11*0.1+30*0.01+7*0.125+5*0.2+27*0.5)/1e6,12);
 });
+
+test.each(["claude","codex"] as const)("full %s exit accounting survives an unsuccessful process outcome", async harness => {
+  const { run } = await replay(harness,"complete");
+  expect(primary(run.usage,run.observedModel,"failed").coverage).toBe("complete");
+});
+
+test.each(["turn.failed","turn.started"])("a Codex %s after the last completed turn leaves a partial subtotal", async type => {
+  const log = join(root,"log.jsonl");
+  copyFileSync(fixture("codex-complete"),log);
+  appendFileSync(log,JSON.stringify({ type }));
+  const s = await parseCodexEvents(readJsonl(log));
+  expect(primary(s.usage,"gpt-6-luna","failed")).toMatchObject({ coverage:"partial",lines:[{ input:10658 }] });
+});

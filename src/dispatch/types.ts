@@ -52,6 +52,8 @@ export interface ClaudeUsage {
 
 /** Summed over every `turn.completed` event. `inputTokens` includes cached input, as Codex reports it. */
 export interface CodexUsage {
+  /** A failed or unfinished turn can incur additional unreported usage. */
+  partial?: true;
   harness: "codex";
   inputTokens: number;
   cachedInputTokens: number;

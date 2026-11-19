@@ -122,6 +122,7 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
   let accountingComplete = true;
   let completed = false;
   let failed = false;
+  let openTurn = false;
   for await (const item of items) {
     if (item.kind === "invalid") {
       sample.add(describeInvalid(item));
@@ -131,10 +132,13 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
     const event = item.value;
     if (event.type === "thread.started") {
       threadId = str(event.thread_id);
+    } else if (event.type === "turn.started") {
+      openTurn = true;
     } else if (event.type === "item.completed" && isRecord(event.item) && event.item.type === "agent_message") {
       resultText = str(event.item.text) ?? resultText;
     } else if (event.type === "turn.completed") {
       completed = true;
+      openTurn = false;
       const turn = codexTurnUsage(event.usage);
       if (!turn) {
         sample.add(`line ${item.line}: turn.completed has malformed usage`);
@@ -147,7 +151,8 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
     }
   }
   if (!accountingComplete) usage = null;
-  return { threadId, succeeded: completed && !failed && accountingComplete, resultText, usage, diagnostics: sample.list(), diagnosticCount: sample.count };
+  if (usage && (openTurn || failed)) usage.partial = true;
+  return { threadId, succeeded: completed && !openTurn && !failed && accountingComplete, resultText, usage, diagnostics: sample.list(), diagnosticCount: sample.count };
 }
 
 export function codexTurnUsage(raw: unknown): CodexUsage | null {

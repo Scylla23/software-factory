@@ -35,7 +35,8 @@ export function primary(usage: unknown, model: string | null, outcome: string): 
   const lines: Line[] = [];
   if (isRecord(usage) && usage.harness === "codex") {
     const line = codexLine(model, usage, false);
-    if (line) return summarize([line], "result", outcome === "completed" && line.cacheWrite !== null && line.reasoning !== null);
+    const exited = outcome === "completed" || outcome === "failed";
+    if (line) return summarize([line], "result", exited && usage.partial !== true && line.cacheWrite !== null && line.reasoning !== null);
   }
   if (isRecord(usage) && usage.harness === "claude" && isRecord(usage.byModel)) {
     const entries = Object.entries(usage.byModel);

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { dispatchHomes } from "../dispatch/config";
 import { parseClaudeStream } from "../dispatch/claude";
 import { parseCodexEvents } from "../dispatch/codex";
-import { readJsonl } from "../dispatch/jsonl";
+import { isRecord, readJsonl } from "../dispatch/jsonl";
 import type { Harness } from "../dispatch/types";
 import type { Task } from "../factory/store";
 import { primary, type Capture, type RunUsage } from "./capture";
@@ -18,6 +18,8 @@ export function modelFlag(requested: string, observed: string | null) {
 export function legacyCapture(usage: string | null, observed: string | null, outcome: string) {
   let value: unknown = null;
   try { value = JSON.parse(usage ?? "null"); } catch { /* Legacy or damaged receipt. */ }
+  // The v1 parser did not record whether a failed Codex run left an unmetered turn.
+  if (outcome === "failed" && isRecord(value) && value.harness === "codex") value.partial = true;
   return primary(value, observed, outcome);
 }
 
