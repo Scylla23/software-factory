@@ -43,6 +43,8 @@ export interface SandboxPolicy {
   denyRead: readonly string[];
   /** Read access carved back out of a denied tree; Codex only. */
   readable: readonly string[];
+  /** Absolute paths agents may read but never write: the run's git dirs (see `gitWriteProtectedPaths`). */
+  denyWrite: readonly string[];
 }
 
 export function expandHome(path: string, home: string): string {
@@ -77,6 +79,13 @@ export function assertPolicySound(policy: SandboxPolicy, ctx: PolicyContext): vo
     for (const p of [ctx.stateRoot, ...ctx.harnessHomes]) {
       if (overlaps(r, p)) throw new Error(`readable carve-out ${r} overlaps factory state ${p}`);
     }
+  }
+}
+
+/** Refuses a write-deny that would cover the worktree itself: its working files must stay writable. */
+export function assertWorktreeWritable(policy: SandboxPolicy, worktree: string): void {
+  for (const d of policy.denyWrite) {
+    if (worktree === d || worktree.startsWith(`${d}/`)) throw new Error(`write-deny ${d} would cover the worktree ${worktree}`);
   }
 }
 
