@@ -3,17 +3,17 @@
  * the factory's proxy, start its preview command sandboxed with only its own loopback port, wait until it answers, check that the listener
  * is ours, and tear everything down with the same supervision and worktree sweep as an agent run.
  */
-import { closeSync, constants, mkdirSync, openSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, readFileSync, realpathSync, rmdirSync, rmSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
-import { assertSafeDir, assertTrustedExecutable, type DispatchConfig, isUnder, tempRoots, trustedAgentPath } from "../dispatch/config";
+import { assertPrivateDir, assertSafeDir, assertTrustedExecutable, type DispatchConfig, isUnder, tempRoots, trustedAgentPath } from "../dispatch/config";
 import { gitWriteProtectedPaths } from "../dispatch/git";
 import { effectiveDenyRead } from "../dispatch/policy";
 import { type AgentProcess, assessCleanup, type ProcIdentity, snapshot, spawnAgentProcess, type Supervised, superviseRun, type SweepResult, sweepWorktree, type TerminationReport, Tracker } from "../dispatch/process";
 import { type Materialized, materializeCommit, removeMaterialized } from "./materialize";
 import { type PortRange, taskPort, tcpListeners } from "./port";
 import { assertEgressHosts, type EgressProxy, startEgressProxy } from "./proxy";
-import { canonicalRoots, type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv, SYSTEM_READ } from "./sandbox";
+import { canonicalRoots, carveOut, type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv, SYSTEM_READ } from "./sandbox";
 
 /** What verification trusts, resolved once from factory-controlled sources like DispatchConfig. */
 export interface VerifyConfig {
@@ -78,14 +78,12 @@ export interface ProjectCommands {
 }
 
 export interface PreviewSpec {
-  /** Attempt id, a lowercase UUID: names the worktree, home, and logs. */
+  /** Attempt id, a lowercase UUID: names the attempt's directory under `<state root>/previews`, and its logs. */
   id: string;
   /** Picks the task's port within the range. */
   taskKey: string;
   repo: string;
   sha: string;
-  /** Existing directory that receives `<id-prefix>` worktrees and homes; outside the state root. */
-  previewRoot: string;
   /** Under the state root; receives `<id>.setup-<n>.log`, `<id>.preview.log`, and `<id>.<name>.log` per `run`. */
   logDir: string;
   project: ProjectCommands;
@@ -199,6 +197,31 @@ async function settle(config: VerifyConfig, unverified: readonly string[], roots
 }
 
 /**
+ * Creates this attempt's own directory, `<state root>/previews/<id>`, with an exclusive mkdir, so nothing in it predates
+ * the attempt and cleanup can never remove another attempt's files. The previews root must be private and outside
+ * every agent-writable root: an agent that could write there could change the served files after HEAD was checked.
+ */
+export function reserveAttempt(config: Pick<VerifyConfig, "stateRoot" | "untrustedRoots">, id: string): string {
+  if (!UUID.test(id)) throw new Error(`attempt id must be a lowercase UUID: ${id}`);
+  const root = join(config.stateRoot, "previews");
+  try {
+    mkdirSync(root, { mode: 0o700 });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+  const real = assertPrivateDir(root, config.stateRoot);
+  for (const r of config.untrustedRoots) if (isUnder(real, r) || isUnder(r, real)) throw new Error(`previews root ${real} overlaps agent-writable ${r}`);
+  const dir = join(real, id);
+  try {
+    mkdirSync(dir, { mode: 0o700 });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`attempt ${id} already has a directory at ${dir}; it is left untouched`);
+    throw err;
+  }
+  return dir;
+}
+
+/**
  * Materializes `spec.sha`, runs setup, starts the preview, and returns once it answers 200 on the ready path from a
  * listener inside the preview's own process tree. On any failure everything started is torn down before it throws.
  */
@@ -207,12 +230,11 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
   if (!/^\/[A-Za-z0-9._~\/-]*$/.test(spec.project.readyPath)) throw new Error(`ready path must be a plain absolute path: ${spec.project.readyPath}`);
   if (spec.project.preview.length === 0) throw new Error("project has no preview command");
   assertEgressHosts(spec.project.egress);
-  const previewRoot = realpathSync(spec.previewRoot);
-  if (isUnder(previewRoot, config.stateRoot) || isUnder(config.stateRoot, previewRoot)) throw new Error(`preview root ${previewRoot} overlaps the state root`);
-  assertSafeDir(previewRoot, config.accountHome);
-  const name = `preview-${spec.id.slice(0, 8)}`;
-  const wt: Materialized = materializeCommit(config.executables.git, { repo: spec.repo, sha: spec.sha, root: previewRoot, name, untrustedRoots: config.untrustedRoots });
-  const home = join(previewRoot, `${name}.home`);
+  const attempt = reserveAttempt(config, spec.id);
+  const home = join(attempt, "home");
+  // Only what this attempt created is ever removed.
+  let wt: Materialized | null = null;
+  let homeMade = false;
   const logs: string[] = [];
   let preview: SandboxedRun | null = null;
   let report: Promise<TeardownReport> | null = null;
@@ -227,11 +249,13 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
         cleanup = s.cleanup;
         unverified = s.unverified;
       }
-      const { noKnownSurvivors, quarantineReasons } = await settle(config, unverified, [wt.path, home]);
+      const roots = [...(wt ? [wt.path] : []), ...(homeMade ? [home] : [])];
+      const { noKnownSurvivors, quarantineReasons } = await settle(config, unverified, roots);
       const removed = quarantineReasons.length === 0;
       if (removed) {
-        removeMaterialized(config.executables.git, wt);
-        rmSync(home, { recursive: true, force: true });
+        if (wt) removeMaterialized(config.executables.git, wt);
+        if (homeMade) rmSync(home, { recursive: true, force: true });
+        rmdirSync(attempt);
       }
       return { cleanup, noKnownSurvivors, quarantineReasons, removed };
     })();
@@ -244,16 +268,21 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
   };
 
   try {
+    wt = materializeCommit(config.executables.git, { repo: spec.repo, sha: spec.sha, root: attempt, name: "worktree", untrustedRoots: config.untrustedRoots });
+    const worktree = wt.path;
     mkdirSync(home, { mode: 0o700 });
+    homeMade = true;
     mkdirSync(join(home, "tmp"), { mode: 0o700 });
-    const gitDirs = gitWriteProtectedPaths(config.executables.git, wt.path);
-    if (gitDirs.length === 0) throw new Error(`${wt.path} has no git dirs`);
+    const gitDirs = gitWriteProtectedPaths(config.executables.git, worktree);
+    if (gitDirs.length === 0) throw new Error(`${worktree} has no git dirs`);
     const base = {
       // The project's own git dirs (read-only) and the toolchain; everything else outside the worktree and home is closed.
       readable: [gitDirs[0]!, ...config.toolRoots],
-      denyRead: effectiveDenyRead({ accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: config.harnessHomes }),
+      // The attempt's own directory sits in the state root, so the state root's entry gives way to everything in it
+      // but this attempt: its other files, the harness homes, and the other attempts stay on the deny-list.
+      denyRead: carveOut(effectiveDenyRead({ accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: config.harnessHomes }), attempt),
       denyWrite: gitDirs,
-      writable: [wt.path, realpathSync(home)],
+      writable: [worktree, realpathSync(home)],
     };
     const sandbox = (network: NetworkMode): ProjectSandbox => ({ ...base, network });
     const user = userInfo().username;
@@ -270,13 +299,13 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       let r: SandboxedRun;
       try {
         const e = env({ ...(opts.network.kind === "serve" ? { port: opts.network.port } : {}), ...(opts.proxy ? { proxy: opts.proxy } : {}) });
-        r = spawnSandboxed(config, sandbox(opts.network), argv, wt.path, e, log.fd, opts.timeoutMs);
+        r = spawnSandboxed(config, sandbox(opts.network), argv, worktree, e, log.fd, opts.timeoutMs);
       } finally {
         closeSync(log.fd);
       }
       const s = await r.supervised;
       const live = preview && preview.proc.exitedAt() === null && preview.proc.identity ? [preview.proc.identity] : [];
-      const settled = await settle(config, s.unverified, [wt.path, home], live);
+      const settled = await settle(config, s.unverified, [worktree, home], live);
       const reasons = [...settled.quarantineReasons, ...(s.status?.error ? [`spawn failed: ${s.status.error}`] : [])];
       return { exitCode: s.status?.code ?? null, stopped: s.stopped, quarantineReasons: reasons, logPath: log.path };
     };
@@ -314,7 +343,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     const log = openLog(config, spec.logDir, `${spec.id}.preview.log`);
     logs.push(log.path);
     try {
-      preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, wt.path, env({ port }), log.fd, spec.maxLifetimeMs);
+      preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, worktree, env({ port }), log.fd, spec.maxLifetimeMs);
     } finally {
       closeSync(log.fd);
     }
@@ -323,7 +352,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     if (!ready.ok) return await fail(`preview not ready: ${ready.reason}`, log.path);
     const owned = listenerOwnership(config, port, preview.proc);
     if (!owned.ok) return await fail(`port ${port} is not served by the preview: ${owned.reason}`, log.path);
-    return { id: spec.id, sha: wt.sha, port, origin, worktree: wt.path, home: base.writable[1]!, logs, readyMs: Date.now() - started, run, stop: teardown };
+    return { id: spec.id, sha: spec.sha, port, origin, worktree, home: base.writable[1]!, logs, readyMs: Date.now() - started, run, stop: teardown };
   } catch (err) {
     if (err instanceof PreviewError) throw err;
     const t = await teardown();

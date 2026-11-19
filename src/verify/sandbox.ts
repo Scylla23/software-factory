@@ -9,7 +9,8 @@
  * and the network is one of: none, the factory's egress proxy only (setup), or the preview's own loopback port only.
  * Paths travel as `-D` parameters, never spliced into the profile text, so no path needs escaping.
  */
-import { realpathSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { overlaps } from "../dispatch/policy";
 
 /**
@@ -78,6 +79,29 @@ export function canonicalRoots(kind: string, paths: readonly string[]): string[]
       throw new Error(`sandbox ${kind} path does not exist: ${p}`);
     }
   });
+}
+
+/**
+ * The deny-list with room for `keep`: each denied path that contains `keep` is replaced by its entries, level by level,
+ * except the ones leading to `keep`, so everything beside `keep` stays denied. Entries created later are not on the
+ * list, but reads outside the readable roots are closed anyway; this list is the second layer.
+ */
+export function carveOut(deny: readonly string[], keep: string): string[] {
+  const out: string[] = [];
+  for (const d of deny) {
+    if (keep === d) throw new Error(`${keep} is itself denied`);
+    if (!keep.startsWith(`${d}/`)) {
+      out.push(d);
+      continue;
+    }
+    for (let cur = d; cur !== keep; ) {
+      const slash = keep.indexOf("/", cur.length + 1);
+      const next = slash < 0 ? keep : keep.slice(0, slash);
+      for (const name of readdirSync(cur)) if (join(cur, name) !== next) out.push(join(cur, name));
+      cur = next;
+    }
+  }
+  return [...new Set(out)];
 }
 
 /** Every proper ancestor of `path`, from `/` down, so lookups can stat their way to a readable root. */

@@ -41,7 +41,6 @@ const runDir = join(spikeDir, `run-${Date.now()}`);
 const logDir = join(runDir, "logs");
 const evidenceDir = join(runDir, "evidence");
 for (const d of [spikeDir, runDir, logDir, evidenceDir]) mkdirSync(d, { recursive: true, mode: 0o700 });
-const previewRoot = realpathSync(mkdtempSync(join(tmpdir(), "factory-previews-")));
 const log = (...parts: unknown[]) => console.log(...parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))));
 
 const project: ProjectCommands = {
@@ -62,7 +61,7 @@ log("### keychain baseline outside any sandbox: rc", keychainRc(), "(0 = the App
 
 async function preview(sha: string, taskKey: string): Promise<Preview> {
   const t0 = Date.now();
-  const p = await startPreview({ id: crypto.randomUUID(), taskKey, repo: PILOT, sha, previewRoot, logDir, project, setupTimeoutMs: 180_000, readyTimeoutMs: 20_000, maxLifetimeMs: 900_000 }, config);
+  const p = await startPreview({ id: crypto.randomUUID(), taskKey, repo: PILOT, sha, logDir, project, setupTimeoutMs: 180_000, readyTimeoutMs: 20_000, maxLifetimeMs: 900_000 }, config);
   log(`### preview ${sha.slice(0, 12)} ready on ${p.origin} in ${Date.now() - t0}ms (spawn to 200: ${p.readyMs}ms), worktree ${p.worktree}`);
   log("setup log:", readFileSync(p.logs[0]!, "utf8").trim().split("\n").slice(-2).join(" | "));
   return p;
@@ -143,11 +142,6 @@ try {
   if (profileId) {
     await deleteVerificationProfile(config.executables.orca, profileId);
     log(`### deleted profile ${profileId}`);
-  }
-  try {
-    rmdirSync(previewRoot); // only when empty: a quarantined preview stays for inspection
-  } catch (err) {
-    log("### preview root kept:", (err as Error).message);
   }
   log("### evidence dir", evidenceDir);
 }

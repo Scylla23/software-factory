@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startEgressProxy } from "../src/verify/proxy";
-import { canonicalRoots, type NetworkMode, projectEnv, type ProjectSandbox, sandboxArgv, sandboxProfile } from "../src/verify/sandbox";
+import { canonicalRoots, carveOut, type NetworkMode, projectEnv, type ProjectSandbox, sandboxArgv, sandboxProfile } from "../src/verify/sandbox";
 import { BUN_DIR } from "./verify-helpers";
 
 let dir: string;
@@ -56,6 +56,18 @@ describe("sandboxProfile", () => {
     expect(() => sandboxProfile(policy({ kind: "none" }, { denyRead: ["~/.ssh"] }))).toThrow("absolute");
     expect(() => sandboxProfile(policy({ kind: "none" }, { denyRead: ["/a/*"] }))).toThrow("without globs");
     expect(() => sandboxProfile(policy({ kind: "serve", port: 80 }))).toThrow("1024-65535");
+  });
+});
+
+describe("carveOut", () => {
+  test("keeps everything beside the kept path denied, level by level", () => {
+    for (const d of ["state/a", "state/previews/x/inner", "state/previews/y", "other"]) mkdirSync(join(dir, d), { recursive: true });
+    writeFileSync(join(dir, "state", "key.json"), "k");
+    const keep = join(dir, "state", "previews", "x");
+    expect(carveOut([join(dir, "state"), join(dir, "other")], keep).sort()).toEqual(
+      [join(dir, "other"), join(dir, "state", "a"), join(dir, "state", "key.json"), join(dir, "state", "previews", "y")].sort(),
+    );
+    expect(() => carveOut([keep], keep)).toThrow("is itself denied");
   });
 });
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, startPreview, toolchainRoots } from "../src/verify/preview";
+import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, toolchainRoots } from "../src/verify/preview";
 import { gone } from "./helpers";
 import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, type VerifyEnv } from "./verify-helpers";
 
@@ -16,13 +16,14 @@ afterEach(async () => {
   env.cleanup();
 });
 
+const previews = () => join(env.stateRoot, "previews");
+
 function spec(repo: string, sha: string, extra: Partial<PreviewSpec["project"]> = {}): PreviewSpec {
   return {
     id: crypto.randomUUID(),
     taskKey: `t-${Math.random()}`,
     repo,
     sha,
-    previewRoot: env.previewRoot,
     logDir: env.logDir,
     project: { setup: [["/bin/sh", "-c", "echo set-up > setup-ran"]], egress: ["registry.npmjs.org"], preview: ["bun", "server.ts"], readyPath: "/health", portRange: [41000, 41999], ...extra },
     setupTimeoutMs: 20_000,
@@ -70,6 +71,8 @@ describe("startPreview", () => {
     expect(await (await fetch(`${p.origin}/`)).text()).toBe("commit-one");
     expect(readFileSync(join(p.worktree, "setup-ran"), "utf8")).toBe("set-up\n");
     expect(p.port).toBeGreaterThanOrEqual(41000);
+    expect(p.worktree).toBe(join(previews(), p.id, "worktree"));
+    expect(p.home).toBe(join(previews(), p.id, "home"));
     const pid = serverPid(p.port);
     const report = await p.stop();
     expect(report).toMatchObject({ noKnownSurvivors: true, quarantineReasons: [], removed: true });
@@ -77,6 +80,7 @@ describe("startPreview", () => {
     expect(await gone(pid)).toBe(true);
     expect(existsSync(p.worktree)).toBe(false);
     expect(existsSync(p.home)).toBe(false);
+    expect(readdirSync(previews())).toEqual([]);
     expect(await p.stop()).toBe(report);
     expect(readdirSync(env.logDir).sort()).toEqual([`${p.id}.egress.log`, `${p.id}.preview.log`, `${p.id}.setup-0.log`]);
   });
@@ -90,8 +94,15 @@ describe("startPreview", () => {
     } finally {
       delete process.env.FACTORY_CANARY;
     }
-    const r = await p.run(["/bin/sh", "-c", `cat '${env.home}/.ssh/id_test' 2>&1; env; echo PORT-IS-$PORT; echo HEAD-IS-$(git rev-parse HEAD)`], { network: "serve", name: "probe", timeoutMs: 10_000 });
+    // State beside this attempt: a factory file and another attempt's directory.
+    writeFileSync(join(env.stateRoot, "github-app.json"), "STATE-SECRET\n");
+    mkdirSync(join(previews(), "00000000-0000-4000-8000-000000000000", "home"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(previews(), "00000000-0000-4000-8000-000000000000", "home", "k"), "OTHER-ATTEMPT\n");
+    const script = `cat '${env.home}/.ssh/id_test' 2>&1; env; echo PORT-IS-$PORT; echo HEAD-IS-$(git rev-parse HEAD); cat '${env.stateRoot}/github-app.json' '${previews()}/00000000-0000-4000-8000-000000000000/home/k' 2>&1; true`;
+    const r = await p.run(["/bin/sh", "-c", script], { network: "serve", name: "probe", timeoutMs: 10_000 });
     const out = readFileSync(r.logPath, "utf8");
+    expect(out).not.toContain("STATE-SECRET");
+    expect(out).not.toContain("OTHER-ATTEMPT");
     expect(r).toMatchObject({ exitCode: 0, stopped: null, quarantineReasons: [] });
     expect(out).toContain("Operation not permitted");
     expect(out).not.toContain("PLANTED-SSH-SECRET");
@@ -163,7 +174,7 @@ describe("startPreview", () => {
     expect(err.message).toContain("setup command 0 (/bin/sh) did not succeed: exit 7");
     expect(err.logTail).toContain("boom");
     expect(err.teardown).toMatchObject({ removed: true, quarantineReasons: [] });
-    expect(readdirSync(env.previewRoot)).toEqual([]);
+    expect(readdirSync(previews())).toEqual([]);
   });
 
   test("a setup command that leaves a detached process fails the preview, and the process is killed", async () => {
@@ -194,7 +205,7 @@ describe("startPreview", () => {
     expect(err.message).toContain("last probe: status 503");
     expect(Date.now() - t0).toBeLessThan(15_000);
     expect(err.teardown).toMatchObject({ noKnownSurvivors: true, removed: true });
-    expect(readdirSync(env.previewRoot)).toEqual([]);
+    expect(readdirSync(previews())).toEqual([]);
   });
 
   test("a preview that exits is reported as exited, not waited out", async () => {
@@ -205,10 +216,29 @@ describe("startPreview", () => {
     expect(Date.now() - t0).toBeLessThan(8_000);
   });
 
-  test("refuses a ready path with a query or scheme, and a preview root inside the state root", async () => {
+  test("refuses a ready path with a query or scheme", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
     await expect(start(spec(repo.path, repo.shas[0]!, { readyPath: "http://x/" }))).rejects.toThrow("ready path");
-    await expect(start({ ...spec(repo.path, repo.shas[0]!), previewRoot: env.logDir })).rejects.toThrow("overlaps the state root");
+  });
+
+  test("a directory already present for the attempt is refused and left untouched", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
+    const s = spec(repo.path, repo.shas[0]!);
+    mkdirSync(join(previews(), s.id, "home"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(previews(), s.id, "home", "older"), "not this attempt's");
+    await expect(start(s)).rejects.toThrow("already has a directory");
+    expect(readFileSync(join(previews(), s.id, "home", "older"), "utf8")).toBe("not this attempt's");
+  });
+
+  test("the previews root must be private and outside every agent-writable root", () => {
+    expect(() => reserveAttempt({ ...env.config, untrustedRoots: [env.stateRoot] }, crypto.randomUUID())).toThrow("overlaps agent-writable");
+    mkdirSync(previews(), { recursive: true });
+    chmodSync(previews(), 0o755);
+    expect(() => reserveAttempt(env.config, crypto.randomUUID())).toThrow("accessible to group or others");
+    chmodSync(previews(), 0o700);
+    const id = crypto.randomUUID();
+    expect(reserveAttempt(env.config, id)).toBe(join(previews(), id));
+    expect(statSync(join(previews(), id)).mode & 0o777).toBe(0o700);
   });
 });
 
