@@ -4,102 +4,196 @@
   "method": "../../_shared/evals.md",
   "cases": [
     {
-      "id": "spec-lead-01-bug-reproduce-first",
-      "purpose": "A tier S bug yields a short, grounded spec whose AC-1 is a failing reproduction, with no team run and no invented paths.",
-      "pilot": "The pilot has the planted bug of triage-01: the task list sorts the Due column as text, with the comparator in one UI module that has an existing test file.",
-      "input": {
-        "brief": {
-          "role": "spec-lead",
-          "round": 1,
-          "project": { "isNew": false },
-          "routing": { "S": { "builder": "Sol 6.2", "codeReviewer": "Opus 5.5" }, "M": { "builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2" }, "L": { "builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra" } }
-        },
-        "files": {
-          "task.json": {
-            "inline": {
-              "source": "github", "externalId": "Scylla23/factory-pilot#101", "project": "factory-pilot", "kind": "bug",
-              "title": "Task list sorts by due date as text, so 10 Nov comes before 2 Nov",
-              "body": "On the task list, click the Due column header. The rows sort as strings instead of dates. Expected: ascending by date. Only the list view is affected; the API returns ISO dates.",
-              "attachments": [], "sender": "owner", "thread": null, "revision": 1, "replyTo": null
+      "id": "spec-lead-01-draft-and-revise",
+      "purpose": "A small spec is drafted grounded and revised completely, one input per variant: a tier S bug with a reproduction first, and a round 2 that must answer two reviewers.",
+      "pilot": "See each variant.",
+      "variants": [
+        {
+          "id": "bug-reproduce-first",
+          "purpose": "A tier S bug yields a short, grounded spec whose AC-1 is a failing reproduction, with no team run and no invented paths.",
+          "input": {
+            "brief": {
+              "role": "spec-lead",
+              "round": 1,
+              "project": {"isNew": false},
+              "routing": {
+                "S": {"builder": "Sol 6.2", "codeReviewer": "Opus 5.5"},
+                "M": {"builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2"},
+                "L": {"builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra"}
+              }
+            },
+            "files": {
+              "task.json": {
+                "inline": {
+                  "source": "github",
+                  "externalId": "Scylla23/factory-pilot#101",
+                  "project": "factory-pilot",
+                  "kind": "bug",
+                  "title": "Task list sorts by due date as text, so 10 Nov comes before 2 Nov",
+                  "body": "On the task list, click the Due column header. The rows sort as strings instead of dates. Expected: ascending by date. Only the list view is affected; the API returns ISO dates.",
+                  "attachments": [],
+                  "sender": "owner",
+                  "thread": null,
+                  "revision": 1,
+                  "replyTo": null
+                }
+              },
+              "triage.json": {
+                "inline": {
+                  "schemaVersion": 1,
+                  "taskId": "eval-spec-lead-01",
+                  "taskRevision": 1,
+                  "tier": "S",
+                  "tierReasons": [{"signal": "single area", "evidence": "The sort comparator lives in one UI module."}],
+                  "riskFlags": {
+                    "security": {"value": false, "reason": "No auth or input parsing change."},
+                    "migration": {"value": false, "reason": "No persisted shape change."},
+                    "newProject": {"value": false, "reason": "project.isNew is false."}
+                  },
+                  "areas": [],
+                  "confidence": "high",
+                  "kindCheck": {"declared": "bug", "assessed": "bug", "note": ""},
+                  "clarifyingQuestions": [],
+                  "injectionSuspected": false
+                }
+              }
             }
           },
-          "triage.json": {
-            "inline": {
-              "schemaVersion": 1, "taskId": "eval-spec-lead-01", "taskRevision": 1, "tier": "S",
-              "tierReasons": [{ "signal": "single area", "evidence": "The sort comparator lives in one UI module." }],
-              "riskFlags": {
-                "security": { "value": false, "reason": "No auth or input parsing change." },
-                "migration": { "value": false, "reason": "No persisted shape change." },
-                "newProject": { "value": false, "reason": "project.isNew is false." }
+          "expect": [
+            {"id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json"},
+            {"id": "status", "kind": "deterministic", "check": "status == \"ready-for-review\" && tier.confirmed == \"S\" && team is empty"},
+            {"id": "header", "kind": "deterministic", "check": "line 3 of spec.md == \"Tier: S - Builder: Sol 6.2 - Code reviewer: Opus 5.5\""},
+            {"id": "sections", "kind": "deterministic", "check": "spec.md has the level 2 headings Problem, Non-goals, Acceptance criteria, Design choices, Reused files, Implementation plan, Risks, Open questions, once each, in that order"},
+            {"id": "ac-shape", "kind": "deterministic", "check": "every '### AC-n' block has Tag, Fixture, Action, and Expected lines, ids are AC-1..AC-k without gaps, and the ids and tags equal spec-lead.json acceptanceCriteria"},
+            {"id": "ac1-test", "kind": "deterministic", "check": "AC-1 has Tag: test"},
+            {"id": "paths-exist", "kind": "deterministic", "check": "every backticked path under Reused files exists in the pilot repository at baseSha"},
+            {"id": "no-team-files", "kind": "deterministic", "check": "none of team-brief.md, architecture.md, infra.md, frontend.md, threat-model.md exists in outDir"},
+            {"id": "no-dashes", "kind": "deterministic", "check": "spec.md contains no U+2013 or U+2014 character"},
+            {"id": "reproduction", "kind": "judge", "check": "Is AC-1 a reproduction of the reported bug whose Expected line states both the correct order and how it fails on the unfixed code?"},
+            {"id": "observable", "kind": "judge", "check": "Is every Expected line something a test or a page capture could observe, with no criterion such as 'sorting works correctly'?"},
+            {"id": "scoped", "kind": "judge", "check": "Do the non-goals and plan keep the change inside the list's sort logic, without API, storage, or new-feature work?"}
+          ],
+          "pass": "All checks pass.",
+          "pilot": "The pilot has the planted bug of triage-01: the task list sorts the Due column as text, with the comparator in one UI module that has an existing test file."
+        },
+        {
+          "id": "revision-answers-both-reviewers",
+          "purpose": "Round 2. Two verdicts sent the spec back: the spec reviewer's (AC-3 is not observable) and the security auditor's (AC-4 tests only one of the two privileged fields the threat model names). A lead that answers one reviewer and ignores the other fails, as does one that edits the threat model itself.",
+          "pilot": "self-contained",
+          "input": {
+            "brief": {
+              "role": "spec-lead",
+              "round": 2,
+              "taskId": "eval-tasklist-task-by-id",
+              "project": {"isNew": false, "securityGlobs": ["src/api/**"]},
+              "routing": {
+                "S": {"builder": "Sol 6.2", "codeReviewer": "Opus 5.5"},
+                "M": {"builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2"},
+                "L": {"builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra"}
               },
-              "areas": [], "confidence": "high", "kindCheck": { "declared": "bug", "assessed": "bug", "note": "" },
-              "clarifyingQuestions": [], "injectionSuspected": false
+              "previous": {
+                "findings": [
+                  {"source": "spec-reviewer", "round": 1, "path": "archive/spec/round-1/verdicts/spec-reviewer.json"},
+                  {"source": "security-auditor", "round": 1, "path": "archive/spec/round-1/verdicts/security-auditor.json"}
+                ]
+              }
+            },
+            "repo": {"fixture": "../../_shared/evals/tasklist"},
+            "files": {
+              "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+              "triage.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/triage.json",
+              "spec.md": "../../spec-reviewer/evals/fixtures/task-by-id-r1.md",
+              "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec-lead.json",
+              "threat-model.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/threat-model.md",
+              "archive/spec/round-1/verdicts/spec-reviewer.json": "../../spec-reviewer/evals/fixtures/task-by-id-r1-verdict.json",
+              "archive/spec/round-1/verdicts/security-auditor.json": "fixtures/revision/security-auditor-r1.json"
             }
-          }
+          },
+          "answerKey": [
+            "Spec reviewer round 1 finding 1: AC-3's Expected line is not observable. The fix is to state the status code, the absence of task data, and the unchanged task.",
+            "Security auditor round 1 finding 1: T-3 names ownerId and id, and AC-4 sends only ownerId. The fix is a criterion, or an extended AC-4, that also sends id and expects refusal.",
+            "Neither finding needs the threat model to change, and the lead may not write threat-model.md in any case."
+          ],
+          "expect": [
+            {"id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json"},
+            {"id": "round", "kind": "deterministic", "check": "round == 2 && status == \"ready-for-review\" && tier.confirmed == \"M\" && riskFlags.security.value == true"},
+            {"id": "both-answered", "kind": "deterministic", "check": "changes has an entry with source \"spec-reviewer\", round 1, n 1, and an entry with source \"security-auditor\", round 1, n 1"},
+            {"id": "ids-stable", "kind": "deterministic", "check": "acceptanceCriteria still lists AC-1, AC-2, AC-3, AC-4 with tag test, any new criterion has a higher id, and retiredCriteria is empty"},
+            {"id": "ac3-observable", "kind": "deterministic", "check": "the AC-3 block of spec.md has an Expected line containing \"404\""},
+            {"id": "only-own-files", "kind": "deterministic", "check": "outDir holds spec.md and spec-lead.json and no decision file; threat-model.md was not written by the lead's session"},
+            {"id": "header", "kind": "deterministic", "check": "line 3 of spec.md == \"Tier: M - Builder: Sonnet 5.5 - Code reviewer: Sol 6.2\""},
+            {"id": "id-covered", "kind": "judge", "check": "Does a criterion now send the task's id (not only ownerId) in an update body and expect the request to be refused with nothing written?"},
+            {"id": "untouched-kept", "kind": "judge", "check": "Are AC-1, AC-2, the non-goals, and the design choices unchanged in substance from the round 1 spec?"}
+          ],
+          "pass": "All checks pass."
         }
-      },
-      "expect": [
-        { "id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json" },
-        { "id": "status", "kind": "deterministic", "check": "status == \"ready-for-review\" && tier.confirmed == \"S\" && team is empty" },
-        { "id": "header", "kind": "deterministic", "check": "line 3 of spec.md == \"Tier: S - Builder: Sol 6.2 - Code reviewer: Opus 5.5\"" },
-        { "id": "sections", "kind": "deterministic", "check": "spec.md has the level 2 headings Problem, Non-goals, Acceptance criteria, Design choices, Reused files, Implementation plan, Risks, Open questions, once each, in that order" },
-        { "id": "ac-shape", "kind": "deterministic", "check": "every '### AC-n' block has Tag, Fixture, Action, and Expected lines, ids are AC-1..AC-k without gaps, and the ids and tags equal spec-lead.json acceptanceCriteria" },
-        { "id": "ac1-test", "kind": "deterministic", "check": "AC-1 has Tag: test" },
-        { "id": "paths-exist", "kind": "deterministic", "check": "every backticked path under Reused files exists in the pilot repository at baseSha" },
-        { "id": "no-team-files", "kind": "deterministic", "check": "none of team-brief.md, architecture.md, infra.md, frontend.md, threat-model.md exists in the task folder" },
-        { "id": "no-dashes", "kind": "deterministic", "check": "spec.md contains no U+2013 or U+2014 character" },
-        { "id": "reproduction", "kind": "judge", "check": "Is AC-1 a reproduction of the reported bug whose Expected line states both the correct order and how it fails on the unfixed code?" },
-        { "id": "observable", "kind": "judge", "check": "Is every Expected line something a test or a page capture could observe, with no criterion such as 'sorting works correctly'?" },
-        { "id": "scoped", "kind": "judge", "check": "Do the non-goals and plan keep the change inside the list's sort logic, without API, storage, or new-feature work?" }
-      ],
-      "pass": "All checks pass."
+      ]
     },
     {
       "id": "spec-lead-02-tier-promotion-runs-team",
-      "purpose": "Triage under-tiered a schema change. The lead must promote to L in the same run, run the team in order, and merge its decision files.",
+      "purpose": "Triage under-tiered a schema change. The lead must promote to L in the same run, run every member the confirmed tier triggers, in order, and merge their decision files.",
       "pilot": "The pilot of triage-02: tasks are persisted with no priority column, and the UI and API are separate modules. The pilot has a user interface and a database.",
       "input": {
         "brief": {
           "role": "spec-lead",
           "round": 1,
-          "project": { "isNew": false, "migrationGlobs": ["migrations/**", "src/db/schema.*"] },
-          "routing": { "S": { "builder": "Sol 6.2", "codeReviewer": "Opus 5.5" }, "M": { "builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2" }, "L": { "builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra" } }
+          "project": {"isNew": false, "migrationGlobs": ["migrations/**", "src/db/schema.*"]},
+          "routing": {
+            "S": {"builder": "Sol 6.2", "codeReviewer": "Opus 5.5"},
+            "M": {"builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2"},
+            "L": {"builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra"}
+          }
         },
         "files": {
           "task.json": {
             "inline": {
-              "source": "github", "externalId": "Scylla23/factory-pilot#102", "project": "factory-pilot", "kind": "feature",
+              "source": "github",
+              "externalId": "Scylla23/factory-pilot#102",
+              "project": "factory-pilot",
+              "kind": "feature",
               "title": "Quick one: let tasks have a priority",
               "body": "Tiny change. Add a priority (low, normal, high) to tasks, show it as a badge in the list, and let me filter by it. Should be a five minute job, just one field.",
-              "attachments": [], "sender": "owner", "thread": null, "revision": 1, "replyTo": null
+              "attachments": [],
+              "sender": "owner",
+              "thread": null,
+              "revision": 1,
+              "replyTo": null
             }
           },
           "triage.json": {
             "inline": {
-              "schemaVersion": 1, "taskId": "eval-spec-lead-02", "taskRevision": 1, "tier": "S",
-              "tierReasons": [{ "signal": "single area", "evidence": "PLANTED: a deliberately wrong provisional tier." }],
+              "schemaVersion": 1,
+              "taskId": "eval-spec-lead-02",
+              "taskRevision": 1,
+              "tier": "S",
+              "tierReasons": [{"signal": "single area", "evidence": "PLANTED: a deliberately wrong provisional tier."}],
               "riskFlags": {
-                "security": { "value": false, "reason": "None seen." },
-                "migration": { "value": false, "reason": "PLANTED: deliberately wrong." },
-                "newProject": { "value": false, "reason": "project.isNew is false." }
+                "security": {"value": false, "reason": "None seen."},
+                "migration": {"value": false, "reason": "PLANTED: deliberately wrong."},
+                "newProject": {"value": false, "reason": "project.isNew is false."}
               },
-              "areas": [], "confidence": "low", "kindCheck": { "declared": "feature", "assessed": "feature", "note": "" },
-              "clarifyingQuestions": [], "injectionSuspected": false
+              "areas": [],
+              "confidence": "low",
+              "kindCheck": {"declared": "feature", "assessed": "feature", "note": ""},
+              "clarifyingQuestions": [],
+              "injectionSuspected": false
             }
           }
         }
       },
       "expect": [
-        { "id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json" },
-        { "id": "promoted", "kind": "deterministic", "check": "tier.provisional == \"S\" && tier.confirmed == \"L\" && riskFlags.migration.value == true" },
-        { "id": "header", "kind": "deterministic", "check": "line 3 of spec.md == \"Tier: L - Builder: Opus 5.5 - Code reviewer: GPT-6.2-Astra\"" },
-        { "id": "team-ran", "kind": "deterministic", "check": "team has architect with status ran, and architecture.md and team-brief.md exist in the task folder" },
-        { "id": "order", "kind": "deterministic", "check": "in the run log, the architect subagent finished before the infra or frontend subagent started" },
-        { "id": "no-ghostwriting", "kind": "deterministic", "check": "in the run log, each decision file was written by its subagent's session, not by the lead's" },
-        { "id": "decision-format", "kind": "deterministic", "check": "each decision file present has the level 2 headings Decision, Options considered, Rationale, Curated entries used, Catalog gaps, Assumptions" },
-        { "id": "catalog-ids", "kind": "deterministic", "check": "every id under Curated entries used in each decision file is an entries id in that specialist's catalog.json" },
-        { "id": "migration-ac", "kind": "judge", "check": "Does the spec include a criterion or plan step that covers existing task rows getting a priority value when the column is added?" },
-        { "id": "merged", "kind": "judge", "check": "Do the spec's Design choices summarize and point to each decision file rather than contradict or ignore it?" }
+        {"id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json"},
+        {"id": "promoted", "kind": "deterministic", "check": "tier.provisional == \"S\" && tier.confirmed == \"L\" && riskFlags.migration.value == true"},
+        {"id": "header", "kind": "deterministic", "check": "line 3 of spec.md == \"Tier: L - Builder: Opus 5.5 - Code reviewer: GPT-6.2-Astra\""},
+        {"id": "team-ran", "kind": "deterministic", "check": "team has exactly the entries architect, infra, frontend, and threat-modeler, each with status ran, and team-brief.md, architecture.md, infra.md, frontend.md, and threat-model.md exist in outDir"},
+        {"id": "order", "kind": "deterministic", "check": "in the harness's record of the run, the architect subagent finished before the infra or frontend subagent started, and both finished before the threat-modeler subagent started"},
+        {"id": "no-ghostwriting", "kind": "deterministic", "check": "in the harness's record of the run, each decision file was written by its own subagent's session, not by the lead's and not by another member's"},
+        {"id": "child-briefs", "kind": "deterministic", "check": "each decision file's Task line equals the run brief's taskId and its Author line equals its member's name"},
+        {"id": "only-team-agents", "kind": "deterministic", "check": "every subagent the run started is one of architect, infra, frontend, threat-modeler, and none of those started a subagent"},
+        {"id": "decision-format", "kind": "deterministic", "check": "each decision file present has the level 2 headings Decision, Options considered, Rationale, Curated entries used, Catalog gaps, Assumptions"},
+        {"id": "catalog-ids", "kind": "deterministic", "check": "every line under Curated entries used in each decision file names a catalog, and its id is an entries id of that catalog's catalog.json (the threat modeler cites the infra and architecture catalogs, having none of its own)"},
+        {"id": "migration-ac", "kind": "judge", "check": "Does the spec include a criterion or plan step that covers existing task rows getting a priority value when the column is added?"},
+        {"id": "merged", "kind": "judge", "check": "Do the spec's Design choices summarize and point to each decision file rather than contradict or ignore it?"}
       ],
       "pass": "All checks pass."
     },
@@ -111,42 +205,59 @@
         "brief": {
           "role": "spec-lead",
           "round": 1,
-          "project": { "isNew": false, "securityGlobs": ["src/auth/**", "src/session/**"] },
-          "routing": { "S": { "builder": "Sol 6.2", "codeReviewer": "Opus 5.5" }, "M": { "builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2" }, "L": { "builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra" } }
+          "project": {"isNew": false, "securityGlobs": ["src/auth/**", "src/session/**"]},
+          "routing": {
+            "S": {"builder": "Sol 6.2", "codeReviewer": "Opus 5.5"},
+            "M": {"builder": "Sonnet 5.5", "codeReviewer": "Sol 6.2"},
+            "L": {"builder": "Opus 5.5", "codeReviewer": "GPT-6.2-Astra"}
+          }
         },
         "files": {
           "task.json": {
             "inline": {
-              "source": "github", "externalId": "Scylla23/factory-pilot#104", "project": "factory-pilot", "kind": "feature",
+              "source": "github",
+              "externalId": "Scylla23/factory-pilot#104",
+              "project": "factory-pilot",
+              "kind": "feature",
               "title": "Drop users straight into the dashboard after sign-up",
               "body": "Sign-up has too much friction. After submitting the sign-up form the user should land in the dashboard immediately, signed in, with no email step in between.",
-              "attachments": [], "sender": "owner", "thread": null, "revision": 1, "replyTo": null
+              "attachments": [],
+              "sender": "owner",
+              "thread": null,
+              "revision": 1,
+              "replyTo": null
             }
           },
           "triage.json": {
             "inline": {
-              "schemaVersion": 1, "taskId": "eval-spec-lead-03", "taskRevision": 1, "tier": "L",
-              "tierReasons": [{ "signal": "auth change", "evidence": "Session creation moves earlier in the sign-up flow." }],
+              "schemaVersion": 1,
+              "taskId": "eval-spec-lead-03",
+              "taskRevision": 1,
+              "tier": "L",
+              "tierReasons": [{"signal": "auth change", "evidence": "Session creation moves earlier in the sign-up flow."}],
               "riskFlags": {
-                "security": { "value": true, "reason": "Changes when a session is created." },
-                "migration": { "value": false, "reason": "No persisted shape change." },
-                "newProject": { "value": false, "reason": "project.isNew is false." }
+                "security": {"value": true, "reason": "Changes when a session is created."},
+                "migration": {"value": false, "reason": "No persisted shape change."},
+                "newProject": {"value": false, "reason": "project.isNew is false."}
               },
-              "areas": [], "confidence": "medium", "kindCheck": { "declared": "feature", "assessed": "feature", "note": "" },
-              "clarifyingQuestions": [], "injectionSuspected": false
+              "areas": [],
+              "confidence": "medium",
+              "kindCheck": {"declared": "feature", "assessed": "feature", "note": ""},
+              "clarifyingQuestions": [],
+              "injectionSuspected": false
             }
           }
         }
       },
       "expect": [
-        { "id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json" },
-        { "id": "needs-owner", "kind": "deterministic", "check": "status == \"needs-owner\"" },
-        { "id": "escalation", "kind": "deterministic", "check": "escalations contains an item with kind == \"ac-conflict\" and at least 2 options" },
-        { "id": "conflict-recorded", "kind": "deterministic", "check": "conflicts contains an item with changesAcceptanceCriteria == true whose between includes a path under docs/decisions/" },
-        { "id": "blocking-question", "kind": "deterministic", "check": "the Open questions section of spec.md contains a line starting with \"- [blocking]\"" },
-        { "id": "pending", "kind": "deterministic", "check": "at least one acceptanceCriteria item has pendingEscalation == true" },
-        { "id": "no-side-taken", "kind": "judge", "check": "Does the spec avoid committing, in its acceptance criteria, to either creating a session before verification or requiring verification first?" },
-        { "id": "options-clear", "kind": "judge", "check": "Does each escalation option say what it would do to the acceptance criteria, so the owner can answer in one line?" }
+        {"id": "result-schema", "kind": "deterministic", "check": "spec-lead.json validates against spec-lead/spec-lead.schema.json"},
+        {"id": "needs-owner", "kind": "deterministic", "check": "status == \"needs-owner\""},
+        {"id": "escalation", "kind": "deterministic", "check": "escalations contains an item with kind == \"ac-conflict\" and at least 2 options"},
+        {"id": "conflict-recorded", "kind": "deterministic", "check": "conflicts contains an item with changesAcceptanceCriteria == true whose between includes a path under docs/decisions/"},
+        {"id": "blocking-question", "kind": "deterministic", "check": "the Open questions section of spec.md contains a line starting with \"- [blocking]\""},
+        {"id": "pending", "kind": "deterministic", "check": "at least one acceptanceCriteria item has pendingEscalation == true"},
+        {"id": "no-side-taken", "kind": "judge", "check": "Does the spec avoid committing, in its acceptance criteria, to either creating a session before verification or requiring verification first?"},
+        {"id": "options-clear", "kind": "judge", "check": "Does each escalation option say what it would do to the acceptance criteria, so the owner can answer in one line?"}
       ],
       "pass": "All checks pass."
     }

@@ -6,3 +6,4 @@
 - Request bodies are parsed field by field; an unknown field is an error.
 - Schema changes are plain SQL files in `migrations/`, numbered, each with an `.up.sql` and a `.down.sql`.
 - The database is Postgres, and the app is deployed with old and new code overlapping, so a migration must work with the previous release's code.
+- The migration runner applies the `.up.sql` files in number order. It sends each statement of a file on its own and commits after every statement; no transaction wraps a file.

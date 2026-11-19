@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "role": "security-auditor",
+  "stage": "spec",
+  "taskId": "eval-tasklist-task-by-id",
+  "round": 1,
+  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "verdict": "changes",
+  "summary": "The cross-user threats are covered by a negative criterion. The threat of a user writing a task's owner or id through the update body is rated high and has no criterion, and the plan applies the body's fields directly.",
+  "findings": [
+    {
+      "n": 1,
+      "severity": "high",
+      "blocking": true,
+      "category": "security",
+      "title": "T-3 has no criterion: the update can set a task's owner or id",
+      "location": {"file": "spec.md", "section": "Acceptance criteria"},
+      "acIds": [],
+      "detail": "Actor: a signed-in user. Action: PATCH their own task with ownerId or id in the body. Consequence: the task moves to another account or its id changes. The threat model names AC-4 as the verification, and the spec has no AC-4; plan step 2 applies the fields of the request body to the task.",
+      "evidence": "threat-model.md, Threats, T-3: rating high, verified by AC-4. spec.md has criteria AC-1 to AC-3 only. Plan step 2: 'Apply the fields of the request body to the task in the `PATCH` route'.",
+      "requiredChange": "Add a criterion that sends a field other than title and due in the update body and expects the request to be refused with nothing written, and make the plan parse the body field by field."
+    }
+  ],
+  "checks": {"threatModel": {"present": true, "threatsChecked": 4, "unmitigated": ["T-3"]}}
+}

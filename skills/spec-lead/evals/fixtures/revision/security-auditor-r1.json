@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "role": "security-auditor",
+  "stage": "spec",
+  "taskId": "eval-tasklist-task-by-id",
+  "round": 1,
+  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "verdict": "changes",
+  "summary": "The model is complete and its high threats have criteria. The criterion for the writable-field threat exercises only one of the two privileged fields the model names.",
+  "findings": [
+    {
+      "n": 1,
+      "severity": "medium",
+      "blocking": true,
+      "category": "security",
+      "title": "AC-4 tests ownerId but not id, which T-3 also names",
+      "location": {"file": "spec.md", "section": "Acceptance criteria", "line": 45},
+      "acIds": ["AC-4"],
+      "detail": "Actor: a signed-in user. Action: PATCH their own task with id in the body. Consequence: the task's id changes and it collides with or shadows another task. T-3 names ownerId and id; AC-4 sends only ownerId, so a parser that rejects ownerId and lets id through would pass every criterion.",
+      "evidence": "threat-model.md, Threats, T-3: 'A user sets `ownerId`, `id`, or another unlisted field'. spec.md AC-4 Action: body `{\"title\":\"renamed\",\"ownerId\":2}`.",
+      "requiredChange": "Make a criterion send id in an update body as well and expect the request to be refused with nothing written."
+    }
+  ],
+  "checks": {"threatModel": {"present": true, "threatsChecked": 4, "unmitigated": []}}
+}

@@ -15,7 +15,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "headings", "kind": "deterministic", "check": "frontend.md has the level 2 headings Decision, Options considered, Rationale, Screens, Layout, Components, States, Accessibility, Dependencies to add, Curated entries used, Catalog gaps, Assumptions, in that order" },
         { "id": "routes", "kind": "deterministic", "check": "every data row of the Screens table has a Route cell starting with /" },
         { "id": "viewports", "kind": "deterministic", "check": "every level 3 subsection of Layout has one bullet starting with \"1440x900:\" and one starting with \"390x844:\"" },
@@ -43,7 +43,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "cmdk", "kind": "deterministic", "check": "`cmdk` appears under Curated entries used and in the Components table" },
         { "id": "beautiful-ui", "kind": "deterministic", "check": "`beautiful-ui` appears under Curated entries used" },
         { "id": "copy-paste", "kind": "deterministic", "check": "if `beautiful-ui` has a row in Dependencies to add, its Install cell is copy-paste and its Packages cell names no package" },
@@ -67,7 +67,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in frontend/catalog.json" },
         { "id": "deps-valid", "kind": "deterministic", "check": "every row of Dependencies to add names an entries id of kind library" },
         { "id": "resolved-in-catalog-or-gap", "kind": "deterministic", "check": "either `react-aria-components` appears under Curated entries used, or the Catalog gaps section is not \"None.\"" },

@@ -5,10 +5,12 @@
   "baseSha": "0000000000000000000000000000000000000000",
   "headSha": "1111111111111111111111111111111111111111",
   "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "textRedacted": true,
   "testRuns": [
     {
       "side": "head",
       "commitSha": "1111111111111111111111111111111111111111",
+      "testFilesSha": "1111111111111111111111111111111111111111",
       "command": "bun test",
       "exitCode": 0,
       "stopped": null,
@@ -29,11 +31,13 @@
           "status": "pass"
         },
         {
+          "planId": "t1",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-1: sorting by due date ascending is chronological",
           "status": "pass"
         },
         {
+          "planId": "t2",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-2: sorting by due date descending is reverse chronological",
           "status": "pass"
@@ -54,11 +58,13 @@
     {
       "side": "base-with-head-tests",
       "commitSha": "0000000000000000000000000000000000000000",
+      "testFilesSha": "1111111111111111111111111111111111111111",
       "command": "bun test src/task-list/sort.test.ts",
       "exitCode": 0,
       "stopped": null,
       "tests": [
         {
+          "planId": "t1",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-1: sorting by due date ascending is chronological",
           "status": "pass"

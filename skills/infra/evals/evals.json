@@ -15,7 +15,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "headings", "kind": "deterministic", "check": "infra.md has the level 2 headings Decision, Options considered, Rationale, Choices, Owner prerequisites, Environments, Curated entries used, Catalog gaps, Assumptions, in that order" },
         { "id": "nine-rows", "kind": "deterministic", "check": "the Choices table has exactly 9 data rows whose first cells are hosting, database, auth, email, queues, payments, analytics, ci, observability, in that order" },
         { "id": "choices-valid", "kind": "deterministic", "check": "each Choice cell is a backticked entries id from infra/catalog.json whose category equals the row's category, or starts with \"existing:\", or equals \"not needed\"" },
@@ -42,7 +42,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "gaps", "kind": "deterministic", "check": "the Catalog gaps section has at least 2 list items and is not \"None.\"" },
         { "id": "choices-valid", "kind": "deterministic", "check": "each Choice cell is a backticked entries id from infra/catalog.json whose category equals the row's category, or starts with \"existing:\", or equals \"not needed\"" },
         { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in infra/catalog.json" },
@@ -67,7 +67,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "infra.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "existing-rows", "kind": "deterministic", "check": "the hosting, database, auth, and ci rows of the Choices table each start with \"existing:\" or equal \"not needed\"" },
         { "id": "email-picked", "kind": "deterministic", "check": "the email row's Choice is a backticked entries id from infra/catalog.json with category email" },
         { "id": "existing-cited", "kind": "judge", "check": "Do the existing rows name what the pilot actually uses, with a path or file from the repository?" },

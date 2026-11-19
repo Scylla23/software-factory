@@ -15,7 +15,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "headings", "kind": "deterministic", "check": "threat-model.md has the level 2 headings Decision, Options considered, Rationale, Assets and actors, Entry points, Threats, Proposed acceptance criteria, Required changes to acceptance criteria, Accepted risks, Security path globs, Curated entries used, Catalog gaps, Assumptions, in that order" },
         { "id": "ids", "kind": "deterministic", "check": "Threats rows have ids T-1..T-k without gaps, and every Entry point cell is an id present in the Entry points table" },
         { "id": "high-verified", "kind": "deterministic", "check": "every Threats row with Rating high has non-empty Mitigation and Verified by cells" },
@@ -40,7 +40,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in the task folder and team-brief.md is unchanged" },
+        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in outDir and team-brief.md is unchanged" },
         { "id": "required-changes", "kind": "deterministic", "check": "Required changes to acceptance criteria has list items that mention AC-1 and AC-2 and is not \"None.\"" },
         { "id": "high-verified", "kind": "deterministic", "check": "every Threats row with Rating high has non-empty Mitigation and Verified by cells" },
         { "id": "enumeration", "kind": "judge", "check": "Does the model identify that AC-1 as drafted lets anyone learn which emails have accounts, and state what the criterion would have to say instead?" },
@@ -62,7 +62,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "threat-model.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "small", "kind": "deterministic", "check": "the Threats table has at most 8 rows and threat-model.md is at most 200 lines" },
         { "id": "cites-code", "kind": "deterministic", "check": "the Entry points table cites at least one path that exists in the pilot repository at baseSha" },
         { "id": "xss", "kind": "judge", "check": "Is there a threat about a title that injects markup or a non-http URL scheme, with a proposed test criterion that uses such a title and expects it to render inert?" },

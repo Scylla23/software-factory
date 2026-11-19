@@ -12,6 +12,7 @@ A row whose state adds or restores a test is a probe: its nonzero exit is the pl
 | sort-fix-skips-ac3 plus the AC-3 test | 1 | 7 pass 1 fail |
 | sort-fix-weakens-test | 0 | 6 pass 2 skip 0 fail |
 | sort-fix-weakens-test with the two title tests no longer skipped | 1 | 6 pass 2 fail |
+| sort-fix-deletes-declared | 0 | 7 pass 0 fail |
 | api-task-by-id-idor | 0 | 7 pass 0 fail |
 | api-task-by-id-idor plus the AC-3 and AC-4 tests of the safe patch | 1 | 7 pass 2 fail |
 | api-task-by-id-safe | 0 | 9 pass 0 fail |

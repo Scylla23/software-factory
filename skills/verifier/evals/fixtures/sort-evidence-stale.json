@@ -5,10 +5,12 @@
   "baseSha": "0000000000000000000000000000000000000000",
   "headSha": "2222222222222222222222222222222222222222",
   "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "textRedacted": true,
   "testRuns": [
     {
       "side": "head",
       "commitSha": "2222222222222222222222222222222222222222",
+      "testFilesSha": "2222222222222222222222222222222222222222",
       "command": "bun test",
       "exitCode": 0,
       "stopped": null,
@@ -29,16 +31,19 @@
           "status": "pass"
         },
         {
+          "planId": "t1",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-1: sorting by due date ascending is chronological",
           "status": "pass"
         },
         {
+          "planId": "t2",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-2: sorting by due date descending is reverse chronological",
           "status": "pass"
         },
         {
+          "planId": "t3",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-3: tasks without a due date sort last in both directions",
           "status": "pass"
@@ -59,14 +64,21 @@
     {
       "side": "base-with-head-tests",
       "commitSha": "0000000000000000000000000000000000000000",
+      "testFilesSha": "2222222222222222222222222222222222222222",
       "command": "bun test src/task-list/sort.test.ts",
       "exitCode": 1,
       "stopped": null,
       "tests": [
         {
+          "planId": "t1",
           "file": "src/task-list/sort.test.ts",
           "name": "AC-1: sorting by due date ascending is chronological",
-          "status": "fail"
+          "status": "fail",
+          "failure": {
+            "kind": "assertion",
+            "truncated": false,
+            "excerpt": "error: expect(received).toEqual(expected)\n- [\"2026-11-02\", \"2026-11-10\", \"2026-11-20\"]\n+ [\"2026-11-10\", \"2026-11-02\", \"2026-11-20\"]"
+          }
         }
       ],
       "logTail": "error: expect(received).toEqual(expected)\n(fail) AC-1: sorting by due date ascending is chronological\n"

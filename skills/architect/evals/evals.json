@@ -12,7 +12,7 @@
         "files": { "team-brief.md": "../../spec-lead/evals/fixtures/team/linkshelf-brief.md" }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "headings", "kind": "deterministic", "check": "architecture.md has the level 2 headings Decision, Options considered, Rationale, Modules, Data ownership, External boundaries, Deferred, Curated entries used, Catalog gaps, Assumptions, in that order" },
         { "id": "catalog-ids", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in architect/catalog.json" },
         { "id": "no-vendors", "kind": "deterministic", "check": "architecture.md names no id from infra/catalog.json or frontend/catalog.json and none of: Vercel, Cloudflare, Railway, Neon, Turso, Resend, Postmark, Clerk, Tailwind" },
@@ -36,7 +36,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "catalog-ids", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in architect/catalog.json" },
         { "id": "anti-pattern-cited", "kind": "deterministic", "check": "architecture.md contains `microservices-first` or `speculative-generality`" },
         { "id": "rejected", "kind": "judge", "check": "Does the decision keep the digest in the main deployable and decline the message bus and plugin system, giving the scale and the acceptance criteria as the reason?" },
@@ -58,7 +58,7 @@
         }
       },
       "expect": [
-        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in the task folder and no other file was created or changed anywhere" },
+        { "id": "one-file", "kind": "deterministic", "check": "architecture.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "expand-contract", "kind": "deterministic", "check": "architecture.md contains `expand-contract-migrations` under Curated entries used" },
         { "id": "cites-code", "kind": "deterministic", "check": "architecture.md cites at least two repo-relative paths, and every cited path that is not described as new exists in the pilot repository at baseSha" },
         { "id": "phases", "kind": "judge", "check": "Does the decision lay out ordered phases in which the new column is added and backfilled before the old one stops being read, and the old one is removed only in a later release?" },

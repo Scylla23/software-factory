@@ -32,7 +32,7 @@
         { "id": "tier", "kind": "deterministic", "check": "tier == \"S\"" },
         { "id": "flags", "kind": "deterministic", "check": "riskFlags.security.value == false && riskFlags.migration.value == false && riskFlags.newProject.value == false" },
         { "id": "areas-exist", "kind": "deterministic", "check": "areas is non-empty and every entry exists in the pilot repository at baseSha" },
-        { "id": "only-output", "kind": "deterministic", "check": "git status in the worktree shows no change outside the task folder" },
+        { "id": "only-output", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run, and triage.json is the only file in outDir" },
         { "id": "grounded", "kind": "judge", "check": "Does every tierReasons.evidence refer to something in the repository (a file, a function, a route) rather than only repeating the issue text?" }
       ],
       "pass": "All checks pass."

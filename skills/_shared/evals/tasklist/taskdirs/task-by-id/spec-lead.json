@@ -41,7 +41,14 @@
     }
   ],
   "retiredCriteria": [],
-  "team": [],
+  "team": [
+    {
+      "member": "threat-modeler",
+      "status": "ran",
+      "file": "threat-model.md",
+      "attempts": 1
+    }
+  ],
   "conflicts": [],
   "escalations": [],
   "catalogGaps": [],
