@@ -304,3 +304,19 @@ test("session recovery uses the dispatch configuration's hermetic harness home",
   locations.harnessHomes.claude = custom;
   expect((await captureRun(run,locations)).capture.lines).toHaveLength(1);
 });
+
+test("the design team roster has a dated Standard price for every named model", () => {
+  const design = readFileSync(join(import.meta.dir,"../docs/design.md"),"utf8");
+  const table = design.split("| Role | Default model | When it runs |\n")[1]!.split("\n\n")[0]!;
+  const ids = new Set<string>();
+  for (const row of table.split("\n").slice(1)) {
+    const column = row.split("|")[2]!;
+    const models = column.match(/GPT-[\w.-]+|\b[A-Za-z]+ \d+\.\d+/g) ?? [];
+    expect(models.length).toBeGreaterThan(0);
+    for (const name of models) {
+      const [family, version] = name.toLowerCase().split(" ");
+      ids.add(!version ? family! : family === "sol" ? `gpt-${version}-sol` : `claude-${family}-${version.replaceAll(".", "-")}`);
+    }
+  }
+  for (const id of ids) expect(priceFor(id)?.source).toStartWith("https://");
+});

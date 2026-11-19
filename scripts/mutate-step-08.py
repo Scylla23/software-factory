@@ -22,6 +22,8 @@ with tempfile.TemporaryDirectory(prefix="factory-usage-mutations-") as tmp:
     shutil.copytree(root / "src", directory / "src")
     shutil.copytree(root / "test", directory / "test", ignore=shutil.ignore_patterns(".state"))
     shutil.copy(root / "factory.config.ts", directory)
+    (directory / "docs").mkdir()
+    shutil.copy(root / "docs/design.md", directory / "docs")
     for suite, test in sorted({(suite, test) for _, suite, test, _, _ in cases}):
         run(directory, suite, test, "(pass)")
     for source, suite, test, before, after in cases:
