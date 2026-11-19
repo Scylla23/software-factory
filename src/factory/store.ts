@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
+import { migrateUsage } from "../usage/store";
 import { config } from "../../factory.config";
 
 export interface Issue {
@@ -64,7 +65,8 @@ export class Store {
     this.db
       .transaction(() => {
         const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version;
-        if (version === 1) return;
+        if (version === 2) return;
+        if (version === 1) return migrateUsage(this.db);
         if (version !== 0) throw new Error(`unsupported factory database version ${version}`);
         this.db.exec(`
         CREATE TABLE tasks (id INTEGER PRIMARY KEY, source TEXT NOT NULL, repo_id INTEGER NOT NULL,
@@ -84,6 +86,7 @@ export class Store {
           prompt_revision TEXT NOT NULL, base TEXT NOT NULL, head TEXT NOT NULL, outcome TEXT NOT NULL, usage TEXT);
         PRAGMA user_version=1;
       `);
+        migrateUsage(this.db);
       })
       .immediate();
   }

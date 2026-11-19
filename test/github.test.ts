@@ -457,6 +457,21 @@ describe("factory publisher", () => {
   const root = "/repos/Scylla23/factory-pilot";
   const app = { slug: "fixture", tokens };
   const task = { id: 1, issue: { number: 4, issueId: 22, title: "stock" }, pr: 5, base: SHA(1), head: SHA(2), state: "building" } as Task;
+  test.each([["building","builder"], ["spec_drafting","spec"]] as const)("published %s commit carries its factory task and agent", async (state, agent) => {
+    const gh = fakeGitHub({
+      [`GET ${root}/git/ref/heads/factory/issue-4`]: () => [404, {}],
+      [`GET ${root}/git/commits/${task.base}`]: () => [200, { tree: { sha: SHA(1) } }],
+      [`POST ${root}/git/blobs`]: () => [201, { sha: SHA(2) }],
+      [`POST ${root}/git/trees`]: () => [201, { sha: SHA(3) }],
+      [`POST ${root}/git/commits`]: () => [201, { sha: SHA(4) }],
+      [`POST ${root}/git/refs`]: () => [201, {}],
+    });
+    const publisher = new Publisher({ ...app, tokens: () => tokens() }, "/unused", gh.fetchImpl);
+    await publisher.commit({ ...task, state }, "attempt", "test: fixture", [{ path: "fixture", content: Buffer.from("x") }], null);
+    const call = gh.calls.find(c => c.method === "POST" && c.url.endsWith("/git/commits"));
+    expect((call?.body as { message: string }).message.split("\n\n").at(-1)?.split("\n"))
+      .toEqual(["Factory-Task: github-22", "Factory-Agent: " + agent, "Factory-Attempt: attempt"]);
+  });
   test("adopts exactly its commit tree, parent and marker", async () => {
     const dir = mkdtempSync(join(tmpdir(), "factory-publisher-"));
     const git = (...args: string[]) => {
