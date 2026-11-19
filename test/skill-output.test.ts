@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createAttempt, type AttemptDirectories, type SkillRole } from "../src/dispatch/attempt";
+import { checkoutSnapshot, createAttempt, type AttemptDirectories, type SkillRole } from "../src/dispatch/attempt";
+import { runGit } from "../src/dispatch/git";
 import { collectOutputs, outputDigest } from "../src/dispatch/output";
 import { makeSandbox, type Sandbox } from "./helpers";
 
@@ -71,4 +72,22 @@ test("rejects a symlink, unexpected entry, oversize file or replaced output dire
   renameSync(attempt.outDir, join(attempt.root, "saved"));
   mkdirSync(attempt.outDir);
   expect(() => collect(attempt)).toThrow("directory replaced");
+});
+
+test("review baseline and disposable checkout have independent files, git history and git directories", () => {
+  const repo = sb.worktree;
+  const git = (...args: string[]) => runGit("/usr/bin/git", repo, args).toString().trim();
+  git("init", "-q");
+  writeFileSync(join(repo, "example"), "committed");
+  git("add", "example");
+  git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "first");
+  const sha = git("rev-parse", "HEAD");
+  writeFileSync(join(repo, "example"), "working tree only");
+  const attempt = create();
+  for (const dir of [attempt.worktree, attempt.scratchRepo!]) checkoutSnapshot("/usr/bin/git", repo, sha, dir);
+  writeFileSync(join(attempt.scratchRepo!, "example"), "changed in scratch");
+  expect(runGit("/usr/bin/git", attempt.worktree, ["status", "--porcelain"]).length).toBe(0);
+  expect(runGit("/usr/bin/git", attempt.worktree, ["show", "HEAD:example"]).toString()).toBe("committed");
+  expect(runGit("/usr/bin/git", attempt.scratchRepo!, ["diff"]).toString()).toContain("changed in scratch");
+  expect(() => checkoutSnapshot("/usr/bin/git", repo, sha, attempt.worktree)).toThrow("empty");
 });

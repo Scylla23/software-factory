@@ -1,6 +1,7 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { assertPrivateDir, assertSafeDir, tempRoots } from "./config";
+import { runGit } from "./git";
 import { overlaps } from "./policy";
 
 export type SkillRole = "spec-lead" | "triage" | "builder" | "spec-reviewer" | "code-reviewer" | "database-auditor" | "security-auditor" | "verifier";
@@ -61,4 +62,19 @@ export function createAttempt(input: {
     rmSync(root, { recursive: true });
     throw error;
   }
+}
+
+/** A private object database keeps the reviewed commit's history available without exposing other worktrees. */
+export function checkoutSnapshot(git: string, repository: string, sha: string, directory: string) {
+  const source = realpathSync(repository);
+  const destination = realpathSync(directory);
+  if (!/^[a-f0-9]{40}$/.test(sha) || runGit(git, source, ["cat-file", "-t", sha]).toString().trim() !== "commit")
+    throw new Error("snapshot requires a full commit id");
+  if (overlaps(source, destination) || destination !== directory || readdirSync(destination).length)
+    throw new Error("snapshot destination must be separate, canonical and empty");
+  const command = (...args: string[]) => runGit(git, destination, ["-c", "core.hooksPath=/dev/null", ...args], 120_000);
+  command("init", "--quiet", "--template=");
+  command("-c", "protocol.allow=never", "-c", "protocol.file.allow=always", "fetch", "--no-tags", "--no-recurse-submodules", "--", source, sha);
+  command("checkout", "-q", "--detach", sha);
+  if (command("rev-parse", "HEAD").toString().trim() !== sha) throw new Error("snapshot HEAD mismatch");
 }
