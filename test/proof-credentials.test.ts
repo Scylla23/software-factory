@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { proofSource } from "../scripts/probe-sources";
 import { runClaudeProof, withCodexProofLogin } from "../scripts/proof-credentials";
 
 let root: string, home: string, state: string, secret: string;
@@ -59,4 +60,15 @@ cat > "$CODEX_HOME/auth.json"`);
     expect(disposable).not.toBe("");
     expect(existsSync(disposable)).toBe(false);
   }
+});
+
+test("home-source controls refuse a shared login before planting any file", () => {
+  for (const harness of ["claude","codex"] as const) {
+    for (const test of ["S1-config","S1-home-claude","S1-home-agents","S8-config","S8-home-claude","S7"])
+      expect(() => proofSource(test, {harness, home, harnessHome: state, project: root, shared: true})).toThrow("disposable proof credential");
+  }
+  expect(readdirSync(home)).toEqual([]);
+  expect(readdirSync(state)).toEqual([]);
+  const canary = proofSource("S1-config", {harness: "claude", home, harnessHome: state, project: root, shared: false});
+  expect(readFileSync(canary!.path, "utf8")).toContain(canary!.marker);
 });

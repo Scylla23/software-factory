@@ -47,7 +47,8 @@ Run `bun scripts/probe-step-04b.ts` with the test name to reproduce a row.
 | Codex D1 delivery channel | Passed for the probe instruction | Parent thread `01a1f586-ebbc-7851-8201-e0deede838d2` recorded the random marker in a developer message and returned it |
 | Codex D2 | Passed | Thread `01a1f586-ebb8-7893-98ef-9c279f0920dc` recorded the resource path and returned its fresh marker |
 | Codex A1, fact 15 | Verified | Thread `01a1f587-15ff-7401-ac4d-b25a6e0c5f9a` exposed no spawn tool and had no child, while control `01a1f586-ebd7-7c03-84d4-1aa4b7e3c132` exposed it and started child `01a1f586-ffb4-71d2-8b03-78c938c23842` |
-| Codex R1 | Incomplete | Direct sandbox invocation refused the fixture file with EPERM, though the live positive arm read it, but the negative model run supplied no completed read command and the separate file-tool control is outstanding |
+| Codex R1 shell | Passed | The step 1 profile returned the sample in `01a1f5ab-0863-76d1-9784-621752cc1328` and the exact same cat operation returned EPERM with the closed profile in `01a1f5ab-2b9c-7093-a665-0fd32a13e857` |
+| Codex R1 native file tool | Passed for view_image | The positive arm returned image data in `01a1f5ab-49ce-7dd2-8bc7-7c23ad2ca5a1`, and the closed profile refused the same fixture path in `01a1f5ab-67be-76f3-ba06-86dfddf95596` |
 | Codex R2 | Passed on the dependency-free fixture | Thread `01a1f586-ec40-7581-a0fa-c17ee831267a` ran the Bun test in the scratch checkout, Git diff and show in the snapshot, and read the bundle marker |
 | Codex native output | Passed for a new file | Thread `01a1f588-dba5-7f41-a50e-5524d971e0a4` produced a completed native `FileChange` with the exact submitted content including the newline, and the adapter's digest matched the independent expected bytes |
 | Claude D1 under `--agent spec-lead` | Passed | Session `4175338d-5600-4f40-b443-8e6a123183cf` recorded the marker in its request system prompt and returned it |
@@ -72,7 +73,13 @@ They establish no discrimination between different model and effort settings.
 The Codex definition-absent control sometimes selected an unnamed default child, so it does not prove a named rejection.
 S1, S3, S4, S7 and S8 need additional source-specific controls.
 The deterministic bundle exclusion and collector tests cover parts of D5 and R3.
-The Codex R1 negative model arm did not attempt the read in the later dedicated-login run either.
+The final Codex R1 scorer binds the exact factory-supplied tool call to its native return by call ID.
+The earlier scorer missed nested command results that were absent from exec stdout.
+Claude D5 passed in `1a5db030-d5cd-4100-aa2b-38aff85705c0` with a pinned disposable factory tree and the excluded source path refused.
+The first Codex D5 model run did not attempt its read.
+Claude S2 passed both arms for project `.claude/skills`, while the positive `.agents/skills` control did not list the definition.
+Codex S2 listed the project `.agents/skills` definition only in the positive arm.
+Automatic loading was unverified there, and the project `.claude/skills` positive arm did not list the definition.
 
 ## Disposable proof authentication
 
@@ -98,8 +105,9 @@ This is a factory-side control.
 Live R3 and child output provenance remain open.
 
 `python3 scripts/mutate-step-04b.py` killed 28 of 28 implementation mutants after adding the parent receipt, semantic join and nonmanual criterion controls.
-Two development suites passed with 331 and 342 tests respectively.
-Typecheck and the focused run brief tests passed after the second suite.
+The three development suites passed with 331, 342 and 355 tests.
+The third suite ran in 97.37 seconds under the external watchdog.
+Typecheck and the later focused team, scratch setup and integrity receipt controls passed.
 The 20-run final sequence awaits finished integration.
 
 ## Skill evals
@@ -129,9 +137,9 @@ Claude production evals and the end-to-end pilot have not run.
 | #16 | Closed after restoring the review validator and reproducing its 221 checks |
 | #17 | Open pending the remaining pinned proof matrix |
 | #18 | Open pending both arms of R1 and integration of the verified profile or broker |
-| #19 | Open pending isolated Claude authentication, D1 and authorized blind evals |
-| #20 | Open pending the fresh eligible launch path and its controls, with the escalation path covered |
-| #21 | Open pending propagation of the distinct collector error through the worker and persistence boundary |
+| #19 | Open pending authorized blind spec lead evals under the selected lead definition, with D1 verified separately |
+| #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
+| #21 | The distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
 
 ## Contract findings
 
