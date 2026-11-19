@@ -149,7 +149,8 @@ SQLite gate row and transition (UTC)
 14 | done | awaiting_pr_approval | 2026-11-19 17:40:56
 ```
 
-The controller left PR #5 open for the owner to merge.
+The controller left PR #5 open after recording the approval.
+The owner squash-merged the pilot fix at 18:27:29 UTC on November 19 and manually closed issue #4 because the original PR body used `Tracks`.
 
 ## Proposed owner commands
 
@@ -177,7 +178,7 @@ The skeleton checks exact revisions and stops on base drift or an edited intake 
 The proposed follow-up is to handle rebase and owner-feedback recovery in step 6.
 Step 3 uses the existing dispatch sandbox and a read-only reviewed worktree, with the closed-by-default agent read policy from Q57 scheduled for step 4b.
 
-## Factory tests
+## Original factory tests
 
 The SQLite crash test launches the ordinary stage driver in subprocesses using a fake dispatcher that records external attempts separately from the database.
 It delivers 17 real SIGKILLs across the nine states on the success path, including after every simulated side effect and before its result commit.
@@ -213,6 +214,78 @@ for run in $(seq 1 20); do
 done
 bun run typecheck
 ```
+
+## Opus review and repair round
+
+The following repairs apply to the factory after the pilot run documented above.
+
+| Finding | Status | Commits | Change and evidence |
+| --- | --- | --- | --- |
+| B1 | Fixed | `a21296e`, `93b6889` | The CLI and crash tests call the same stage map, and a separate publisher test uses real Git trees to check adoption of the intended changes. |
+| S1 | Fixed | `f048460`, `e364b09` | The project sandbox runs Bun's JUnit reporter for the one AC-1 case on each revision, and the reviewer receives both observations to compare against the spec. |
+| S2 | Fixed | `70911cc` | The owner review must strictly postdate both GitHub's ready event and the evidence summary, including after controller recovery. |
+| S3 | Fixed | `df923d0` | Approval, revision, resume and reverification commands require matching REST timestamps and an explicit unedited GraphQL body with the same node ID. |
+| S4 | Fixed | `7d903b5` | Owner-confirmed resume creates a fresh attempt for an interrupted base proof, head check or capture, preserves the builder result, and refuses outstanding preview directories and leases. |
+| S5 | Fixed | `bcf9a2b` | Setup, teardown, missing tools, sandbox denials, stopped commands and quarantine escalate with the repair allowance intact. |
+| S6 | Fixed | `8979460`, `e1fe10b` | Negative cases cover the preceding stage, escalation reason, review verdict and both reviewed revisions, with executable mutation manifests for both revisions of the suite. |
+| S7 | Fixed | `1801179` | Builder edits to package manifests, Bun configuration or lockfiles, TypeScript configurations, and the pilot lint configuration escalate before publication. |
+| S8 | Fixed | `498f060`, `36bee62` | The initial spec and revisions now dispatch the same Opus 5.5 high spec lead, including the owner-feedback path in the integration test. |
+| N1 | Fixed | `61671b2` | The proposed gate-1 use of `/respec` is documented alongside `/reverify`. |
+| N2 | Fixed | `66e6fab` | A tracked deletion survives the supervisor receipt as an escalation. |
+| N3 | Fixed | `945e0d7` | Intake requires the current owner label to postdate all title renames. |
+| N4 | Fixed | `d607941` | The App posts one marked, redacted escalation notice when a task has a PR. |
+| N5 | Fixed | `e2dfd9d`, `7dc1cd2` | The controller checks its launched supervisor's PID while the exclusive claim is pending, including a real 5.5-second delayed-claim test. |
+| N6 | Fixed | `1d48cd8` | Reverification uses one exact command parse and one SHA comparison. |
+| Closing keyword | Fixed | `d5cbaf2` | The App creates new draft bodies with `Fixes #N`, which the publisher test checks on the actual POST. |
+
+### Crash and gate tests
+
+The real stage driver sustained 57 SIGKILLs on the successful path.
+Nine kills followed committed states, and each of the twelve effects was killed after intent, after the simulated external write, before the SQLite receipt commit, and immediately after that commit.
+The final database contained twelve completed effects, twelve external resources and two accepted approvals.
+Four recovery-only effects added sixteen kills covering the login retry and the general, interrupted and verification escalation announcements.
+The tests also exercised the real stage transitions for missing reproduction, edits to an existing test, infrastructure failure, owner spec revision, all three interrupted operations, and an owner-authorized verification retry.
+Separate recovery tests exercised worker receipts, check receipts, capture receipts, GitHub commit contents and parents, draft and comment adoption, a ready PR and an expected-parent ref update rejected with HTTP 422.
+
+### Dry pilot check
+
+The dry check read the original issue's saved task, extracted the exact regression test from the verified commit, and called `ProjectChecks.test` on the original base and head with fresh private attempt IDs.
+It performed the sandboxed setup, reproduction, normal head checks and teardown without dispatching an agent, publishing or re-running either gate.
+
+| Attempt | Revision | Observation |
+| --- | --- | --- |
+| `3e6f33b2-404b-4bc3-bf55-bd3da5763d42` | `bb4111571a0b36b2ec811ccd7e25ecd15d1f51ab` | Bun exited 1, JUnit confirmed the AC-1 failure, and teardown passed. |
+| `33f9c020-1d8e-458d-ba06-6ef584b4882b` | `e2569da8bfb3bc795e8e39b28713a6f3f1127863` | Bun exited 0, JUnit confirmed AC-1, and test, lint, typecheck and teardown passed. |
+
+Bun 1.2.10 reports a generic failure type for some exceptions, so the verifier also requires a positive assertion count and an assertion diagnostic on base.
+The reviewer checks whether the expected and observed values exercise the approved bug.
+The report travels through a separate sandboxed read into a bounded factory log and is parsed with the platform XML parser.
+
+Read-only GitHub queries returned `lastEditedAt: null` for owner approval comment `7016027636`, summary publication at 17:36:48 UTC, ready at 17:37:38 UTC, and the owner's approval at 17:39:35 UTC.
+The recorded review passes the repaired chronology rule on the pilot's exact verified head.
+
+### Reproducible mutations
+
+Run `python3 scripts/mutate-step-03.py --original` to replay the original 38 mutations against commit `2d923bb`.
+Run `python3 scripts/mutate-step-03.py` to check the repaired source.
+Each run first proves the selected unmodified tests pass and then counts a mutant only when the intended test fails.
+The original replay detected 38 of 38.
+The repaired suite detected 64 of 64, including all four authority checks identified in S6.
+A size-limit mutant initially survived because its test placed padding before the XML declaration and produced invalid XML.
+The revised case pads a valid JUnit document inside its root and detects removal of the size limit.
+
+### Full-suite validation after review
+
+Two full suites passed during iteration.
+The first final series stopped on its second run when the dispatch cancellation fixture timed out waiting for its TERM handler's child PID.
+The fixture had relied on a fixed 300 ms sleep for handler readiness, and the shell could also finish waiting for its existing child before handling its own signal.
+The timed-out test continued into two following cases and their fixture cleanup removed files still in use.
+Commit `ea8f425` added a readiness acknowledgement, kept the handler alive until signalled, and settled the pending run before returning from the test.
+Twenty consecutive isolated executions of the affected test passed.
+On the corrected code at `ea8f425`, the watchdog completed 20 consecutive full suites, each with 330 passing tests, zero failures and 5,089 assertions.
+Run times ranged from 89.1 to 110.5 seconds and the watchdog reported no leftover processes.
+The per-run logs and exit codes are in `~/.software-factory/step-03-test-runs/repair-final-ea8f425/`.
+`bun run typecheck` also passed.
 
 ## Open problems
 
