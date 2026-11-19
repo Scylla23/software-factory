@@ -319,6 +319,17 @@ describe("bounded waits", () => {
     expect((await real.exited).signal).not.toBeNull();
   });
 
+  test("a termination that throws still settles supervision, as a quarantine reason", async () => {
+    const real = spawnShell("sleep 300");
+    const throwing = { ...real, exited: new Promise<never>(() => {}), exitedAt: () => null, kill: () => { throw new Error("EPERM signalling"); } };
+    const r = await superviseRun(throwing, { timeoutMs: 20, psPath: "/bin/ps", graceMs: 50, killWaitMs: 50 });
+    expect(r.stopped).toBe("timed_out");
+    expect(r.cleanup!.errors).toEqual(["termination threw: EPERM signalling"]);
+    expect(r.unverified).toEqual([`root pid ${real.pid} never exited`]);
+    real.kill("SIGKILL");
+    expect((await real.exited).signal).toBe("SIGKILL");
+  });
+
   test("supervision of a root that exits by itself reports its status and no cleanup", async () => {
     const r = await superviseRun(spawnShell("exit 7"), { timeoutMs: 30_000, psPath: "/bin/ps" });
     expect(r).toEqual({ status: { code: 7, signal: null, error: null }, stopped: null, cleanup: null, unverified: [] });

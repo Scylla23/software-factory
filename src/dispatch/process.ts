@@ -297,7 +297,11 @@ export async function superviseRun(root: AgentProcess, opts: SuperviseOptions): 
   const stop = (why: "cancelled" | "timed_out") => {
     if (stopped) return;
     stopped = why;
-    terminateTree(root, opts).then(terminated.resolve);
+    // terminateTree is written not to throw, but a throw would otherwise leave this run waiting forever, so it settles
+    // as a report whose error quarantines the run.
+    terminateTree(root, opts).then(terminated.resolve, (err: unknown) =>
+      terminated.resolve({ survivors: [], errors: [`termination threw: ${err instanceof Error ? err.message : String(err)}`] }),
+    );
   };
   const timer = setTimeout(() => stop("timed_out"), opts.timeoutMs);
   const onAbort = () => stop("cancelled");
