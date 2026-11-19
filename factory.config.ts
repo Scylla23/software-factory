@@ -12,6 +12,12 @@ export const config = {
     builder: { harness: "codex", model: "gpt-6.2-sol", effort: "high", timeoutMs: 900_000 },
     reviewer: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
   },
+  specTeam: {
+    architect: { model: "claude-opus-5-5", effort: "high" },
+    infra: { model: "claude-sonnet-5-5", effort: "high" },
+    frontend: { model: "claude-sonnet-5-5", effort: "high" },
+    "threat-modeler": { model: "claude-sonnet-5-5", effort: "high" },
+  },
   pilot: {
     owner: "Scylla23",
     repo: "factory-pilot",
