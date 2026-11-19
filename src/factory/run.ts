@@ -8,7 +8,7 @@ import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
 import { checkAbandonedPreviews, ProjectChecks, requireHealthyInfrastructure } from "./checks";
 import { verdict, check, type Check } from "../verify/verdict";
 import { fenced, redact, type EvidenceSummary } from "../github/summary";
-import { recordFeedback } from "../usage/feedback";
+import { collectFeedback } from "../usage/feedback";
 import { verifyPilot } from "./verify";
 import { Store, type Attempt, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
@@ -182,16 +182,16 @@ async function gateTwo(store: Store, git: StagePublisher, task: Task) {
   console.log(`Approve PR #${task.pr} at ${task.head} ${pull.htmlUrl}`);
   const readyAt = ready === true ? await git.reviewBoundary(task, comment.id) : ready;
   const reviews = await git.pages<Review>(`/pulls/${task.pr}/reviews`);
-  recordFeedback(store.db, task.id, "review", reviews);
-  recordFeedback(store.db, task.id, "inline", await git.pages(`/pulls/${task.pr}/comments`));
   const decision = headDecision(task, reviews, readyAt);
-  if (!decision) return null;
-  if (!decision.accepted) {
+  let next: Task | null = null;
+  if (decision?.accepted) {
+    await git.boundPull(task);
+    next = store.move(task, "done", {}, decision);
+  } else if (decision) {
     store.record(task.id, decision);
-    return null;
   }
-  await git.boundPull(task);
-  return store.move(task, "done", {}, decision);
+  await collectFeedback(store.db, task, reviews, signal => git.pages(`/pulls/${task.pr}/comments`, signal));
+  return next;
 }
 
 async function resolveVerification(store: Store, git: StagePublisher, task: Task, stateRoot: string) {

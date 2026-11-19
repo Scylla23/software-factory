@@ -89,7 +89,7 @@ test("readonly commands report a v1 database before and after atomic schema upgr
   const r = run(j);
   await recordUsage(store.db,task,j,r,root);
   const expected = costReport(store.db,"task");
-  store.db.exec("DROP TABLE usage_captures; DROP TABLE owner_feedback; PRAGMA user_version=1");
+  store.db.exec("DROP TABLE feedback_failures; DROP TABLE usage_captures; DROP TABLE owner_feedback; PRAGMA user_version=1");
   const cli = join(import.meta.dir,"../src/factory/cli.ts");
   const preload = join(root,"config.ts");
   writeFileSync(preload, `import { config } from ${JSON.stringify(join(import.meta.dir,"../factory.config.ts"))}; config.stateRoot=${JSON.stringify(root)};`);
@@ -111,6 +111,18 @@ test("readonly commands report a v1 database before and after atomic schema upgr
   store = new Store(join(root,"factory.sqlite"));
   expect(costReport(store.db,"task")).toEqual(expected);
   expect(store.db.query("SELECT model_flag FROM usage_captures").all()).toEqual([{ model_flag:"match" }]);
+});
+
+test("v2 feedback migration preserves existing captures and reports telemetry failures", async () => {
+  const j = job("dispatch-builder");
+  await recordUsage(store.db,task,j,run(j),root);
+  store.db.exec("DROP TABLE feedback_failures; PRAGMA user_version=2");
+  const expected = costReport(store.db,"task");
+  store.db.close();
+  store = new Store(join(root,"factory.sqlite"));
+  expect(costReport(store.db,"task")).toEqual(expected);
+  store.db.run("INSERT INTO feedback_failures(task,visit,kind,reason) VALUES(?,?,?,?)",[task.id,task.visit,"inline","deadline"]);
+  expect(costReport(store.db,"task").signals.feedbackFailures).toMatchObject([{ task:task.id,visit:task.visit,kind:"inline",reason:"deadline" }]);
 });
 
 for (const [name, elapsed, pid, message] of [

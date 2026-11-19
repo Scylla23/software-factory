@@ -94,13 +94,15 @@ function signals(db: Database) {
     const anchor = r.kind === "inline" ? "discussion_r" : r.kind === "review" ? "pullrequestreview-" : "issuecomment-";
     return { task: r.task, kind: r.kind, id: r.id, url: pr + "#" + anchor + r.id };
   });
-  return { repeatedAttempts, escalations, ownerComments };
+  const feedbackFailures = db.query("SELECT 1 FROM sqlite_master WHERE name='feedback_failures' AND type='table'").get()
+    ? db.query("SELECT task,visit,kind,reason,at FROM feedback_failures ORDER BY task,visit,kind").all() : [];
+  return { repeatedAttempts, escalations, ownerComments, feedbackFailures };
 }
 
 export function costReport(db: Database | null, by: Dimension) {
   const { groups, flags, projects, distinctAttempts } = db ? totalsBy(db, by) : { groups: new Map(), flags: [], projects: new Map(), distinctAttempts: 0 };
   return { by, distinctAttempts, costLabel: priceLabel, groups: Array.from(groups, ([key, totals]) => ({ [by]: by === "project" ? projects.get(Number(key)) ?? String(key) : key, ...(by === "project" ? { repoId:key } : {}), ...totals })),
-    modelFlags: flags, signals: db ? signals(db) : { repeatedAttempts: [], escalations: [], ownerComments: [] } };
+    modelFlags: flags, signals: db ? signals(db) : { repeatedAttempts: [], escalations: [], ownerComments: [], feedbackFailures: [] } };
 }
 
 export function statusReport(db: Database | null) {

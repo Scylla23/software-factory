@@ -36,13 +36,15 @@
   ["factory/worker", "usage-report", "dispatch records uncertain usage for timeout", "return interrupted(new Uncertain(`worker completion is uncertain for ${attempt.id}`))", "throw new Uncertain(`worker completion is uncertain for ${attempt.id}`)"],
   ["factory/worker", "usage-report", "dispatch records uncertain usage for missing launcher", "return interrupted(new Uncertain(`worker startup is uncertain for ${attempt.id}`))", "throw new Uncertain(`worker startup is uncertain for ${attempt.id}`)"],
   ["factory/worker", "usage-report", "dispatch records uncertain usage for disappeared worker", "return interrupted(new Uncertain(`unsettled worker disappeared: ${attempt.id}`))", "throw new Uncertain(`unsettled worker disappeared: ${attempt.id}`)"],
-  ["factory/run", "factory-crash", "gate two persists", "recordFeedback(store.db, task.id, \"review\", reviews);", ""],
-  ["factory/run", "factory-crash", "gate two persists", "recordFeedback(store.db, task.id, \"inline\", await git.pages(`/pulls/${task.pr}/comments`));", ""],
+  ["usage/feedback", "factory-crash", "gate two persists", "recordFeedback(db, task.id, \"review\", reviews);", ""],
+  ["usage/feedback", "factory-crash", "gate two persists", "recordFeedback(db, task.id, \"inline\", rows);", ""],
   ["usage/prices", "usage", "Haiku switches", "prompt > 100_000 ? 5 : 1", "false ? 5 : 1"],
   ["usage/capture", "usage", "impossible Codex reasoning", "reasoning !== null && reasoning > output", "false"],
   ["usage/capture", "usage", "Claude reports partial tokens", "lines.length === entries.length", "true"],
   ["usage/report", "usage-report", "reported total gives complete", "reportedTotal && usd !== null", "false"],
   ["usage/store", "usage-report", "interrupted claude reads", "Object.assign(run, { observedModel: s.observedModel, sessionId: s.sessionId, usage: s.usage, reportedCostUsd: s.reportedCostUsd });", ""],
   ["usage/store", "usage-report", "interrupted codex reads", "Object.assign(run, { sessionId: s.threadId, usage: s.usage });", ""],
-  ["usage/sessions", "usage", "Claude observes the parent", "if (!child) mainModel = name;", "mainModel = name;"]
+  ["usage/sessions", "usage", "Claude observes the parent", "if (!child) mainModel = name;", "mainModel = name;"],
+  ["factory/run", "factory-crash", "gate two persists", "await collectFeedback(store.db, task, reviews, signal => git.pages(`/pulls/${task.pr}/comments`, signal));", ""],
+  ["usage/feedback", "factory-crash", "gate two records a feedback denied failure", "catch (error) { failed(\"inline\", error); }", "catch (error) { throw error; }"]
 ]

@@ -40,7 +40,13 @@ export function migrateUsage(db: Database) {
   for (const row of db.query<Old, []>("SELECT attempt,requested_model,observed_model,usage,outcome FROM audit").all()) {
     putCapture(db, row.attempt, row.requested_model, row.observed_model, legacyCapture(row.usage, row.observed_model, row.outcome));
   }
-  db.exec("PRAGMA user_version=2");
+  migrateFeedbackFailures(db);
+}
+
+export function migrateFeedbackFailures(db: Database) {
+  db.exec(`CREATE TABLE feedback_failures(task INTEGER NOT NULL REFERENCES tasks(id), visit INTEGER NOT NULL,
+    kind TEXT NOT NULL, reason TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(task,visit,kind));
+    PRAGMA user_version=3;`);
 }
 
 export interface MeterJob {

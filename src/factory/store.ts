@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
-import { migrateUsage } from "../usage/store";
+import { migrateFeedbackFailures, migrateUsage } from "../usage/store";
 import { config } from "../../factory.config";
 
 export interface Issue {
@@ -65,7 +65,8 @@ export class Store {
     this.db
       .transaction(() => {
         const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version;
-        if (version === 2) return;
+        if (version === 3) return;
+        if (version === 2) return migrateFeedbackFailures(this.db);
         if (version === 1) return migrateUsage(this.db);
         if (version !== 0) throw new Error(`unsupported factory database version ${version}`);
         this.db.exec(`

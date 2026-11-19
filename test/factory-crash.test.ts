@@ -115,3 +115,18 @@ test("gate two persists both review and inline owner feedback while completing a
     } finally { store.db.close(); }
   } finally { rmSync(root,{ recursive:true, force:true }); }
 });
+
+test.each(["denied","store","timeout"])("gate two records a feedback %s failure and still accepts the owner's review", async failure => {
+  const root = mkdtempSync(join(tmpdir(),"factory-gate-"));
+  try {
+    expect(await invoke(root,"feedback-" + failure)).toBe(true);
+    const s = new Store(join(root,"state.sqlite"));
+    try {
+      expect(s.task(1).state).toBe("done");
+      const rows = s.db.query("SELECT kind,reason FROM feedback_failures ORDER BY kind").all();
+      expect(rows).toEqual(failure === "timeout" ? [{kind:"inline",reason:"inline feedback deadline exceeded"}] : failure === "denied" ? [{kind:"inline",reason:"fixture inline read refused"}] : [
+        {kind:"inline",reason:"fixture write refused"},{kind:"review",reason:"fixture write refused"},
+      ]);
+    } finally { s.db.close(); }
+  } finally { rmSync(root,{ recursive:true,force:true }); }
+});

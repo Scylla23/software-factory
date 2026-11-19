@@ -90,12 +90,21 @@ const git: Parameters<typeof runStages>[2]["git"] = {
   },
   summary: async () => remote("publish-evidence", { id: 20, htmlUrl: "summary", updated: false }),
   ready: async () => { remote("mark-ready", true); }, reviewBoundary: async () => when,
-  pages: async <T>(path: string) => path.endsWith("/comments")
-    ? [{ id: 22, user: { id: config.ownerId }, body: "Inline feedback", commit_id: head }] as T[]
-    : [{ body: "Review feedback", id: 21, user: { id: config.ownerId }, state: "APPROVED", commit_id: head,
-    submitted_at: "2026-01-02T00:00:00Z" } satisfies Review & { body:string }] as T[],
+  pages: async <T>(path: string) => {
+    if (path.endsWith("/comments")) {
+      if (scenario === "feedback-timeout") {
+        if (s.task(1).state !== "done") throw new Error("gate decision was delayed by feedback");
+        return new Promise<T[]>(() => {});
+      }
+      if (scenario === "feedback-denied") throw new Error("fixture inline read refused");
+      return [{ id:22,user:{id:config.ownerId},body:"Inline feedback",commit_id:head }] as T[];
+    }
+    return [{ body:"Review feedback",id:21,user:{id:config.ownerId},state:"APPROVED",commit_id:head,
+      submitted_at:"2026-01-02T00:00:00Z" } satisfies Review & { body:string }] as T[];
+  },
 };
 try {
+  if (scenario === "feedback-store") s.db.exec("CREATE TRIGGER bad_feedback BEFORE INSERT ON owner_feedback BEGIN SELECT RAISE(ABORT, 'fixture write refused'); END;");
   const final = await runStages(s, initial, {
     git, stateRoot: root, observe: () => {},
     dispatch: async (_s, t, a, role, prompt) => {

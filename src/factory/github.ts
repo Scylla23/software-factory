@@ -82,10 +82,10 @@ export async function readIssue(client: RepoClient, number: number): Promise<Iss
   };
 }
 
-async function pages<T>(client: RepoClient, path: string): Promise<T[]> {
+async function pages<T>(client: RepoClient, path: string, signal?: AbortSignal): Promise<T[]> {
   const rows: T[] = [];
   for (let page = 1; page <= 20; page++) {
-    const more = await client.request<T[]>("GET", `${client.base}${path}?per_page=100&page=${page}`);
+    const more = await client.request<T[]>("GET", `${client.base}${path}?per_page=100&page=${page}`, undefined, { signal });
     if (!Array.isArray(more)) throw new Error("unexpected GitHub page");
     rows.push(...more);
     if (more.length < 100) return rows;
@@ -129,8 +129,8 @@ export class Publisher {
   issue(number: number) {
     return readIssue(this.read, number);
   }
-  pages<T>(path: string) {
-    return pages<T>(this.read, path);
+  pages<T>(path: string, signal?: AbortSignal) {
+    return pages<T>(this.read, path, signal);
   }
 
   async ref(branch: string) {
