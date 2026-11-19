@@ -18,10 +18,10 @@ import { RepoClient } from "../src/github/api";
 import { loadAppKey, loadAppMetadata, mintInstallationToken } from "../src/github/app";
 import { fetchCommits } from "../src/github/fetch";
 import { publishEvidence } from "../src/github/evidence";
-import { orcaJson } from "../src/orca/cli";
-import { captureEvidence, createVerificationProfile, deleteVerificationProfile, githubSession, withVerificationTab } from "../src/verify/browser";
+import { type VerificationBrowser, withVerificationProfile } from "../src/verify/browser";
 import { type EvidenceRecord, VIEWPORTS } from "../src/verify/evidence";
 import { loadVerifyConfig, type Preview, type ProjectCommands, startPreview } from "../src/verify/preview";
+import { openEvidenceStore } from "../src/verify/store";
 import { REGISTRY_HOSTS } from "../src/verify/proxy";
 
 const [before, after, prArg] = process.argv.slice(2);
@@ -82,66 +82,42 @@ async function probes(p: Preview): Promise<void> {
   await show("network, no-network profile", await sh("probe-net-setup", "none", outbound));
 }
 
-let profileId: string | null = null;
 const previews: Preview[] = [];
+const store = openEvidenceStore(dispatch.stateRoot, crypto.randomUUID());
 try {
   const p1 = await preview(before, "spike-02-before");
   previews.push(p1);
   await probes(p1);
-  const still = await fetch(`${p1.origin}/health`).then((r) => r.status, (e: Error) => e.message);
+  const still = await fetch(`${p1.origin}/health`, { signal: AbortSignal.timeout(5_000) }).then((r) => r.status, (e: Error) => e.message);
   log(`### preview still serving after the probes: ${still}`);
 
-  profileId = await createVerificationProfile(config.executables.orca, `factory-verify-${crypto.randomUUID().slice(0, 8)}`);
-  const target = { orcaPath: config.executables.orca, worktree: `path:${FACTORY}`, profileId };
-  log(`### verification profile ${profileId}`);
-  const prUrl = `https://github.com/${OWNER}/${REPO}/pull/${pr}`;
-  await withVerificationTab(target, prUrl, async (page) => {
-    const tab = await orcaJson(target.orcaPath, ["tab", "show", "--page", page]);
-    const t = tab.tab as Record<string, unknown>;
-    log("clean profile on the private PR:", { title: t.title, profileId: t.profileId }, "github cookies:", await githubSession(target.orcaPath, page));
+  await withVerificationProfile({ orcaPath: config.executables.orca, worktree: `path:${FACTORY}` }, async (browser: VerificationBrowser) => {
+    const prUrl = `https://github.com/${OWNER}/${REPO}/pull/${pr}`;
+    log("clean profile on the private PR:", await browser.sessionAt(prUrl));
+    const capture = async (p: Preview, run: string, sha: string): Promise<EvidenceRecord[]> => {
+      const out: EvidenceRecord[] = [];
+      for (const v of [VIEWPORTS.desktop, VIEWPORTS.mobile]) {
+        const r = await browser.capture({ url: `${p.origin}/?error=1`, viewport: v, store, name: `${run}-${v.name}`, acId: "AC-1", commitSha: sha, serving: p.serving });
+        log(`capture ${r.name}: sha256 ${r.screenshotSha256.slice(0, 16)}, console ${JSON.stringify(r.consoleErrors)}, egress ${r.browserEgress} ${JSON.stringify(r.externalOrigins)}`);
+        out.push(r);
+      }
+      return out;
+    };
+    const beforeA = await capture(p1, "before-a", before);
+    const beforeB = await capture(p1, "before-b", before);
+    for (const [a, b] of beforeA.map((r, i) => [r, beforeB[i]!] as const)) log(`stability ${a.viewport.name}: ${a.screenshotSha256 === b.screenshotSha256 ? "IDENTICAL" : "DIFFERENT"}`);
+    log("### stop before preview:", await p1.stop());
+    previews.pop();
+    const p2 = await preview(after, "spike-02-after");
+    previews.push(p2);
+    const afterRecords = await capture(p2, "after", after);
+    log("### stop after preview:", await p2.stop());
+    previews.pop();
+    const token = await mintInstallationToken(meta, key, { repositories: [REPO], permissions: { contents: "write", pull_requests: "write" } });
+    const head = (await new RepoClient(OWNER, REPO, token).request<{ head: { sha: string } }>("GET", `/repos/${OWNER}/${REPO}/pulls/${pr}`))!.head.sha;
+    log("### published", await publishEvidence(new RepoClient(OWNER, REPO, token), { pr, headSha: head, attemptId: store.attemptId, groups: [{ title: "Before", records: beforeA }, { title: "After", records: afterRecords }] }));
   });
-
-  const capture = async (p: Preview, run: string, sha: string): Promise<EvidenceRecord[]> => {
-    const out: EvidenceRecord[] = [];
-    for (const v of [VIEWPORTS.desktop, VIEWPORTS.mobile]) {
-      const r = await captureEvidence({ target, url: `${p.origin}/?error=1`, viewport: v, outDir: evidenceDir, name: `${run}-${v.name}`, acId: "AC-1", commitSha: sha });
-      log(`capture ${r.name}: sha256 ${r.screenshotSha256.slice(0, 16)}, console ${JSON.stringify(r.consoleErrors)}, failed ${JSON.stringify(r.networkFailures.map((f) => `${f.method} ${new URL(f.url).pathname} ${f.status}`))}, banner text ${r.pageText.includes("Verified change: the banner is new.")}, stabilized ${JSON.stringify(r.stabilized)}`);
-      out.push(r);
-    }
-    return out;
-  };
-  const beforeA = await capture(p1, "before-a", before);
-  const beforeB = await capture(p1, "before-b", before);
-  for (const [a, b] of beforeA.map((r, i) => [r, beforeB[i]!] as const)) log(`stability ${a.viewport.name}: ${a.screenshotSha256 === b.screenshotSha256 ? "IDENTICAL" : "DIFFERENT"}`);
-  log("### stop before preview:", await p1.stop());
-  previews.pop();
-
-  const p2 = await preview(after, "spike-02-after");
-  previews.push(p2);
-  const afterRecords = await capture(p2, "after", after);
-  for (const [a, b] of beforeA.map((r, i) => [r, afterRecords[i]!] as const)) log(`before/after ${a.viewport.name}: ${a.screenshotSha256 === b.screenshotSha256 ? "IDENTICAL" : "DIFFERENT"}`);
-  log("### stop after preview:", await p2.stop());
-  previews.pop();
-
-  const token = await mintInstallationToken(meta, key, { repositories: [REPO], permissions: { contents: "write", pull_requests: "write", issues: "write" } });
-  log(`### publishing with a token scoped to ${JSON.stringify(token.repositories)} ${JSON.stringify(token.permissions)}, printed as ${String(token)}`);
-  const head = (await new RepoClient(OWNER, REPO, token).request<{ head: { sha: string } }>("GET", `/repos/${OWNER}/${REPO}/pulls/${pr}`))!.head.sha;
-  const published = await publishEvidence(new RepoClient(OWNER, REPO, token), {
-    pr,
-    headSha: head,
-    attemptId: crypto.randomUUID(),
-    groups: [
-      { title: `Before (${before.slice(0, 12)})`, records: beforeA },
-      { title: `After (${after.slice(0, 12)})`, records: afterRecords },
-      { title: "Repeat of before (stability)", records: beforeB },
-    ],
-  });
-  log("### published", published);
 } finally {
   for (const p of previews) log("### stop (cleanup):", await p.stop());
-  if (profileId) {
-    await deleteVerificationProfile(config.executables.orca, profileId);
-    log(`### deleted profile ${profileId}`);
-  }
-  log("### evidence dir", evidenceDir);
+  log("### evidence dir", store.dir);
 }

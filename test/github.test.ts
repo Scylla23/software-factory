@@ -212,8 +212,8 @@ describe("commitFiles", () => {
 
 function record(name: string, extra: Partial<EvidenceRecord> = {}): EvidenceRecord {
   return {
-    acId: "AC-1", name, commitSha: SHA(7), url: "http://127.0.0.1:4100/", viewport: VIEWPORTS.desktop, screenshotPath: "/dev/null", screenshotSha256: "0".repeat(64),
-    consoleErrors: [], networkFailures: [], pageText: "", truncated: { console: false, network: false, pageText: false }, profileId: "p", stabilized: null, capturedAt: "t", ...extra,
+    acId: "AC-1", name, commitSha: SHA(7), url: "http://127.0.0.1:4100/", origin: "http://127.0.0.1:4100", browserEgress: "unrestricted", externalOrigins: [], viewport: VIEWPORTS.desktop, screenshotPath: "/dev/null", screenshotSha256: "0".repeat(64), screenshotBytes: 0,
+    consoleErrors: [], networkFailures: [], pageText: "", truncated: { console: false, network: false, pageText: false }, stabilized: null, capturedAt: "t", ...extra,
   };
 }
 const set = (records: EvidenceRecord[]): EvidenceSet => ({ pr: 1, headSha: SHA(9), attemptId: "0deacd2c-d259-4aa7-830e-93dd0ec2c2dd", groups: [{ title: "After (abc)", records }] });
