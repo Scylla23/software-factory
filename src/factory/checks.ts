@@ -19,6 +19,19 @@ export function requireHealthyInfrastructure(checks: readonly Check[]) {
   }
 }
 
+/** Evaluate Bun's JUnit document independently of the test's stdout and stderr. */
+export function junitReproduction(xml: string, base: boolean) {
+  if (!xml || Buffer.byteLength(xml) > 65_536 || /<!/.test(xml)) return false;
+  const failure = base ? "count(failure)=1 and failure/@type='AssertionError'" : "not(failure)";
+  const one = "count(//testcase)=1 and count(//testsuite)=1 and not(//error | //skipped)";
+  const testcase = `/testsuites[@tests=1 and @failures=${Number(base)} and @skipped=0]/testsuite/testcase[` +
+    `@file='repro.test.ts' and (@name='AC-1' or starts-with(@name,'AC-1 ')) and @assertions>0 and ${failure}]`;
+  const result = Bun.spawnSync(["/usr/bin/xmllint", "--nonet", "--xpath", `boolean(${one} and ${testcase})`, "-"], {
+    stdin: Buffer.from(xml), stdout: "pipe", stderr: "pipe", timeout: 3_000,
+  });
+  return result.exitCode === 0 && result.stdout.toString().trim() === "true";
+}
+
 export class ProjectChecks {
   private runtime?: VerifyConfig;
   get verify() {
@@ -98,20 +111,23 @@ export class ProjectChecks {
           checks.push(commandCheck("install same reproduction on base", prep));
           if (!checks[0]?.pass) return;
         }
-        const result = await p.run(["bun", "test", "./repro.test.ts"], {
+        const report = `factory-junit-${crypto.randomUUID()}.xml`;
+        const result = await p.run(["bun", "test", "--reporter=junit", `--reporter-outfile=${report}`, "./repro.test.ts"], {
           name: "reproduction",
           network: "none",
           timeoutMs: 30_000,
         });
         const output = tail(result.logPath, 24_000);
         requireHealthyInfrastructure([commandCheck("run reproduction", result)]);
-        const ran = result.stopped === null && !result.quarantineReasons.length;
-        const ok = baseTest
-          ? result.exitCode === 1 && /\(fail\) AC-1/.test(output) && /error: expect\(/.test(output)
-          : result.exitCode === 0 && /\(pass\) AC-1/.test(output) && /\b0 fail\b/.test(output);
-        checks.push(
-          check(baseTest ? "AC-1 fails on base" : "AC-1 passes on head", ran && ok, `exit ${result.exitCode}\n${output}`),
-        );
+        // Read project-controlled paths only in the project sandbox. Its separate capped log contains just the report.
+        const read = await p.run(["/bin/cat", report], { name: "read-junit", network: "none", timeoutMs: 5_000 });
+        requireHealthyInfrastructure([commandCheck("read JUnit", read)]);
+        const xml = tail(read.logPath, 65_537);
+        const assertion = /error: expect\(/.test(output);
+        const ok = read.exitCode === 0 && junitReproduction(xml, !!baseTest) &&
+          (baseTest ? result.exitCode === 1 && assertion : result.exitCode === 0);
+        checks.push(check(baseTest ? "AC-1 fails on base" : "AC-1 passes on head", ok,
+          `exit ${result.exitCode}; JUnit ${ok ? "confirmed" : "did not confirm"} the required AC-1 result\n${output}`));
         if (!baseTest) {
           for (const name of ["test", "lint", "typecheck"] as const) {
             const result = await p.run(config.pilot.commands[name], { network: "none", name, timeoutMs: 60_000 });

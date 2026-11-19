@@ -96,7 +96,14 @@ export function reviewVerdict(text: string) {
 async function review(store: Store, git: Publisher, task: Task, observe: Observer) {
   if (String(config.agents.builder.harness) === config.agents.reviewer.harness)
     throw new Error("review must use the opposite vendor");
-  const prompt = reviewPrompt(task);
+  const observation = (action: string, name: string, revision: string) => {
+    const evidence = latest<{ tested: string; checks: Check[] }>(store, task, action);
+    const proof = evidence.checks.find((c) => c.name === name && c.pass);
+    if (evidence.tested !== revision || !proof) throw new Error("missing reviewed reproduction evidence");
+    return redact(proof.detail, 8_000);
+  };
+  const prompt = reviewPrompt(task, observation("base-reproduction", "AC-1 fails on base", task.base),
+    observation("head-checks", "AC-1 passes on head", task.head));
   const result = await effect(store, task, "code-review", { base: task.base, head: task.head, prompt }, async (a) => {
     await git.boundPull(task);
     const output = await dispatchWorker(store, task, a, "reviewer", prompt, observe);
