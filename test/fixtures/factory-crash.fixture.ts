@@ -1,76 +1,114 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../factory.config";
-import { drive, effect, type Stages } from "../../src/factory/machine";
-import { Store, type Approval, type State, type Task } from "../../src/factory/store";
+import { Uncertain } from "../../src/factory/machine";
+import { runStages } from "../../src/factory/run";
+import { Store, type Task, type Attempt } from "../../src/factory/store";
+import type { Review } from "../../src/factory/gates";
+import type { WorkerOutput } from "../../src/factory/worker";
 
-const root = process.argv[2] ?? "";
-if (!root) throw new Error("fixture directory required");
-const store = new Store(join(root, "state.sqlite"));
-const base = "a".repeat(40);
-const head = "b".repeat(40);
-const issue = {
-  source: "github" as const,
-  repoId: 10,
-  issueId: 11,
-  number: 4,
-  title: "count",
-  body: "zero",
-  sender: config.ownerId,
-  revision: "one",
-  url: "fixture",
-};
-const t = store.intake(issue, base);
-
-function killOnce(marker: string) {
-  if (existsSync(marker)) return;
-  writeFileSync(marker, "killed", { flag: "wx" });
+const root = process.argv[2]!;
+const scenario = process.argv[3] ?? "crash";
+const base = "a".repeat(40), spec = "b".repeat(40), head = "c".repeat(40);
+function checkpoint(key: string) {
+  const path = join(root, key + ".kill");
+  if (scenario !== "crash" || existsSync(path)) return;
+  writeFileSync(path, key, { flag: "wx" });
   process.kill(process.pid, "SIGKILL");
 }
-
-async function stage(task: Task, next: State) {
-  const start = join(root, String(task.visit));
-  // Crash as soon as the transition is visible in a separate process.
-  if (store.task(task.id).state !== task.state) throw new Error("stage precedes durable transition");
-  killOnce(`${start}.entered`);
-  await effect(store, task, `fake-${task.state}`, { head: task.head }, async (attempt) => {
-    const remote = `${start}.worker`;
-    if (attempt.fresh) writeFileSync(remote, attempt.id, { flag: "wx" });
-    if (readFileSync(remote, "utf8") !== attempt.id) throw new Error("duplicate external action");
-    // Kill after the simulated side effect but before its result can be committed.
-    killOnce(`${start}.started`);
-    return { adopted: true, id: attempt.id };
-  });
-  let approval: Approval | undefined;
-  if (task.state === "awaiting_spec_approval" || task.state === "awaiting_pr_approval") {
-    approval = {
-      kind: next === "done" ? "review" : "comment",
-      id: task.visit,
-      actor: config.ownerId,
-      sha: head,
-      accepted: true,
-      reason: "fixture approval",
-    };
+class CrashStore extends Store {
+  override plan(...args: Parameters<Store["plan"]>) {
+    const a = super.plan(...args);
+    if (a.result === null) checkpoint(a.action + ".planned");
+    return a;
   }
-  return store.move(task, next, next === "awaiting_spec_approval" ? { spec: head, head, pr: 5 } : {}, approval);
+  override finish(id: string, value: unknown) {
+    const a = this.db.query<{ action: string }, [string]>("SELECT action FROM attempts WHERE id=?").get(id)!;
+    checkpoint(a.action + ".before-finish");
+    super.finish(id, value);
+    checkpoint(a.action + ".finished");
+  }
+  override move(...args: Parameters<Store["move"]>) {
+    const t = super.move(...args);
+    checkpoint(t.state + ".entered");
+    return t;
+  }
 }
-const stages: Stages = {
-  received: (t) => stage(t, "spec_drafting"),
-  spec_drafting: (t) => stage(t, "awaiting_spec_approval"),
-  awaiting_spec_approval: (t) => stage(t, "building"),
-  building: (t) => stage(t, "checks"),
-  checks: (t) => stage(t, "code_review"),
-  code_review: (t) => stage(t, "verifying"),
-  verifying: (t) => stage(t, "awaiting_pr_approval"),
-  awaiting_pr_approval: (t) => stage(t, "done"),
-  escalated: () => {
-    throw new Error("unexpected escalation");
+const s = new CrashStore(join(root, "state.sqlite"));
+const issue = { source: "github" as const, repoId: 11, issueId: 12, number: 4, title: "stock", body: "zero",
+  sender: config.ownerId, revision: "one", url: "https://github.com/Scylla23/factory-pilot/issues/4" };
+const initial = s.intake(issue, base);
+checkpoint(initial.state + ".entered");
+
+// An external resource survives the controller independently of the SQLite result, keyed by visit and action.
+function remote<T>(action: string, value: T, expectedId?: string): T {
+  const t = s.task(initial.id);
+  const a = s.db.query<{id: string; intent: string}, [number,number,string]>("SELECT id,intent FROM attempts WHERE task=? AND visit=? AND action=?")
+    .get(t.id, t.visit, action);
+  if (!a || !a.intent || (expectedId && expectedId !== a.id)) throw Error("effect before intent: " + action);
+  const file = join(root, `${t.visit}-${action}.resource`);
+  if (!existsSync(file)) writeFileSync(file, JSON.stringify({ id: a.id, value }), { flag: "wx" });
+  const record = JSON.parse(readFileSync(file, "utf8"));
+  if (record.id !== a.id) throw Error("duplicate external effect: " + action);
+  checkpoint(action + ".external");
+  return record.value;
+}
+function interruptOnce(a: Attempt, which: string) {
+  const file = join(root, "interrupted");
+  if (scenario !== which || existsSync(file)) return;
+  writeFileSync(file, a.id, { flag: "wx" });
+  throw new Uncertain(`interrupted ${which === "resume-capture" ? "browser capture" : "project check"} ${a.id}`);
+}
+const passed = (name: string, detail = "ok") => ({ name, detail, pass: true });
+const pull = (t: Task) => ({ number: 5, htmlUrl: "fixture", baseSha: base, baseRef: "main", headSha: t.head,
+  state: "open", draft: !existsSync(join(root, t.visit + "-mark-ready.resource")) });
+const when = "2026-01-01T00:00:00Z";
+const git: Parameters<typeof runStages>[2]["git"] = {
+  boundPull: async t => pull(t), fetch: async () => {}, basePaths: () => new Set(["app.test.ts"]),
+  reproduction: () => { throw Error("unexpected fallback"); },
+  commit: async (t,id) => remote(t.state === "building" ? "commit-fix" : "commit-spec", t.state === "building" ? head : spec, id),
+  draft: async (_t,id) => remote("open-draft", 5, id),
+  comment: async (_pr,id) => {
+    const t = s.task(1);
+    const action = t.state !== "escalated" ? "request-spec-approval" : s.interrupted(t) ? "report-interruption" :
+      s.canReverify(t) ? "report-verification-escalation" : "report-escalation";
+    return remote(action, 10, id);
   },
+  comments: async () => {
+    const t = s.task(1), abandoned = s.interrupted(t);
+    const body = abandoned ? "/resume " + abandoned.id : t.state === "escalated" ? "/reverify " + t.head : "/approve " + spec;
+    return [{ id: t.state === "escalated" ? 25 : 15, createdAt: when, updatedAt: when, lastEditedAt: null, htmlUrl: "",
+      author: "owner", authorId: config.ownerId, body }];
+  },
+  summary: async () => remote("publish-evidence", { id: 20, htmlUrl: "summary", updated: false }),
+  ready: async () => { remote("mark-ready", true); }, reviewBoundary: async () => when,
+  pages: async <T>() => [{ id: 21, user: { id: config.ownerId }, state: "APPROVED", commit_id: head,
+    submitted_at: "2026-01-02T00:00:00Z" } satisfies Review] as T[],
 };
 try {
-  const final = await drive(store, t, stages);
-  if (final.state !== "done") throw new Error(`stopped at ${final.state}`);
-  killOnce(join(root, "done.entered"));
-} finally {
-  store.db.close();
-}
+  const final = await runStages(s, initial, {
+    git, stateRoot: root, observe: () => {},
+    dispatch: async (_s, t, a, role, prompt) => {
+      const body = role === "spec" ? "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
+      if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
+        throw Error("reviewer did not see both reproduction results");
+      const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro.test.ts", content: "eA==" }] : [];
+      if (role === "builder" && scenario === "edited-test") files.push({ path: "app.test.ts", content: "eA==" });
+      return remote(a.action, { result: { resultText: body } as WorkerOutput["result"], files }, a.id);
+    },
+    test: async (t, a, content) => {
+      interruptOnce(a, content ? "resume-base" : "resume-check");
+      return remote(a.action, { base: t.base, head: t.head, tested: content ? t.base : t.head,
+      checks: [content ? passed("AC-1 fails on base", "base-observation") : scenario === "infra" ?
+        { name: "lint", pass: false, detail: "exit 127\nenv: node: No such file or directory" } :
+        passed("AC-1 passes on head", "head-observation")] }, a.id);
+    },
+    verify: async (t, a, prior) => {
+      interruptOnce(a, "resume-capture");
+      const passes = scenario !== "reverify" || !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
+      return remote("verify", { pr: 5, base: t.base, head: t.head, checks: [...prior, { name: "AC-1 capture", pass: passes, detail: "stock" }],
+        captures: [], attemptId: a.id, evidenceDir: root }, a.id);
+    },
+  });
+  if (scenario === "crash" && final.state !== "done") throw Error("unexpected state " + final.state);
+} finally { s.db.close(); }

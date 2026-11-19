@@ -48,6 +48,7 @@ export function checkAbandonedPreviews(root: string, attempt: string) {
 }
 
 export class ProjectChecks {
+  constructor(readonly stateRoot = config.stateRoot) {}
   private runtime?: VerifyConfig;
   get verify() {
     if (!this.runtime) {
@@ -73,7 +74,7 @@ export class ProjectChecks {
     checks: Check[],
     use: (preview: Preview) => Promise<void>,
   ) {
-    const logDir = join(config.stateRoot, "project-logs", attemptId);
+    const logDir = join(this.stateRoot, "project-logs", attemptId);
     mkdirSync(logDir, { mode: 0o700, recursive: true });
     const id = previewId(attemptId, name);
     const p = await startPreview(
@@ -100,7 +101,7 @@ export class ProjectChecks {
   async test(task: Task, attempt: Attempt, baseTest?: string) {
     const sha = baseTest ? task.base : task.head;
     const checks: Check[] = [];
-    const logs = join(config.stateRoot, "project-logs", attempt.id);
+    const logs = join(this.stateRoot, "project-logs", attempt.id);
     const receipt = join(logs, "completed.json");
     if (!attempt.fresh && existsSync(logs)) {
       if (!existsSync(receipt)) throw new Uncertain(`interrupted project check ${attempt.id}`);

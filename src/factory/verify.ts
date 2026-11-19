@@ -32,7 +32,7 @@ export async function verifyPilot(
   prior: Check[],
 ): Promise<EvidenceSummary> {
   if (task.issue.number !== inventory.issue) throw new Error("no registered verification fixture for this issue");
-  const dir = join(config.stateRoot, "evidence", attempt.id);
+  const dir = join(project.stateRoot, "evidence", attempt.id);
   if (!attempt.fresh && existsSync(dir)) {
     const receipt = join(dir, "records.json");
     if (!existsSync(receipt)) throw new Uncertain(`interrupted browser capture ${attempt.id}`);
@@ -47,7 +47,7 @@ export async function verifyPilot(
       throw new Uncertain("browser capture receipt moved");
     return stored;
   }
-  const evidence: EvidenceStore = openEvidenceStore(config.stateRoot, attempt.id);
+  const evidence: EvidenceStore = openEvidenceStore(project.stateRoot, attempt.id);
   const checks = [...prior];
   const captures: EvidenceRecord[] = [];
   try {

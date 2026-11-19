@@ -183,6 +183,7 @@ export async function dispatchWorker(
   if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
   if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;
+  if (result.runId !== attempt.id) throw new Uncertain("worker receipt belongs to another attempt");
   store.db.run("INSERT OR IGNORE INTO audit VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
     attempt.id,
     task.id,

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { config } from "../../factory.config";
+import { publishSummary, type EvidenceSummary } from "../github/summary";
 import { RepoClient } from "../github/api";
 import { runGit } from "../dispatch/git";
-import { loadAppKey, loadAppMetadata, mintInstallationToken, TokenSource } from "../github/app";
+import { loadAppKey, loadAppMetadata, mintInstallationToken, TokenSource, type Fetch } from "../github/app";
 import { commitFiles, type FileToCommit } from "../github/commit";
 import { fetchCommits } from "../github/fetch";
 import { ensureDraftPullRequest, getPullRequest, listComments, postComment } from "../github/pulls";
@@ -92,18 +93,39 @@ async function pages<T>(client: RepoClient, path: string): Promise<T[]> {
   throw new Error("GitHub pagination limit exceeded");
 }
 
-export class Publisher {
-  readonly meta = loadAppMetadata(config.stateRoot);
-  private readonly key = loadAppKey(this.meta);
-  private tokens(permissions: Record<string, "read" | "write">) {
-    return new TokenSource(() => mintInstallationToken(this.meta, this.key, { repositories: [pilot.repo], permissions }));
-  }
-  private readonly readTokens = this.tokens({ contents: "read", issues: "read", pull_requests: "read" });
-  readonly read = new RepoClient(pilot.owner, pilot.repo, this.readTokens);
-  readonly pulls = new RepoClient(pilot.owner, pilot.repo, this.tokens({ pull_requests: "write" }));
-  private readonly drafts = new RepoClient(pilot.owner, pilot.repo, this.tokens({ contents: "read", pull_requests: "write" }));
-  private readonly contents = new RepoClient(pilot.owner, pilot.repo, this.tokens({ contents: "write" }));
+function appConnection() {
+  const meta = loadAppMetadata(config.stateRoot);
+  const key = loadAppKey(meta);
+  return { slug: meta.slug, tokens: (permissions: Record<string, "read" | "write">): Pick<TokenSource, "get"> =>
+    new TokenSource(() => mintInstallationToken(meta, key, { repositories: [pilot.repo], permissions })) };
+}
 
+export class Publisher {
+  private readonly readTokens;
+  private readonly read;
+  private readonly pulls;
+  private readonly drafts;
+  private readonly contents;
+  private readonly readyClient;
+
+  constructor(private readonly app = appConnection(), private readonly repoPath = pilot.path, transport?: Fetch) {
+    const client = (p: Record<string, "read" | "write">) => new RepoClient(pilot.owner, pilot.repo, app.tokens(p), transport);
+    this.readTokens = app.tokens({ contents: "read", issues: "read", pull_requests: "read" });
+    this.read = new RepoClient(pilot.owner, pilot.repo, this.readTokens, transport);
+    this.pulls = client({ pull_requests: "write" });
+    this.drafts = client({ contents: "read", pull_requests: "write" });
+    this.contents = client({ contents: "write" });
+    this.readyClient = client({ contents: "write", pull_requests: "write" });
+  }
+  basePaths(base: string) {
+    return new Set(runGit("/usr/bin/git", this.repoPath, ["ls-tree", "-rz", "--name-only", base]).toString().split("\0"));
+  }
+  reproduction(head: string) {
+    return runGit("/usr/bin/git", this.repoPath, ["show", `${head}:repro.test.ts`]).toString("base64");
+  }
+  summary(evidence: EvidenceSummary) {
+    return publishSummary(this.pulls, evidence, { botLogin: `${this.app.slug}[bot]` });
+  }
   issue(number: number) {
     return readIssue(this.read, number);
   }
@@ -122,7 +144,7 @@ export class Publisher {
     return r?.object.sha ?? null;
   }
   async fetch(sha: string) {
-    fetchCommits("/usr/bin/git", pilot.path, pilot.owner, pilot.repo, [sha], await this.readTokens.get());
+    fetchCommits("/usr/bin/git", this.repoPath, pilot.owner, pilot.repo, [sha], await this.readTokens.get());
   }
   branch(task: Task) {
     return `factory/issue-${task.issue.number}`;
@@ -139,7 +161,7 @@ export class Publisher {
       );
       if (commit?.message === message && commit.parents.length === 1 && commit.parents[0]?.sha === (parent ?? task.base)) {
         await this.fetch(tip);
-        const git = (args: string[]) => runGit("/usr/bin/git", pilot.path, args).toString();
+        const git = (args: string[]) => runGit("/usr/bin/git", this.repoPath, args).toString();
         const paths = new Set(files.map((f) => f.path));
         const diff = git(["diff-tree", "-r", "--no-renames", "--no-commit-id", "--name-only", "-z", parent ?? task.base, tip])
           .split("\0")
@@ -169,7 +191,7 @@ export class Publisher {
       `${this.read.base}/pulls/${pull.number}`,
     );
     if (
-      remote?.user.login !== `${this.meta.slug}[bot]` ||
+      remote?.user.login !== `${this.app.slug}[bot]` ||
       !remote.body.startsWith(marker) ||
       pull.headSha !== head ||
       pull.baseSha !== task.base ||
@@ -194,8 +216,7 @@ export class Publisher {
     if (!bound.draft) return;
     const pr = await this.read.request<{ node_id: string }>("GET", `${this.read.base}/pulls/${task.pr}`);
     const query = "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft headRefOid}}}";
-    const readyClient = new RepoClient(pilot.owner, pilot.repo, this.tokens({ contents: "write", pull_requests: "write" }));
-    const updated = await readyClient.request<{
+    const updated = await this.readyClient.request<{
       data?: { markPullRequestReadyForReview: { pullRequest: { isDraft: boolean; headRefOid: string } } | null };
       errors?: { type?: string; message: string }[];
     }>("POST", "/graphql", { query, variables: { id: pr?.node_id } });
@@ -245,7 +266,7 @@ export class Publisher {
   async comment(number: number, id: string, text: string) {
     const marker = `<!-- factory:comment attempt=${id} -->`;
     const existing = (await this.comments(number)).filter(
-      (c) => c.author === `${this.meta.slug}[bot]` && c.body.startsWith(marker),
+      (c) => c.author === `${this.app.slug}[bot]` && c.body.startsWith(marker),
     );
     if (existing.length > 1) throw new Error("duplicate App comment for attempt");
     return (existing[0] ?? (await postComment(this.pulls, number, `${marker}\n${text}`))).id;
