@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../factory.config";
@@ -142,4 +142,20 @@ test.each(["supervisor", "uncertain", "quarantine"] as const)("audit failure pre
     expect(error instanceof Uncertain).toBe(mode !== "supervisor");
     expect(log.mock.calls.flat().join(" ")).toContain(attempt.id);
   } finally { log.mockRestore(); }
+});
+
+test("reported total gives complete cost coverage when tokens are unknown", async () => {
+  const j = job("dispatch-spec");
+  await recordUsage(store.db,task,j,{ ...run(j), harness:"claude", usage:null, reportedCostUsd:0.3 },root);
+  expect(costReport(store.db,"task").groups).toMatchObject([{ tokens:null,tokenCoverage:"unknown",apiEquivalentUsd:0.3,costCoverage:"complete" }]);
+});
+
+test.each(["claude","codex"] as const)("interrupted %s reads its own real stdout result", async harness => {
+  const j = job("dispatch-worker");
+  j.agent.harness = harness;
+  copyFileSync(join(import.meta.dir,"fixtures/usage",harness + "-complete.jsonl"),join(root,j.id + ".stdout.jsonl"));
+  await recordInterrupted(store.db,task,j,root,root);
+  expect(store.db.query("SELECT session,outcome FROM audit").all()).toEqual([{ outcome:"uncertain", session:harness === "claude"
+    ? "ed51dabc-86f7-4b37-bf7e-cb205ccfd44c" : "01a1f524-ad86-70c2-9dd8-396d9c5e64ec" }]);
+  expect(costReport(store.db,"task").groups[0]!.tokens).toBe(harness === "claude" ? 12248 : 10665);
 });

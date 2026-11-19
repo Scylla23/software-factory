@@ -264,3 +264,33 @@ test("live Haiku child and parent reconcile to the provider total and copied par
   appendFileSync(join(project,session,"subagents","agent-" + agentId + ".jsonl"),JSON.stringify({ ...parent, isSidechain:true, agentId }));
   expect(await read()).toEqual(initial);
 });
+
+test("Haiku switches the entire request to the long-context rate above 100000 prompt tokens", () => {
+  const t = { input:90000, cacheWrite:8000, cacheRead:2000, output:100, reasoning:0 };
+  expect(estimate("claude-haiku-5-5",t,2000,true)).toBeCloseTo(0.01022,12);
+  expect(estimate("claude-haiku-5-5",{ ...t, cacheRead:2001 },2000,true)).toBeCloseTo(0.05110005,12);
+});
+
+test("impossible Codex reasoning counts cannot produce a measured total", () => {
+  const usage = { harness:"codex", inputTokens:10, cachedInputTokens:0, cacheWriteInputTokens:0, outputTokens:1, reasoningOutputTokens:2 };
+  expect(primary(usage,"gpt-6-luna","completed")).toMatchObject({ coverage:"unknown", costUsd:null });
+});
+
+test("Claude reports partial tokens when one model's exit counters are broken", () => {
+  const model = { inputTokens:50, cacheReadInputTokens:0, cacheCreationInputTokens:0, outputTokens:1, costUsd:0.2 };
+  expect(primary({ harness:"claude", byModel:{ a:model, b:{ ...model, outputTokens:-1 } } },"a","completed"))
+    .toMatchObject({ coverage:"partial", lines:[{model:"a"}] });
+});
+
+test("Claude observes the parent model independently of the child model", async () => {
+  const { run, path } = await replay("claude","killed");
+  const child = join(dirname(path),run.sessionId!,"subagents/agent-cheap.jsonl");
+  mkdirSync(dirname(child), {recursive:true});
+  const msg = JSON.parse(readFileSync(path,"utf8"));
+  msg.message.model = "child-model";
+  msg.message.id += "-child";
+  writeFileSync(child,JSON.stringify({ ...msg,agentId:"cheap",isSidechain:true }));
+  const capture = await captureRun({ ...run, observedModel:null },root);
+  expect(capture.capture.lines.map(l => l.model)).toEqual(["claude-haiku-5-5","child-model"]);
+  expect(capture.observed).toBe("claude-haiku-5-5");
+});
