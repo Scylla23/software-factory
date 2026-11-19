@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { materializeCommit, removeMaterialized } from "../src/verify/materialize";
-import { git, makeRepo, makeVerifyEnv, type VerifyEnv } from "./verify-helpers";
+import { git, makeRepo, makeVerifyEnv, spawnBounded, type VerifyEnv } from "./verify-helpers";
 
 let env: VerifyEnv;
 beforeEach(() => {
@@ -25,7 +25,7 @@ describe("materializeCommit", () => {
     expect(m.path).toBe(join(env.previewRoot, "preview-1"));
     expect(readFileSync(join(m.path, "a.txt"), "utf8")).toBe("one");
     expect(git(m.path, "rev-parse", "HEAD")).toBe(repo.shas[0]!);
-    expect(Bun.spawnSync(["/usr/bin/git", "-C", m.path, "symbolic-ref", "-q", "HEAD"]).exitCode).not.toBe(0); // detached
+    expect(spawnBounded(["/usr/bin/git", "-C", m.path, "symbolic-ref", "-q", "HEAD"]).exitCode).not.toBe(0); // detached
     writeFileSync(join(m.path, "untracked.txt"), "left by setup");
     removeMaterialized("/usr/bin/git", m);
     expect(existsSync(m.path)).toBe(false);
@@ -41,7 +41,7 @@ describe("materializeCommit", () => {
     // The hook is live: a plain checkout runs it.
     git(repo.path, "checkout", "-q", "--detach", repo.shas[0]!);
     expect(existsSync(marker)).toBe(true);
-    Bun.spawnSync(["/bin/rm", marker]);
+    spawnBounded(["/bin/rm", marker]);
     const m = materializeCommit("/usr/bin/git", { repo: repo.path, sha: repo.shas[0]!, root: env.previewRoot, name: "preview-2", untrustedRoots: env.config.untrustedRoots });
     expect(existsSync(marker)).toBe(false);
     removeMaterialized("/usr/bin/git", m);

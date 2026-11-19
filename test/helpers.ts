@@ -4,6 +4,14 @@ import { join } from "node:path";
 import type { DispatchConfig } from "../src/dispatch/config";
 
 export const FIXTURES = join(import.meta.dir, "fixtures");
+
+/**
+ * Where tests keep state that must be outside the temp roots: `test/.state`, or the run's own directory when the
+ * watchdog (scripts/test-watchdog.sh) sets FACTORY_TEST_STATE, so it can find exactly what its run left behind.
+ */
+export const STATE_DIR = process.env.FACTORY_TEST_STATE || join(import.meta.dir, ".state");
+if (!STATE_DIR.startsWith("/")) throw new Error(`FACTORY_TEST_STATE must be absolute: ${STATE_DIR}`);
+mkdirSync(STATE_DIR, { recursive: true });
 export const fixture = (name: string) => join(FIXTURES, name);
 
 /**
@@ -89,11 +97,10 @@ export function makeSandbox(): Sandbox {
   chmodSync(join(bin, "fake-cli"), 0o755);
   writeFileSync(join(bin, "fake-orca"), fakeOrca(bin));
   chmodSync(join(bin, "fake-orca"), 0o755);
-  mkdirSync(join(import.meta.dir, ".state"), { recursive: true });
-  const stateRoot = mkdtempSync(join(import.meta.dir, ".state", "run-"));
+  const stateRoot = mkdtempSync(join(STATE_DIR, "run-"));
   const logDir = join(stateRoot, "logs");
   mkdirSync(logDir);
-  const home = mkdtempSync(join(import.meta.dir, ".state", "home-"));
+  const home = mkdtempSync(join(STATE_DIR, "home-"));
   const harnessHomes = { claude: join(stateRoot, "claude-home"), codex: join(stateRoot, "codex-home") };
   for (const dir of Object.values(harnessHomes)) mkdirSync(dir, { mode: 0o700 });
   const config: DispatchConfig = {

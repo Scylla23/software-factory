@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
 import { portIsFree } from "../src/verify/port";
 import { gone } from "./helpers";
-import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, type VerifyEnv } from "./verify-helpers";
+import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, settlingTest, spawnBounded, type VerifyEnv } from "./verify-helpers";
 
 let env: VerifyEnv;
 let started: Promise<Preview>[] = [];
@@ -20,6 +20,7 @@ afterEach(async () => {
 });
 
 const previews = () => join(env.stateRoot, "previews");
+const it = settlingTest(() => started);
 
 function spec(repo: string, sha: string, extra: Partial<PreviewSpec["project"]> = {}): PreviewSpec {
   return {
@@ -56,7 +57,7 @@ async function freePair(): Promise<number> {
 
 /** The pid listening on the preview's port, by asking lsof. */
 function serverPid(port: number): number {
-  const out = Bun.spawnSync(["/usr/sbin/lsof", "-n", "-P", `-iTCP:${port}`, "-sTCP:LISTEN", "-F", "p"]).stdout.toString();
+  const out = spawnBounded(["/usr/sbin/lsof", "-n", "-P", `-iTCP:${port}`, "-sTCP:LISTEN", "-F", "p"]).stdout;
   return Number(out.split("\n").find((l) => l.startsWith("p"))!.slice(1));
 }
 
@@ -74,10 +75,10 @@ async function allGone(pids: readonly number[]): Promise<boolean> {
 }
 
 describe("startPreview", () => {
-  test("serves the exact commit after setup, then tears down with nothing left", async () => {
+  it("serves the exact commit after setup, then tears down with nothing left", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("commit-one") }, { "server.ts": serverSource("commit-two") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
-    expect(await (await fetch(`${p.origin}/`)).text()).toBe("commit-one");
+    expect(await (await bounded(`${p.origin}/`)).text()).toBe("commit-one");
     expect(readFileSync(join(p.worktree, "setup-ran"), "utf8")).toBe("set-up\n");
     expect(p.port).toBeGreaterThanOrEqual(41000);
     expect(p.worktree).toBe(join(previews(), p.id, "worktree"));
@@ -94,7 +95,7 @@ describe("startPreview", () => {
     expect(readdirSync(env.logDir).sort()).toEqual([`${p.id}.egress.log`, `${p.id}.preview.log`, `${p.id}.setup-0.log`]);
   });
 
-  test("a command beside the running preview cannot read denied files or the factory's env, and leaves the preview up", async () => {
+  it("a command beside the running preview cannot read denied files or the factory's env, and leaves the preview up", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     process.env.FACTORY_CANARY = "FACTORY-CANARY-test";
     let p: Preview;
@@ -118,20 +119,20 @@ describe("startPreview", () => {
     expect(out).not.toContain("FACTORY_CANARY");
     expect(out).toContain(`PORT-IS-${p.port}`);
     expect(out).toContain(`HEAD-IS-${repo.shas[0]}`); // its own git dirs are readable
-    expect(await (await fetch(`${p.origin}/`)).text()).toBe("up");
+    expect(await (await bounded(`${p.origin}/`)).text()).toBe("up");
   });
 
-  test("whatever a command beside the preview leaves running is found and killed, and the preview survives", async () => {
+  it("whatever a command beside the preview leaves running is found and killed, and the preview survives", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     const r = await p.run(DETACH, { network: "none", name: "leaver", timeoutMs: 10_000 });
     const leftovers = reportedLeftovers(r.quarantineReasons.join("\n"));
     expect(leftovers.length).toBe(1);
     expect(await allGone(leftovers)).toBe(true);
-    expect(await (await fetch(`${p.origin}/`)).text()).toBe("up");
+    expect(await (await bounded(`${p.origin}/`)).text()).toBe("up");
   });
 
-  test("setup egress dies with the phase: a detached setup child that escaped the sweeps loses the proxy when setup ends", async () => {
+  it("setup egress dies with the phase: a detached setup child that escaped the sweeps loses the proxy when setup ends", async () => {
     // The leaker moves to / at once, so no sweep finds it by its working directory (the documented blind spot), and
     // keeps asking the proxy for a host outside the allowlist, logging the CONNECT status it gets.
     const leak = `cd / || exit 1; echo $$ > "$HOME/leak.pid"; i=0; while [ $i -lt 150 ]; do
@@ -155,7 +156,7 @@ describe("startPreview", () => {
     expect(readFileSync(p.logs.find((l) => l.endsWith(".egress.log"))!, "utf8")).toContain("DENY denied.example:443 host not in the allowlist");
   });
 
-  test("the preview may call itself on its port, but no other loopback service and nothing outbound", async () => {
+  it("the preview may call itself on its port, but no other loopback service and nothing outbound", async () => {
     const owner = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("owner-service") });
     try {
       const repo = makeRepo(env.repos, "app", [{ "server.ts": probingServerSource(owner.port!) }]);
@@ -169,14 +170,14 @@ describe("startPreview", () => {
     }
   });
 
-  test("a command beside the preview can never get egress", async () => {
+  it("a command beside the preview can never get egress", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     await expect(p.run(["/usr/bin/true"], { network: "proxy" as never, name: "sneaky", timeoutMs: 5_000 })).rejects.toThrow("may not have network");
     await expect(p.run(["/usr/bin/true"], { network: "outbound" as never, name: "sneaky", timeoutMs: 5_000 })).rejects.toThrow("may not have network");
   });
 
-  test("the maximum lifetime tears the whole preview down, not just its server, with the report stop() returns", async () => {
+  it("the maximum lifetime tears the whole preview down, not just its server, with the report stop() returns", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start({ ...spec(repo.path, repo.shas[0]!), maxLifetimeMs: 1_500 });
     for (let i = 0; i < 100 && existsSync(join(previews(), p.id)); i++) await Bun.sleep(100);
@@ -187,7 +188,7 @@ describe("startPreview", () => {
     await expect(p.run(["/usr/bin/true"], { network: "none", name: "late", timeoutMs: 5_000 })).rejects.toThrow("preview was stopped");
   });
 
-  test("a server that exits after it was ready ends the preview the same way", async () => {
+  it("a server that exits after it was ready ends the preview the same way", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up", { exitAfterMs: 1_000 }) }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     for (let i = 0; i < 100 && existsSync(join(previews(), p.id)); i++) await Bun.sleep(100);
@@ -195,7 +196,7 @@ describe("startPreview", () => {
     expect(await p.stop()).toMatchObject({ cleanup: null, noKnownSurvivors: true, removed: true });
   });
 
-  test("stop cancels a running check before it sweeps, and refuses new ones", async () => {
+  it("stop cancels a running check before it sweeps, and refuses new ones", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     const long = p.run(["/bin/sleep", "300"], { network: "none", name: "long", timeoutMs: 600_000 });
@@ -205,11 +206,11 @@ describe("startPreview", () => {
     expect(await long).toMatchObject({ stopped: "cancelled", quarantineReasons: [] });
     await expect(queued).rejects.toThrow("preview was stopped");
     expect(report).toMatchObject({ noKnownSurvivors: true, quarantineReasons: [], removed: true });
-    expect(Bun.spawnSync(["/usr/bin/pgrep", "-fx", "/bin/sleep 300"], { timeout: 5_000 }).stdout.toString().trim()).toBe("");
+    expect(spawnBounded(["/usr/bin/pgrep", "-fx", "/bin/sleep 300"]).stdout.trim()).toBe("");
     await expect(p.run(["/usr/bin/true"], { network: "none", name: "after", timeoutMs: 5_000 })).rejects.toThrow("preview was stopped");
   });
 
-  test("a removal that fails is reported as a quarantine reason instead of rejecting stop", async () => {
+  it("a removal that fails is reported as a quarantine reason instead of rejecting stop", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     const stray = join(previews(), p.id, "stray");
@@ -220,7 +221,7 @@ describe("startPreview", () => {
     rmSync(join(previews(), p.id), { recursive: true, force: true });
   });
 
-  test("a stop that lands while a check is still being spawned stops that check too", async () => {
+  it("a stop that lands while a check is still being spawned stops that check too", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     const long = p.run(["/bin/sleep", "300"], { network: "none", name: "long", timeoutMs: 600_000 });
@@ -232,7 +233,7 @@ describe("startPreview", () => {
     expect(await stopped).toMatchObject({ noKnownSurvivors: true, removed: true });
   }, 20_000);
 
-  test("a check's log keeps only the first MAX_LOG_BYTES; the rest is drained, so the command finishes", async () => {
+  it("a check's log keeps only the first MAX_LOG_BYTES; the rest is drained, so the command finishes", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     const r = await p.run(["/bin/sh", "-c", `/usr/bin/head -c ${MAX_LOG_BYTES + 4 * 1024 * 1024} /dev/zero; echo done-writing >&2`], { network: "none", name: "noisy", timeoutMs: 60_000 });
@@ -243,7 +244,7 @@ describe("startPreview", () => {
     expect(tail(r.logPath, 200)).toContain(`[factory: output capped at ${MAX_LOG_BYTES} bytes;`);
   }, 30_000);
 
-  test("concurrent checks run one at a time, so one check's sweep never kills another's process", async () => {
+  it("concurrent checks run one at a time, so one check's sweep never kills another's process", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
     const [a, b] = await Promise.all([
@@ -254,7 +255,7 @@ describe("startPreview", () => {
     expect(readFileSync(b.logPath, "utf8")).toBe("B\n");
   });
 
-  test("a start whose port another process takes before the server binds retries on the next port", async () => {
+  it("a start whose port another process takes before the server binds retries on the next port", async () => {
     const low = await freePair();
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("ours") }]);
     const s = spec(repo.path, repo.shas[0]!, { preview: ["/bin/sh", "-c", "sleep 1; exec bun server.ts"], portRange: [low, low + 1] });
@@ -277,7 +278,7 @@ describe("startPreview", () => {
     }
   });
 
-  test("two starts of the same task at once get different ports", async () => {
+  it("two starts of the same task at once get different ports", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     // Each server binds a second after its port is chosen, so both choose before either binds.
     const s = spec(repo.path, repo.shas[0]!, { preview: ["/bin/sh", "-c", "sleep 1; exec bun server.ts"] });
@@ -288,7 +289,7 @@ describe("startPreview", () => {
     expect([await (await bounded(`${a.origin}/health`)).text(), await (await bounded(`${b.origin}/health`)).text()]).toEqual(["ok", "ok"]);
   });
 
-  test("serving() tells whether the ready server still holds its port alone", async () => {
+  it("serving() tells whether the ready server still holds its port alone", async () => {
     const repo = makeRepo(env.repos, "app", [
       {
         "server.ts": `const s = Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch(req) {
@@ -314,7 +315,7 @@ setInterval(() => {}, 1000);
     expect(p.serving()).toEqual({ ok: false, reason: "preview was stopped" });
   });
 
-  test("a failing setup command stops everything and removes the worktree", async () => {
+  it("a failing setup command stops everything and removes the worktree", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
     const s = spec(repo.path, repo.shas[0]!, { setup: [["/bin/sh", "-c", "echo boom >&2; exit 7"]] });
     const err = await startError(s);
@@ -324,7 +325,7 @@ setInterval(() => {}, 1000);
     expect(readdirSync(previews())).toEqual([]);
   });
 
-  test("a setup command that leaves a detached process fails the preview, and the process is killed", async () => {
+  it("a setup command that leaves a detached process fails the preview, and the process is killed", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
     const err = await startError(spec(repo.path, repo.shas[0]!, { setup: [DETACH] }));
     const leftovers = reportedLeftovers(err.message);
@@ -333,7 +334,7 @@ setInterval(() => {}, 1000);
     expect(err.teardown?.removed).toBe(true);
   });
 
-  test("a process the preview detached from its group is found and killed at teardown, and the worktree is kept", async () => {
+  it("a process the preview detached from its group is found and killed at teardown, and the worktree is kept", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const detachThenServe = `/usr/bin/perl -MPOSIX -e "exit 0 if fork; POSIX::setsid(); exit 0 if fork; exec '/bin/sleep', '305'"; exec bun server.ts`;
     const p = await start(spec(repo.path, repo.shas[0]!, { preview: ["/bin/sh", "-c", detachThenServe] }));
@@ -345,7 +346,7 @@ setInterval(() => {}, 1000);
     expect(existsSync(p.worktree)).toBe(true);
   });
 
-  test("a preview that never answers 200 is torn down after the bound", async () => {
+  it("a preview that never answers 200 is torn down after the bound", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x", { healthStatus: 503 }) }]);
     const t0 = Date.now();
     const err = await startError(spec(repo.path, repo.shas[0]!));
@@ -355,7 +356,7 @@ setInterval(() => {}, 1000);
     expect(readdirSync(previews())).toEqual([]);
   });
 
-  test("a preview that exits is reported as exited, not waited out", async () => {
+  it("a preview that exits is reported as exited, not waited out", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x", { exitCode: 3 }) }]);
     const t0 = Date.now();
     const err = await startError({ ...spec(repo.path, repo.shas[0]!), readyTimeoutMs: 10_000 });
@@ -363,12 +364,12 @@ setInterval(() => {}, 1000);
     expect(Date.now() - t0).toBeLessThan(8_000);
   });
 
-  test("refuses a ready path with a query or scheme", async () => {
+  it("refuses a ready path with a query or scheme", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
     await expect(start(spec(repo.path, repo.shas[0]!, { readyPath: "http://x/" }))).rejects.toThrow("ready path");
   });
 
-  test("a directory already present for the attempt is refused and left untouched", async () => {
+  it("a directory already present for the attempt is refused and left untouched", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
     const s = spec(repo.path, repo.shas[0]!);
     mkdirSync(join(previews(), s.id, "home"), { recursive: true, mode: 0o700 });
@@ -377,7 +378,7 @@ setInterval(() => {}, 1000);
     expect(readFileSync(join(previews(), s.id, "home", "older"), "utf8")).toBe("not this attempt's");
   });
 
-  test("the previews root must be private and outside every agent-writable root", () => {
+  it("the previews root must be private and outside every agent-writable root", () => {
     expect(() => reserveAttempt({ ...env.config, untrustedRoots: [env.stateRoot] }, crypto.randomUUID())).toThrow("overlaps agent-writable");
     mkdirSync(previews(), { recursive: true });
     chmodSync(previews(), 0o755);
@@ -390,7 +391,7 @@ setInterval(() => {}, 1000);
 });
 
 describe("listenerOwnership", () => {
-  test("accepts the root's own listener and refuses a stranger's", async () => {
+  it("accepts the root's own listener and refuses a stranger's", async () => {
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
     const port = server.port!;
     try {
@@ -410,7 +411,7 @@ describe("listenerOwnership", () => {
 });
 
 describe("toolchainRoots", () => {
-  test("requires existing roots outside agent-writable dirs that cover every tool dir", () => {
+  it("requires existing roots outside agent-writable dirs that cover every tool dir", () => {
     expect(toolchainRoots([BUN_DIR, "/usr/bin"], [BUN_DIR], [env.repos])).toEqual([BUN_DIR]);
     expect(() => toolchainRoots([BUN_DIR], [], [])).toThrow(`tool dir ${BUN_DIR} is outside every toolchain root`);
     expect(() => toolchainRoots([BUN_DIR], [BUN_DIR], [BUN_DIR])).toThrow("is under agent-writable");
@@ -419,7 +420,7 @@ describe("toolchainRoots", () => {
 });
 
 describe("bounded reads", () => {
-  test("readiness needs only the status: an endless health body does not hold it up", async () => {
+  it("readiness needs only the status: an endless health body does not hold it up", async () => {
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -434,7 +435,7 @@ describe("bounded reads", () => {
     }
   });
 
-  test("tail reads only the end of a log, even one far larger than memory allows reading whole", () => {
+  it("tail reads only the end of a log, even one far larger than memory allows reading whole", () => {
     const dir = join(env.stateRoot, "tail");
     mkdirSync(dir);
     const path = join(dir, "big.log");
@@ -447,7 +448,7 @@ describe("bounded reads", () => {
     expect(tail(join(dir, "missing.log"))).toBe("");
   });
 
-  test("copyCapped keeps the first bytes, counts the rest, and closes the log when every pipe has closed", async () => {
+  it("copyCapped keeps the first bytes, counts the rest, and closes the log when every pipe has closed", async () => {
     const path = join(env.stateRoot, "copy.log");
     const fd = openSync(path, "wx", 0o600);
     const out = Readable.from([Buffer.from("aaaa"), Buffer.from("bbbb")]);
