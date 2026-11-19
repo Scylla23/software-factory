@@ -1,0 +1,120 @@
+{
+  "skill": "security-auditor",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "security-auditor-01-cross-user-access-in-diff",
+      "purpose": "Code stage. The suite is green and the report claims every criterion, but both new routes skip the owner check and the update copies the whole body onto the task. The auditor must find both, tie them to the threat model, and prove them.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "security-auditor", "stage": "code", "round": 1, "taskId": "eval-tasklist-task-by-id",
+          "project": { "isNew": false, "commands": { "test": "bun test" }, "securityGlobs": ["src/api/**"] }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist", "patch": "patches/api-task-by-id-idor.patch" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec-lead.json",
+          "threat-model.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/threat-model.md",
+          "build-report.json": "../../_shared/evals/tasklist/reports/api-task-by-id-idor.build-report.json"
+        }
+      },
+      "answerKey": [
+        "T-1 and T-2: src/api/tasks.ts line 39 looks the task up with tasks.find by id alone, so any signed-in user reads and updates any task. No test acts as a second user (AC-3 is untested).",
+        "T-3: src/api/tasks.ts line 43 applies the request body with Object.assign, so a caller can set ownerId or id (AC-4 is unimplemented and untested).",
+        "The build report lists the AC-1 and AC-2 tests as the tests for AC-3 and AC-4."
+      ],
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/security-auditor.json validates against _shared/verdict.schema.json" },
+        { "id": "identity", "kind": "deterministic", "check": "role == \"security-auditor\" && stage == \"code\" && covers.headSha equals the run brief's headSha" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\"" },
+        { "id": "owner-check", "kind": "deterministic", "check": "a blocking finding with category \"security\" has location.file == \"src/api/tasks.ts\", location.line between 37 and 45, and acIds containing \"AC-3\"" },
+        { "id": "mass-assignment", "kind": "deterministic", "check": "a blocking finding with category \"security\" has location.file == \"src/api/tasks.ts\" and acIds containing \"AC-4\"" },
+        { "id": "threats", "kind": "deterministic", "check": "checks.threatModel.present == true && checks.threatModel.threatsChecked == 4 && checks.threatModel.unmitigated contains \"T-1\", \"T-2\", and \"T-3\" and does not contain \"T-4\"" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run" },
+        { "id": "path-stated", "kind": "judge", "check": "Does the owner-check finding state the actor, the action, and the consequence: a signed-in user, another user's task id, and the task being returned or changed?" },
+        { "id": "proven", "kind": "judge", "check": "Does each blocking finding quote the offending line or the result of a probe, rather than only asserting the weakness?" },
+        { "id": "privileged-field", "kind": "judge", "check": "Does the mass-assignment finding say that the caller can set ownerId, id, or another field the spec does not allow?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "security-auditor-02-safe-diff-approves",
+      "purpose": "Precision. The same feature built correctly, with negative tests. The auditor must approve and must not block on the accepted low threat or on generic hardening.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "security-auditor", "stage": "code", "round": 1, "taskId": "eval-tasklist-task-by-id",
+          "project": { "isNew": false, "commands": { "test": "bun test" }, "securityGlobs": ["src/api/**"] }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist", "patch": "patches/api-task-by-id-safe.patch" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/spec-lead.json",
+          "threat-model.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/threat-model.md",
+          "build-report.json": "../../_shared/evals/tasklist/reports/api-task-by-id-safe.build-report.json"
+        }
+      },
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/security-auditor.json validates against _shared/verdict.schema.json" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"approve\" && no finding has blocking == true" },
+        { "id": "threats", "kind": "deterministic", "check": "checks.threatModel.present == true && checks.threatModel.threatsChecked == 4 && checks.threatModel.unmitigated is empty" },
+        { "id": "restraint", "kind": "deterministic", "check": "findings has at most 3 entries" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run" },
+        { "id": "accepted-risk-respected", "kind": "judge", "check": "Is the verdict free of any finding of severity medium or above about request limits or body size, which the threat model accepts as T-4?" }
+      ],
+      "pass": "All checks pass."
+    },
+    {
+      "id": "security-auditor-03-spec-drops-a-mitigation",
+      "purpose": "Spec stage. The threat model rates the writable-owner threat high and names AC-4 as its verification, but the merged spec has no AC-4 and plans to apply the body's fields directly. The auditor must catch the lost mitigation before the owner approves.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "security-auditor", "stage": "spec", "round": 1, "taskId": "eval-tasklist-task-by-id",
+          "project": { "isNew": false, "securityGlobs": ["src/api/**"] }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/task-by-id/task.json",
+          "spec.md": "fixtures/task-by-id-no-ac4.md",
+          "threat-model.md": "../../_shared/evals/tasklist/taskdirs/task-by-id/threat-model.md",
+          "spec-lead.json": {
+            "inline": {
+              "schemaVersion": 1, "taskId": "eval-tasklist-task-by-id", "round": 1, "status": "ready-for-review",
+              "tier": { "provisional": "M", "confirmed": "M", "reason": "The change adds API routes in one module, with no schema change and no new dependency." },
+              "riskFlags": {
+                "security": { "value": true, "reason": "New routes read and write per-user data by id and parse a request body." },
+                "migration": { "value": false, "reason": "No persisted shape change." },
+                "newProject": { "value": false, "reason": "project.isNew is false." }
+              },
+              "acceptanceCriteria": [{ "id": "AC-1", "tag": "test" }, { "id": "AC-2", "tag": "test" }, { "id": "AC-3", "tag": "test" }],
+              "retiredCriteria": [],
+              "team": [{ "member": "threat-modeler", "status": "ran", "file": "threat-model.md", "attempts": 1 }],
+              "conflicts": [], "escalations": [], "catalogGaps": [], "changes": []
+            }
+          }
+        }
+      },
+      "answerKey": [
+        "T-3 (a user sets ownerId or id through the update body) is rated high and verified by AC-4, which does not exist in spec.md.",
+        "Plan step 2 says to apply the fields of the request body to the task, which is the unsafe behavior T-3 describes.",
+        "T-1 and T-2 are covered by AC-3, which is present and is a negative test as a second user."
+      ],
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/security-auditor.json validates against _shared/verdict.schema.json" },
+        { "id": "identity", "kind": "deterministic", "check": "stage == \"spec\" && covers.specSha256 equals the SHA-256 of the spec.md fixture" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\"" },
+        { "id": "unmitigated", "kind": "deterministic", "check": "checks.threatModel.present == true && checks.threatModel.unmitigated contains \"T-3\" and contains neither \"T-1\" nor \"T-2\"" },
+        { "id": "finding", "kind": "deterministic", "check": "a blocking finding with category \"security\" has location.file == \"spec.md\" or \"threat-model.md\"" },
+        { "id": "files-untouched", "kind": "deterministic", "check": "spec.md and threat-model.md are unchanged and git status --porcelain in the worktree is empty" },
+        { "id": "names-the-gap", "kind": "judge", "check": "Does a blocking finding say that the spec has no criterion rejecting unlisted fields in the update body, or that the plan applies the body to the task unfiltered?" },
+        { "id": "required-change", "kind": "judge", "check": "Does that finding's requiredChange call for a criterion that sends a privileged or unknown field and expects it to be refused with nothing written?" }
+      ],
+      "pass": "All checks pass."
+    }
+  ]
+}

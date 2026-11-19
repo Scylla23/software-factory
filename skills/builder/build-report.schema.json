@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/build-report.schema.json",
+  "title": "Build report",
+  "description": "What the builder changed and ran. The factory reruns every check itself; this report tells it and the reviewers where to look, and is never taken as proof.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "mode", "round", "baseSha", "status", "acceptanceCriteria", "reproduction", "commands", "filesChanged", "existingTestsChanged", "dependenciesAdded", "deviations", "findingsAddressed", "blockers", "notes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "mode": { "description": "build: first implementation of the approved spec. repair: a rerun against findings.", "enum": ["build", "repair"] },
+    "round": { "type": "integer", "minimum": 1 },
+    "baseSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "status": {
+      "description": "complete: every criterion is implemented and the project's test, lint, and typecheck commands exit 0. partial: work was done but something in blockers remains. blocked: nothing usable was produced.",
+      "enum": ["complete", "partial", "blocked"]
+    },
+    "acceptanceCriteria": {
+      "description": "One row per criterion in spec.md, in order.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "tag", "implemented", "tests", "note"],
+        "properties": {
+          "id": { "$ref": "#/$defs/acId" },
+          "tag": { "enum": ["test", "browser", "computer-use", "manual"] },
+          "implemented": { "type": "boolean" },
+          "tests": { "description": "The tests that assert this criterion's expected result.", "type": "array", "items": { "$ref": "#/$defs/testRef" } },
+          "note": { "description": "For a browser criterion: the route and fixture that show it. Otherwise anything the reviewer needs.", "type": "string", "maxLength": 600 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "tag": { "const": "test" }, "implemented": { "const": true } } },
+            "then": { "properties": { "tests": { "minItems": 1 } } }
+          }
+        ]
+      }
+    },
+    "reproduction": {
+      "description": "For a bug: the run of the AC-1 test before the fix. null for a feature.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["acId", "test", "command", "exitCodeBeforeFix", "failureExcerpt", "exitCodeAfterFix"],
+          "properties": {
+            "acId": { "const": "AC-1" },
+            "test": { "$ref": "#/$defs/testRef" },
+            "command": { "description": "The exact command that ran the reproduction.", "type": "string", "minLength": 1, "maxLength": 500 },
+            "exitCodeBeforeFix": { "description": "Exit code with the test added and the fix not yet made. Never 0.", "type": "integer", "not": { "const": 0 } },
+            "failureExcerpt": { "description": "The assertion failure, trimmed to the lines that show the reported wrong result.", "type": "string", "minLength": 1, "maxLength": 1200 },
+            "exitCodeAfterFix": { "description": "Exit code of the same command after the fix. null when the fix was not finished.", "type": ["integer", "null"] }
+          }
+        }
+      ]
+    },
+    "commands": {
+      "description": "Every project command run for the final state of the worktree, with its real exit code.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "exitCode", "summary"],
+        "properties": {
+          "command": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "exitCode": { "description": "null when the command could not start.", "type": ["integer", "null"] },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    },
+    "filesChanged": { "description": "Every repo-relative path created, modified, or deleted.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "existingTestsChanged": {
+      "description": "Every test that existed at baseSha and was edited or removed. Each needs a criterion that changes the behavior it asserted.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["test", "change", "acIds", "reason"],
+        "properties": {
+          "test": { "$ref": "#/$defs/testRef" },
+          "change": { "enum": ["assertion-updated", "removed"] },
+          "acIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    },
+    "dependenciesAdded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version", "specReference", "installed"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "specReference": { "description": "Where spec.md names this dependency, such as 'Design choices' or 'Implementation plan step 2'.", "type": "string", "minLength": 1, "maxLength": 200 },
+          "installed": { "description": "False when the package is declared in the manifest but not present in the worktree.", "type": "boolean" }
+        }
+      }
+    },
+    "deviations": {
+      "description": "Every place the build departs from the implementation plan while still meeting the criteria.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["planStep", "what", "why"],
+        "properties": {
+          "planStep": { "description": "The plan step number, or null when the deviation is not tied to one.", "type": ["integer", "null"], "minimum": 1 },
+          "what": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "why": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    },
+    "findingsAddressed": {
+      "description": "Repair mode: one entry per finding or failed check the run was given. Empty in build mode.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "ref", "action", "note"],
+        "properties": {
+          "source": { "enum": ["code-reviewer", "security-auditor", "database-auditor", "verifier", "checks", "owner"] },
+          "ref": { "description": "How the source identifies it: 'round 1 finding 2', 'AC-3', the failing command, or the owner comment id.", "type": "string", "minLength": 1, "maxLength": 200 },
+          "action": { "description": "fixed: changed as required. disputed: not changed, with evidence in note that the finding is wrong.", "enum": ["fixed", "disputed"] },
+          "note": { "type": "string", "minLength": 1, "maxLength": 800 }
+        }
+      }
+    },
+    "blockers": {
+      "description": "Why the status is not complete.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "detail"],
+        "properties": {
+          "kind": {
+            "description": "spec-defect: the spec cannot be built as written. bug-not-reproduced: the AC-1 test passes on base. install-needed: a declared dependency is not installed. failing-command: test, lint, or typecheck still fails. environment: a command cannot start.",
+            "enum": ["spec-defect", "bug-not-reproduced", "install-needed", "failing-command", "environment"]
+          },
+          "acIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
+          "detail": { "type": "string", "minLength": 1, "maxLength": 800 }
+        }
+      }
+    },
+    "notes": { "description": "Anything else a reviewer should know, such as a failing test that was already failing at baseSha. Empty string when none.", "type": "string", "maxLength": 1200 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "complete" } } },
+      "then": {
+        "properties": {
+          "blockers": { "maxItems": 0 },
+          "acceptanceCriteria": { "items": { "properties": { "implemented": { "const": true } } } },
+          "commands": { "minItems": 1, "items": { "properties": { "exitCode": { "const": 0 } } } },
+          "dependenciesAdded": { "items": { "properties": { "installed": { "const": true } } } }
+        }
+      },
+      "else": { "properties": { "blockers": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "build" } } },
+      "then": { "properties": { "findingsAddressed": { "maxItems": 0 } } },
+      "else": { "properties": { "findingsAddressed": { "minItems": 1 } } }
+    }
+  ],
+  "$defs": {
+    "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "testRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "name"],
+      "properties": {
+        "file": { "description": "Repo-relative path of the test file.", "type": "string", "minLength": 1 },
+        "name": { "description": "The full test name as the runner prints it. A test the builder adds for a criterion starts with that criterion's id.", "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    }
+  }
+}

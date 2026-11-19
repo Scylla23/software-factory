@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "role": "code-reviewer",
+  "stage": "code",
+  "taskId": "eval-tasklist-sort",
+  "round": 1,
+  "covers": {
+    "baseSha": "0000000000000000000000000000000000000000",
+    "headSha": "1111111111111111111111111111111111111111"
+  },
+  "verdict": "changes",
+  "summary": "The ascending and descending sorts are fixed and tested. Tasks without a due date sort first when descending, and nothing tests that case.",
+  "findings": [
+    {
+      "n": 1,
+      "severity": "high",
+      "blocking": true,
+      "category": "acceptance-criterion",
+      "title": "AC-3 fails when descending: undated tasks sort first",
+      "location": { "file": "src/task-list/sort.ts", "line": 32 },
+      "acIds": ["AC-3"],
+      "detail": "Undated tasks are given the largest timestamp and the descending order is produced by reversing the ascending result, which moves them to the front. No test builds a task with a null due date.",
+      "evidence": "sort.ts line 32: 'return direction === \"asc\" ? sorted : sorted.reverse();'. A scratch test with one undated task returned it first for direction desc.",
+      "requiredChange": "Keep tasks with no due date last in both directions, and add a test named for AC-3 that asserts both orders."
+    },
+    {
+      "n": 2,
+      "severity": "medium",
+      "blocking": true,
+      "category": "acceptance-criterion",
+      "title": "AC-2 has no test",
+      "location": { "file": "src/task-list/sort.test.ts", "line": 23 },
+      "acIds": ["AC-2"],
+      "detail": "The test file adds a test for the ascending order only, so the descending order required by AC-2 is unasserted.",
+      "evidence": "sort.test.ts line 23 is the only new test found.",
+      "requiredChange": "Add a test for AC-2 that asserts the descending order."
+    }
+  ],
+  "checks": {
+    "commands": [
+      { "command": "bun test", "exitCode": 0, "summary": "7 pass, 0 fail." }
+    ],
+    "acCoverage": [
+      { "acId": "AC-1", "implemented": true, "tested": true, "note": "" },
+      { "acId": "AC-2", "implemented": true, "tested": false, "note": "No test found." },
+      { "acId": "AC-3", "implemented": false, "tested": false, "note": "Fails when descending." }
+    ]
+  }
+}

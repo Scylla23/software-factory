@@ -1,0 +1,108 @@
+{
+  "skill": "database-auditor",
+  "schemaVersion": 1,
+  "method": "../../_shared/evals.md",
+  "cases": [
+    {
+      "id": "database-auditor-01-unsafe-migration",
+      "purpose": "A migration with five distinct defects behind a green test suite. The auditor must find each by reading the SQL against the previous release's query and the project's conventions.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "database-auditor", "stage": "code", "round": 1, "taskId": "eval-tasklist-priority",
+          "project": { "isNew": false, "commands": { "test": "bun test" }, "migrationGlobs": ["migrations/**"] }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist", "patch": "patches/migration-priority-unsafe.patch" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/priority/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/priority/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/priority/spec-lead.json",
+          "build-report.json": "../../_shared/evals/tasklist/reports/migration-priority-unsafe.build-report.json"
+        }
+      },
+      "answerKey": [
+        "reversibility: migrations/002_task_priority.up.sql has no down file, against the project convention and AC-2.",
+        "compatibility: line 1 renames assignee, which the query at baseSha (src/api/queries.ts) selects, so the previous release fails after the migration; the spec's non-goals forbid any rename.",
+        "integrity: line 2 adds priority text NOT NULL with no default, which fails on a table with rows; the spec requires existing tasks to be normal, and nothing constrains the three allowed values.",
+        "data-loss: line 3 drops legacy_notes, which the spec does not ask for and the previous release still selects.",
+        "locking: line 4 creates an index without CONCURRENTLY, blocking writes to tasks for the build; the index is also not required by any criterion."
+      ],
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/database-auditor.json validates against _shared/verdict.schema.json" },
+        { "id": "identity", "kind": "deterministic", "check": "role == \"database-auditor\" && stage == \"code\" && covers.headSha equals the run brief's headSha" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\"" },
+        { "id": "inventory", "kind": "deterministic", "check": "checks.migrations has a row with file \"migrations/002_task_priority.up.sql\" and reversible == \"no\"" },
+        { "id": "reversibility", "kind": "deterministic", "check": "a blocking finding has category \"reversibility\"" },
+        { "id": "rename", "kind": "deterministic", "check": "a blocking finding with category \"compatibility\" has location.file == \"migrations/002_task_priority.up.sql\" and location.line == 1" },
+        { "id": "not-null", "kind": "deterministic", "check": "a blocking finding has location.file == \"migrations/002_task_priority.up.sql\" and location.line == 2" },
+        { "id": "drop", "kind": "deterministic", "check": "a blocking finding with category \"data-loss\" or \"compatibility\" has location.file == \"migrations/002_task_priority.up.sql\" and location.line == 3" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run" },
+        { "id": "old-code-cited", "kind": "judge", "check": "Does the rename finding cite the previous release's query in src/api/queries.ts, or the columns it selects, as the thing that breaks?" },
+        { "id": "rows-exist", "kind": "judge", "check": "Does the finding on line 2 say that the statement fails when the table already has rows, and that existing tasks must get the value normal?" },
+        { "id": "index", "kind": "judge", "check": "Is there a finding on the index at line 4, either that it blocks writes while it builds or that no criterion requires it?" },
+        { "id": "engine", "kind": "judge", "check": "Does the summary or a finding identify the engine as Postgres and the convention of paired up and down files?" }
+      ],
+      "pass": "All deterministic checks pass, and at least three of the four judge checks are answered yes, including old-code-cited."
+    },
+    {
+      "id": "database-auditor-02-safe-migration-approves",
+      "purpose": "Precision. An additive, reversible migration with a constant default and a constraint validated separately must be approved.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "database-auditor", "stage": "code", "round": 1, "taskId": "eval-tasklist-priority",
+          "project": { "isNew": false, "commands": { "test": "bun test" }, "migrationGlobs": ["migrations/**"] }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist", "patch": "patches/migration-priority-safe.patch" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/priority/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/priority/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/priority/spec-lead.json",
+          "build-report.json": "../../_shared/evals/tasklist/reports/migration-priority-safe.build-report.json"
+        }
+      },
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/database-auditor.json validates against _shared/verdict.schema.json" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"approve\" && no finding has blocking == true" },
+        { "id": "inventory", "kind": "deterministic", "check": "checks.migrations has a row for \"migrations/002_task_priority.up.sql\" with reversible == \"yes\", and a row for \"migrations/002_task_priority.down.sql\"" },
+        { "id": "restraint", "kind": "deterministic", "check": "findings has at most 3 entries" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run" },
+        { "id": "reasoned", "kind": "judge", "check": "Does the summary or a note show the auditor checked the previous release's query against the new schema and the constant default against existing rows, rather than approving without stated grounds?" },
+        { "id": "no-ceremony", "kind": "judge", "check": "Is the verdict free of any demand for batching, concurrent index builds, or other machinery this migration does not need?" }
+      ],
+      "pass": "All checks pass. A non-blocking finding that the statements should not share one transaction is allowed."
+    },
+    {
+      "id": "database-auditor-03-edited-applied-migration",
+      "purpose": "The column is added by editing the create statement of a migration that existed at baseSha. The SQL is valid and the tests pass, but databases that already ran 001 never get the column.",
+      "pilot": "self-contained",
+      "input": {
+        "brief": {
+          "role": "database-auditor", "stage": "code", "round": 1, "taskId": "eval-tasklist-priority",
+          "project": { "isNew": false, "commands": { "test": "bun test" }, "migrationGlobs": ["migrations/**"] }
+        },
+        "repo": { "fixture": "../../_shared/evals/tasklist", "patch": "patches/migration-priority-edits-applied.patch" },
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/priority/task.json",
+          "spec.md": "../../_shared/evals/tasklist/taskdirs/priority/spec.md",
+          "spec-lead.json": "../../_shared/evals/tasklist/taskdirs/priority/spec-lead.json",
+          "build-report.json": "../../_shared/evals/tasklist/reports/migration-priority-edits-applied.build-report.json"
+        }
+      },
+      "answerKey": [
+        "migrations/001_create_tasks.up.sql existed at baseSha and was edited (line 13 adds the priority column). A database at migration 001 will not rerun it, so the column never appears there while the new query selects it.",
+        "No migration 002 exists, although the spec's plan and AC-2 name 002_task_priority.up.sql and its down file."
+      ],
+      "expect": [
+        { "id": "schema", "kind": "deterministic", "check": "verdicts/database-auditor.json validates against _shared/verdict.schema.json" },
+        { "id": "verdict", "kind": "deterministic", "check": "verdict == \"changes\"" },
+        { "id": "finding", "kind": "deterministic", "check": "a blocking finding has location.file == \"migrations/001_create_tasks.up.sql\" and category \"reversibility\", \"integrity\", or \"compatibility\"" },
+        { "id": "inventory", "kind": "deterministic", "check": "checks.migrations has a row for \"migrations/001_create_tasks.up.sql\"" },
+        { "id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run" },
+        { "id": "why", "kind": "judge", "check": "Does the finding explain that databases which already applied migration 001 will never receive the column, so the change must be a new migration?" },
+        { "id": "consequence", "kind": "judge", "check": "Does the verdict connect this to the new list query selecting a column that will not exist on those databases, or to AC-2 being impossible to carry out?" }
+      ],
+      "pass": "All deterministic checks pass and the why check is answered yes."
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-sort",
+  "attemptId": "0b9f4c1e-6a57-4d0e-9c53-2f7a1d8e4b60",
+  "baseSha": "0000000000000000000000000000000000000000",
+  "headSha": "2222222222222222222222222222222222222222",
+  "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "testRuns": [
+    {
+      "side": "head",
+      "commitSha": "2222222222222222222222222222222222222222",
+      "command": "bun test",
+      "exitCode": 0,
+      "stopped": null,
+      "tests": [
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "sorts by title ascending, ignoring case",
+          "status": "pass"
+        },
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "sorts by title descending, ignoring case",
+          "status": "pass"
+        },
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "formats a due date as day and month",
+          "status": "pass"
+        },
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-1: sorting by due date ascending is chronological",
+          "status": "pass"
+        },
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-2: sorting by due date descending is reverse chronological",
+          "status": "pass"
+        },
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-3: tasks without a due date sort last in both directions",
+          "status": "pass"
+        },
+        {
+          "file": "src/api/tasks.test.ts",
+          "name": "lists only the caller's tasks",
+          "status": "pass"
+        },
+        {
+          "file": "src/api/tasks.test.ts",
+          "name": "rejects a request with no session",
+          "status": "pass"
+        }
+      ],
+      "logTail": " 8 pass\n 0 fail\n"
+    },
+    {
+      "side": "base-with-head-tests",
+      "commitSha": "0000000000000000000000000000000000000000",
+      "command": "bun test src/task-list/sort.test.ts",
+      "exitCode": 1,
+      "stopped": null,
+      "tests": [
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-1: sorting by due date ascending is chronological",
+          "status": "fail"
+        }
+      ],
+      "logTail": "error: expect(received).toEqual(expected)\n(fail) AC-1: sorting by due date ascending is chronological\n"
+    }
+  ],
+  "captures": [],
+  "notExecuted": []
+}

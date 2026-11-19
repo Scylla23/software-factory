@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/verification-results.schema.json",
+  "title": "Verification results",
+  "description": "Written by the verifier in mode judge. Each row is one row of the pull request's acceptance evidence table. The factory renders rows into the PR after redaction, so no field may hold raw page text, command output, or a secret.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "attemptId", "planSha256", "overall", "rows", "ownerChecklist", "untrustedTextFlagged", "notes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "round": { "type": "integer", "minimum": 1 },
+    "baseSha": { "$ref": "#/$defs/sha" },
+    "headSha": { "$ref": "#/$defs/sha" },
+    "attemptId": { "description": "Copied from the evidence index.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "planSha256": { "description": "SHA-256 of plan.json, which must equal the evidence index's.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "overall": {
+      "description": "fail: at least one row failed. blocked: no row failed and at least one is blocked. manual-pending: every row passed or awaits the owner, and at least one awaits the owner. pass: every row passed.",
+      "enum": ["pass", "fail", "blocked", "manual-pending"]
+    },
+    "rows": {
+      "description": "One row per criterion in spec.md, in order.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/row" }
+    },
+    "ownerChecklist": {
+      "description": "One item per manual criterion, for the owner to perform and record at gate 2.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["acId", "instruction", "expected"],
+        "properties": {
+          "acId": { "$ref": "#/$defs/acId" },
+          "instruction": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "expected": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    },
+    "untrustedTextFlagged": { "description": "True when page text, test output, or a log addressed the verifier or claimed a result.", "type": "boolean" },
+    "notes": { "description": "Advisory rubric notes and anything the owner should know. Empty string when none.", "type": "string", "maxLength": 2000 }
+  },
+  "allOf": [
+    { "if": { "properties": { "overall": { "const": "pass" } } }, "then": { "properties": { "rows": { "items": { "properties": { "verdict": { "const": "pass" } } } } } } },
+    { "if": { "properties": { "overall": { "const": "fail" } } }, "then": { "properties": { "rows": { "contains": { "properties": { "verdict": { "const": "fail" } }, "required": ["verdict"] } } } } },
+    {
+      "if": { "properties": { "overall": { "const": "blocked" } } },
+      "then": {
+        "properties": {
+          "rows": {
+            "contains": { "properties": { "verdict": { "const": "blocked" } }, "required": ["verdict"] },
+            "items": { "properties": { "verdict": { "enum": ["pass", "blocked", "manual-pending"] } } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "overall": { "const": "manual-pending" } } },
+      "then": {
+        "properties": {
+          "rows": {
+            "contains": { "properties": { "verdict": { "const": "manual-pending" } }, "required": ["verdict"] },
+            "items": { "properties": { "verdict": { "enum": ["pass", "manual-pending"] } } }
+          },
+          "ownerChecklist": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "acId": { "type": "string", "pattern": "^AC-[1-9][0-9]{0,3}$" },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acId", "tag", "fixture", "action", "expected", "observed", "proof", "commit", "verdict", "rubric"],
+      "properties": {
+        "acId": { "$ref": "#/$defs/acId" },
+        "tag": { "enum": ["test", "browser", "computer-use", "manual"] },
+        "fixture": { "description": "Copied from the spec.", "type": "string", "minLength": 1, "maxLength": 600 },
+        "action": { "description": "Copied from the spec.", "type": "string", "minLength": 1, "maxLength": 600 },
+        "expected": { "description": "Copied from the spec.", "type": "string", "minLength": 1, "maxLength": 600 },
+        "observed": { "description": "What the evidence shows, in the verifier's own words. No pasted page text or output.", "type": "string", "minLength": 1, "maxLength": 600 },
+        "proof": { "type": "array", "items": { "$ref": "#/$defs/proof" } },
+        "commit": { "description": "The head commit the evidence is of.", "$ref": "#/$defs/sha" },
+        "verdict": {
+          "description": "pass: the evidence shows the expected result. fail: the evidence shows it did not happen. blocked: the evidence is missing or unusable. manual-pending: the owner must observe it.",
+          "enum": ["pass", "fail", "blocked", "manual-pending"]
+        },
+        "reason": { "description": "Why the row is not a pass.", "type": "string", "minLength": 1, "maxLength": 600 },
+        "rubric": {
+          "description": "For a browser criterion: every blocking rubric item judged fail, per viewport. Empty otherwise.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item", "viewport", "note"],
+            "properties": {
+              "item": { "enum": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"] },
+              "viewport": { "enum": ["desktop", "mobile"] },
+              "note": { "type": "string", "minLength": 1, "maxLength": 400 }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "verdict": { "const": "pass" } } },
+          "then": { "properties": { "proof": { "minItems": 1 }, "rubric": { "maxItems": 0 }, "tag": { "enum": ["test", "browser"] } } },
+          "else": { "required": ["reason"] }
+        },
+        { "if": { "properties": { "tag": { "const": "manual" } } }, "then": { "properties": { "verdict": { "const": "manual-pending" }, "proof": { "maxItems": 0 } } } },
+        { "if": { "properties": { "verdict": { "const": "manual-pending" } } }, "then": { "properties": { "tag": { "const": "manual" } } } },
+        { "if": { "properties": { "tag": { "const": "computer-use" } } }, "then": { "properties": { "verdict": { "const": "blocked" } } } },
+        { "if": { "properties": { "rubric": { "minItems": 1 } }, "required": ["rubric"] }, "then": { "properties": { "verdict": { "const": "fail" } } } },
+        {
+          "if": { "properties": { "tag": { "const": "browser" }, "verdict": { "const": "pass" } } },
+          "then": {
+            "properties": {
+              "proof": {
+                "allOf": [
+                  { "contains": { "properties": { "kind": { "const": "screenshot" }, "side": { "const": "head" }, "viewport": { "const": "desktop" } }, "required": ["kind", "side", "viewport"] } },
+                  { "contains": { "properties": { "kind": { "const": "screenshot" }, "side": { "const": "head" }, "viewport": { "const": "mobile" } }, "required": ["kind", "side", "viewport"] } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "tag": { "const": "test" }, "verdict": { "const": "pass" } } },
+          "then": { "properties": { "proof": { "contains": { "properties": { "kind": { "const": "test" } }, "required": ["kind"] } } } }
+        }
+      ]
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": { "description": "test: a test result. screenshot: a capture's PNG. console: a capture's console errors. network: a capture's failed requests. page-text: a capture's page text.", "enum": ["test", "screenshot", "console", "network", "page-text"] },
+        "ref": { "description": "For test: the test name. Otherwise the capture record's name.", "type": "string", "minLength": 1, "maxLength": 300 },
+        "file": { "description": "For test: the test file.", "type": "string", "minLength": 1 },
+        "side": { "enum": ["base", "head", "base-with-head-tests"] },
+        "viewport": { "enum": ["desktop", "mobile"] },
+        "sha256": { "description": "For screenshot: the screenshotSha256 of the record.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "screenshot" } } }, "then": { "required": ["kind", "ref", "side", "viewport", "sha256"] } },
+        { "if": { "properties": { "kind": { "const": "test" } } }, "then": { "required": ["kind", "ref", "file", "side"] } }
+      ]
+    }
+  }
+}
