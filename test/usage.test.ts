@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { appendFileSync, linkSync, renameSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { config } from "../factory.config";
@@ -152,4 +152,94 @@ test("omitted Codex write and reasoning counters stay unknown across turns", asy
   const capture = primary(result.usage, "gpt-6-luna", "completed");
   expect(capture).toMatchObject({ coverage: "partial", costUsd: null,
     lines: [{ input: 16, cacheRead: 4, cacheWrite: null, output: 6, reasoning: null }] });
+});
+
+test.each(["claude","codex"] as const)("%s rejects a redirected session directory before enumeration", async harness => {
+  const { run } = await replay(harness, "killed");
+  const dir = join(root, harness + "-home", harness === "claude" ? "projects" : "sessions");
+  renameSync(dir, join(root, "foreign"));
+  symlinkSync(join(root, "foreign"), dir);
+  const scan = spyOn(Bun.Glob.prototype, "scan");
+  try {
+    expect((await captureRun(run, root)).capture.coverage).toBe("unknown");
+    expect(scan).not.toHaveBeenCalled();
+  } finally { scan.mockRestore(); }
+});
+
+test.each(["leaf", "ancestor"])("Claude refuses to enumerate a redirected subagent directory at its %s", async component => {
+  const { path, run } = await replay("claude","killed");
+  const parent = join(dirname(path), run.sessionId!);
+  const dir = join(parent, "subagents");
+  mkdirSync(dir, { recursive: true });
+  const source = component === "leaf" ? dir : parent;
+  renameSync(source, join(root, "outside"));
+  symlinkSync(join(root, "outside"), source);
+  const scan = spyOn(Bun.Glob.prototype, "scan");
+  try {
+    expect((await captureRun(run, root)).capture.lines).toHaveLength(1);
+    expect(scan.mock.calls.some(([options]) => typeof options === "object" && options.cwd === dir)).toBe(false);
+  } finally { scan.mockRestore(); }
+});
+
+test.each(["claude","codex"] as const)("%s refuses a hardlinked transcript", async harness => {
+  const { run, path } = await replay(harness,"killed");
+  linkSync(path, join(root, "foreign.jsonl"));
+  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+});
+
+test("Claude refuses two project directories claiming the session", async () => {
+  const { run } = await replay("claude","killed");
+  put(join(root,"claude-home/projects/other",run.sessionId + ".jsonl"),"claude-killed-session");
+  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+});
+
+test.each(["id","session_id"])("Codex rejects foreign session metadata in %s before counting responses", async field => {
+  const { path, run } = await replay("codex","killed");
+  const records = readFileSync(path,"utf8").trim().split("\n").map(line => JSON.parse(line));
+  records[0].payload[field] = crypto.randomUUID();
+  writeFileSync(path, records.map(r => JSON.stringify(r)).join("\n"));
+  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+});
+
+test("Claude rejects a child claiming a different agent filename", async () => {
+  const { path, run } = await replay("claude","killed");
+  const msg = JSON.parse(readFileSync(path,"utf8"));
+  msg.message.id = "child-only";
+  const dir = join(dirname(path), run.sessionId!, "subagents");
+  mkdirSync(dir,{ recursive:true });
+  writeFileSync(join(dir,"agent-first.jsonl"),JSON.stringify({ ...msg, isSidechain:true, agentId:"second" }));
+  expect((await captureRun(run, root)).capture.lines).toHaveLength(1);
+});
+
+test("Claude rejects a reported session differing from the dispatch UUID", async () => {
+  const { run } = await replay("claude","killed");
+  expect((await captureRun({ ...run, runId:crypto.randomUUID() },root)).capture.lines).toEqual([]);
+});
+
+test("Claude excludes synthetic assistant accounting", async () => {
+  const { path, run } = await replay("claude","killed");
+  const msg = JSON.parse(readFileSync(path,"utf8"));
+  msg.message.model = "<synthetic>";
+  writeFileSync(path, JSON.stringify(msg));
+  expect((await captureRun(run, root)).capture.lines).toEqual([]);
+});
+
+test("Claude refuses a hardlinked child independently of its trusted parent", async () => {
+  const { path, run } = await replay("claude","killed");
+  const msg = JSON.parse(readFileSync(path,"utf8"));
+  msg.message.id = "child-only";
+  const child = join(dirname(path),run.sessionId!,"subagents/agent-child.jsonl");
+  mkdirSync(dirname(child), { recursive:true });
+  writeFileSync(child,JSON.stringify({ ...msg, isSidechain:true, agentId:"child" }));
+  linkSync(child,join(root,"outside.jsonl"));
+  expect((await captureRun(run,root)).capture.lines).toHaveLength(1);
+});
+
+test("Claude ignores the entire child directory when its root transcript is untrusted", async () => {
+  const { path, run } = await replay("claude","killed");
+  const child = join(dirname(path),run.sessionId!,"subagents/agent-child.jsonl");
+  mkdirSync(dirname(child), { recursive:true });
+  writeFileSync(child,JSON.stringify({ ...JSON.parse(readFileSync(path,"utf8")), isSidechain:true, agentId:"child" }));
+  linkSync(path,join(root,"elsewhere.jsonl"));
+  expect((await captureRun(run,root)).capture.lines).toEqual([]);
 });
