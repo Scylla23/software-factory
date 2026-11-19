@@ -84,8 +84,9 @@ The deterministic bundle exclusion and collector tests cover parts of D5 and R3.
 The native file-tool matrix uses inert files in throwaway directories and checks their final contents on the host.
 Codex completed create, rename and delete controls for triage, builder, both security audit stages, spec lead and verifier.
 The code reviewer, database auditor and spec reviewer probes returned a model refusal before attempting any native call.
-Claude completed native Write and Edit controls for builder, code reviewer, both security audit stages, spec reviewer, spec lead and verifier.
-The first triage and database auditor runs did not classify an external Edit failure as a permission refusal.
+Claude completed native Write and Edit controls for all nine role and stage profiles.
+Triage `2a595adb-7d0c-4295-a9cb-1f4fea7615d6` and database auditor `038f954a-677f-434c-900a-18572c2363c4` confirmed that an external Read refusal can also prevent Edit from resolving its target.
+The harness exposes no native rename or delete operation with Bash removed.
 The final Codex R1 scorer binds the exact factory-supplied tool call to its native return by call ID.
 The earlier scorer missed nested command results that were absent from exec stdout.
 Claude D5 passed in `1a5db030-d5cd-4100-aa2b-38aff85705c0` with a pinned disposable factory tree and the excluded source path refused.
@@ -145,7 +146,12 @@ The 20-run final sequence awaits finished integration.
 | Database auditor | Pending verified dispatch |
 | Verifier | Pending verified dispatch |
 
-Claude production evals and the end-to-end pilot have not run.
+The blind input preflight staged 44 variants across all 12 skill catalogs.
+Twenty-four variants use the pinned tasklist fixture repository, nine are self-contained, and eleven require a matching planted pilot.
+The preflight stages only declared inputs, substitutes the selected SHAs, computes the spec and plan digests from the staged bytes and preserves deliberately stale evidence.
+The fixture repository is rebuilt under a neutral name with the patch outside its readable tree.
+The preflight does not dispatch an agent, grade an output or establish that a planted pilot matches a case.
+No production contestant, cross-vendor judge or end-to-end pilot has run.
 
 ## Open issues
 
