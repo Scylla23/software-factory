@@ -3,9 +3,10 @@
  * the factory's proxy, start its preview command sandboxed with only its own loopback port, wait until it answers, check that the listener
  * is ours, and tear everything down with the same supervision and worktree sweep as an agent run.
  */
-import { closeSync, constants, mkdirSync, openSync, readFileSync, realpathSync, rmdirSync, rmSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readSync, realpathSync, rmdirSync, rmSync, writeSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
+import type { Readable } from "node:stream";
 import { assertPrivateDir, assertSafeDir, assertTrustedExecutable, type DispatchConfig, isUnder, tempRoots, trustedAgentPath } from "../dispatch/config";
 import { gitWriteProtectedPaths } from "../dispatch/git";
 import { effectiveDenyRead } from "../dispatch/policy";
@@ -161,27 +162,113 @@ function openLog(config: VerifyConfig, logDir: string, name: string): { path: st
   return { path, fd: openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600) };
 }
 
-function tail(path: string, bytes = 2_000): string {
+/** The last `bytes` of a log, read in place: a log is never read whole. */
+export function tail(path: string, bytes = 2_000): string {
+  let fd: number;
   try {
-    const text = readFileSync(path, "utf8");
-    return text.slice(-bytes);
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch {
     return "";
   }
+  try {
+    const size = fstatSync(fd).size;
+    const buf = Buffer.alloc(Math.min(bytes, size));
+    const n = readSync(fd, buf, 0, buf.length, size - buf.length);
+    return buf.subarray(0, n).toString("utf8");
+  } catch {
+    return "";
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Bound on one command's log; output past it is drained and counted, never stored. */
+export const MAX_LOG_BYTES = 16 * 1024 * 1024;
+/**
+ * How long output may keep arriving after a command and its sweep are done. What the command wrote is already in the
+ * pipe; a writer still holding it then is a process that escaped the sweep, and it loses the pipe.
+ */
+const OUTPUT_DRAIN_MS = 250;
+
+export interface LogCopy {
+  /** Resolves once every pipe has closed and the log is complete and closed. */
+  done: Promise<void>;
+  /** Stops reading and closes the log now; idempotent. */
+  close(): void;
+}
+
+/**
+ * Copies a command's output pipes into its log, keeping the first `cap` bytes and draining the rest, so a noisy
+ * command can neither fill the disk nor block on a full pipe. Owns `fd` and closes it when done.
+ */
+export function copyCapped(streams: readonly Readable[], fd: number, cap = MAX_LOG_BYTES): LogCopy {
+  let written = 0;
+  let dropped = 0;
+  let open = streams.length;
+  let closed = false;
+  const done = Promise.withResolvers<void>();
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    for (const s of streams) s.destroy();
+    try {
+      if (dropped > 0) writeSync(fd, `\n[factory: output capped at ${cap} bytes; ${dropped} more bytes dropped]\n`);
+    } catch {
+      // a full disk loses only the note
+    }
+    closeSync(fd);
+    done.resolve();
+  };
+  for (const s of streams) {
+    s.on("data", (chunk: Buffer) => {
+      if (closed) return;
+      const part = chunk.subarray(0, Math.max(0, cap - written));
+      let n = 0;
+      try {
+        if (part.length > 0) n = writeSync(fd, part);
+      } catch {
+        // counted as dropped below
+      }
+      written += n;
+      dropped += chunk.length - n;
+    });
+    s.once("close", () => {
+      if (--open === 0) finish();
+    });
+  }
+  if (open === 0) finish();
+  return { done: done.promise, close: finish };
 }
 
 interface SandboxedRun {
   proc: AgentProcess;
   supervised: Promise<Supervised>;
   abort: AbortController;
+  output: LogCopy;
 }
 
-/** Spawns one project command under the sandbox as its own process group, supervised with a bound. */
+/**
+ * Spawns one project command under the sandbox as its own process group, supervised with a bound, its output copied
+ * into `logFd` with a cap. Takes ownership of `logFd`.
+ */
 function spawnSandboxed(config: VerifyConfig, sandbox: ProjectSandbox, argv: readonly string[], cwd: string, env: Record<string, string>, logFd: number, timeoutMs: number): SandboxedRun {
-  const [exe, ...args] = sandboxArgv(config.executables.sandboxExec, sandbox, argv);
-  const proc = spawnAgentProcess({ executable: exe!, args, cwd, env, stdoutFd: logFd, stderrFd: logFd, psPath: config.executables.ps });
+  let proc: AgentProcess;
+  try {
+    const [exe, ...args] = sandboxArgv(config.executables.sandboxExec, sandbox, argv);
+    proc = spawnAgentProcess({ executable: exe!, args, cwd, env, stdoutFd: "pipe", stderrFd: "pipe", psPath: config.executables.ps });
+  } catch (err) {
+    closeSync(logFd);
+    throw err;
+  }
+  const output = copyCapped([proc.stdout!, proc.stderr!], logFd);
   const abort = new AbortController();
-  return { proc, abort, supervised: superviseRun(proc, { timeoutMs, signal: abort.signal, psPath: config.executables.ps }) };
+  return { proc, abort, output, supervised: superviseRun(proc, { timeoutMs, signal: abort.signal, psPath: config.executables.ps }) };
+}
+
+/** Waits briefly for output still in the pipes after a command and its leftovers are gone, then closes the log. */
+async function closeOutput(run: SandboxedRun): Promise<void> {
+  await Promise.race([run.output.done, Bun.sleep(OUTPUT_DRAIN_MS)]);
+  run.output.close();
 }
 
 /**
@@ -271,6 +358,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       lease?.release();
       const roots = [...(wt ? [wt.path] : []), ...(homeMade ? [home] : [])];
       const { noKnownSurvivors, quarantineReasons } = await settle(config, unverified, roots);
+      if (preview) await closeOutput(preview);
       let removed = quarantineReasons.length === 0;
       if (removed) {
         try {
@@ -325,15 +413,10 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       if (stopping) throw new Error("preview was stopped");
       // The sweep after the command spares the live preview by identity; without one it could not tell them apart.
       if (preview && preview.proc.exitedAt() === null && !preview.proc.identity) throw new Error("the running preview has no recorded identity, so a command beside it cannot be swept safely");
+      const e = env({ ...(opts.network.kind === "serve" ? { port: opts.network.port } : {}), ...(opts.proxy ? { proxy: opts.proxy } : {}) });
       const log = openLog(config, spec.logDir, `${spec.id}.${opts.name}.log`);
       logs.push(log.path);
-      let r: SandboxedRun;
-      try {
-        const e = env({ ...(opts.network.kind === "serve" ? { port: opts.network.port } : {}), ...(opts.proxy ? { proxy: opts.proxy } : {}) });
-        r = spawnSandboxed(config, sandbox(opts.network), argv, worktree, e, log.fd, opts.timeoutMs);
-      } finally {
-        closeSync(log.fd);
-      }
+      const r = spawnSandboxed(config, sandbox(opts.network), argv, worktree, e, log.fd, opts.timeoutMs);
       active.add(r.abort);
       // Spawning waits in Bun.spawnSync, which runs other callbacks meanwhile; a teardown that began then has already
       // aborted everything it could see, so this command stops itself.
@@ -346,6 +429,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       }
       const live = preview && preview.proc.exitedAt() === null && preview.proc.identity ? [preview.proc.identity] : [];
       const settled = await settle(config, s.unverified, [worktree, home], live);
+      await closeOutput(r);
       const reasons = [...settled.quarantineReasons, ...(s.status?.error ? [`spawn failed: ${s.status.error}`] : [])];
       return { exitCode: s.status?.code ?? null, stopped: s.stopped, quarantineReasons: reasons, logPath: log.path };
     };
@@ -387,14 +471,11 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       lease = await leasePort(spec.project.portRange, spec.taskKey, { dir: join(config.stateRoot, "ports"), stateRoot: config.stateRoot, psPath: config.executables.ps, attempt: spec.id });
       port = lease.port;
       origin = `http://127.0.0.1:${port}`;
+      const previewEnv = env({ port });
       const log = openLog(config, spec.logDir, `${spec.id}.preview${round > 1 ? `-${round}` : ""}.log`);
       logs.push(log.path);
       logPath = log.path;
-      try {
-        preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, worktree, env({ port }), log.fd, spec.maxLifetimeMs);
-      } finally {
-        closeSync(log.fd);
-      }
+      preview = spawnSandboxed(config, sandbox({ kind: "serve", port }), spec.project.preview, worktree, previewEnv, log.fd, spec.maxLifetimeMs);
       const started = Date.now();
       const ready = await waitReady(`${origin}${spec.project.readyPath}`, spec.readyTimeoutMs, preview.proc.exited);
       const owned = ready.ok ? listenerOwnership(config, port, preview.proc) : ready;
@@ -403,6 +484,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       const failed = preview;
       failed.abort.abort();
       retired.push(...(await failed.supervised).unverified);
+      await closeOutput(failed);
       preview = null;
       const lost = !(await portIsFree(port));
       lease.release();
@@ -439,7 +521,8 @@ export async function waitReady(url: string, timeoutMs: number, exited: Promise<
     if (gone) return { ok: false, reason: `the preview process exited (last probe: ${last})` };
     try {
       const res = await fetchImpl(url, { redirect: "manual", signal: AbortSignal.timeout(READY_PROBE_TIMEOUT_MS) });
-      await res.arrayBuffer();
+      // Only the status matters; a large or endless body is never read.
+      await res.body?.cancel();
       if (res.status === 200) return { ok: true };
       last = `status ${res.status}`;
     } catch (err) {

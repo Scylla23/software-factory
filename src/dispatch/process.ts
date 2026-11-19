@@ -14,6 +14,7 @@
  * descendants, and its group) is alive, never that such a detached descendant is gone (issue #3).
  */
 import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 
 export interface ProcIdentity {
   pid: number;
@@ -78,6 +79,9 @@ export interface AgentProcess {
   exitedAt: () => number | null;
   /** Signals through the child handle; a no-op once it has exited, so it never hits a recycled pid. */
   kill: (sig: NodeJS.Signals) => void;
+  /** The output pipes, when spawned with `"pipe"`; the caller must drain them. */
+  stdout: Readable | null;
+  stderr: Readable | null;
 }
 
 export interface SpawnInput {
@@ -85,8 +89,9 @@ export interface SpawnInput {
   args: string[];
   cwd: string;
   env: Record<string, string>;
-  stdoutFd: number;
-  stderrFd: number;
+  /** A file descriptor the child writes directly, or `"pipe"` for the caller to read and bound. */
+  stdoutFd: number | "pipe";
+  stderrFd: number | "pipe";
   psPath: string;
 }
 
@@ -127,6 +132,8 @@ export function spawnAgentProcess(input: SpawnInput): AgentProcess {
     kill: (sig) => {
       if (exitedAt === null && pid > 0) child.kill(sig);
     },
+    stdout: child.stdout,
+    stderr: child.stderr,
   };
 }
 
@@ -445,7 +452,7 @@ export async function sweepWorktree(worktree: string, opts: SweepOptions): Promi
     }
     return { code: null, signal: null, error: null };
   })();
-  const standIn: AgentProcess = { pid: -1, identity: null, exited: allGone, exitedAt: () => 0, kill: () => {} };
+  const standIn: AgentProcess = { pid: -1, identity: null, exited: allGone, exitedAt: () => 0, kill: () => {}, stdout: null, stderr: null };
   try {
     return { found, cleanup: await terminateTree(standIn, opts, found), scanError: null };
   } finally {

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { Readable } from "node:stream";
 import { join } from "node:path";
-import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, toolchainRoots } from "../src/verify/preview";
+import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
 import { portIsFree } from "../src/verify/port";
 import { gone } from "./helpers";
 import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, type VerifyEnv } from "./verify-helpers";
@@ -231,6 +232,17 @@ describe("startPreview", () => {
     expect(await stopped).toMatchObject({ noKnownSurvivors: true, removed: true });
   }, 20_000);
 
+  test("a check's log keeps only the first MAX_LOG_BYTES; the rest is drained, so the command finishes", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    const r = await p.run(["/bin/sh", "-c", `/usr/bin/head -c ${MAX_LOG_BYTES + 4 * 1024 * 1024} /dev/zero; echo done-writing >&2`], { network: "none", name: "noisy", timeoutMs: 60_000 });
+    expect(r).toMatchObject({ exitCode: 0, quarantineReasons: [] });
+    const size = statSync(r.logPath).size;
+    expect(size).toBeGreaterThanOrEqual(MAX_LOG_BYTES);
+    expect(size).toBeLessThan(MAX_LOG_BYTES + 1024);
+    expect(tail(r.logPath, 200)).toContain(`[factory: output capped at ${MAX_LOG_BYTES} bytes;`);
+  }, 30_000);
+
   test("concurrent checks run one at a time, so one check's sweep never kills another's process", async () => {
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
     const p = await start(spec(repo.path, repo.shas[0]!));
@@ -403,5 +415,53 @@ describe("toolchainRoots", () => {
     expect(() => toolchainRoots([BUN_DIR], [], [])).toThrow(`tool dir ${BUN_DIR} is outside every toolchain root`);
     expect(() => toolchainRoots([BUN_DIR], [BUN_DIR], [BUN_DIR])).toThrow("is under agent-writable");
     expect(() => toolchainRoots([], ["/no/such/toolchain"], [])).toThrow("sandbox toolchain path does not exist: /no/such/toolchain");
+  });
+});
+
+describe("bounded reads", () => {
+  test("readiness needs only the status: an endless health body does not hold it up", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response(new ReadableStream({ pull: async (c) => { await Bun.sleep(10); c.enqueue(new Uint8Array(64 * 1024)); } })),
+    });
+    try {
+      const t = Date.now();
+      expect(await waitReady(`http://127.0.0.1:${server.port}/health`, 3_000, new Promise(() => {}))).toEqual({ ok: true });
+      expect(Date.now() - t).toBeLessThan(1_000);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("tail reads only the end of a log, even one far larger than memory allows reading whole", () => {
+    const dir = join(env.stateRoot, "tail");
+    mkdirSync(dir);
+    const path = join(dir, "big.log");
+    const fd = openSync(path, "w", 0o600);
+    ftruncateSync(fd, 3 * 1024 ** 3); // sparse: no disk used
+    writeSync(fd, "the last line\n", 3 * 1024 ** 3);
+    closeSync(fd);
+    expect(tail(path, 50)).toEndWith("the last line\n");
+    expect(tail(path, 50).length).toBe(50);
+    expect(tail(join(dir, "missing.log"))).toBe("");
+  });
+
+  test("copyCapped keeps the first bytes, counts the rest, and closes the log when every pipe has closed", async () => {
+    const path = join(env.stateRoot, "copy.log");
+    const fd = openSync(path, "wx", 0o600);
+    const out = Readable.from([Buffer.from("aaaa"), Buffer.from("bbbb")]);
+    const err = new Readable({ read() {} }); // stays open until it ends below
+    const copy = copyCapped([out, err], fd, 6);
+    let finished = false;
+    void copy.done.then(() => (finished = true));
+    await Bun.sleep(50);
+    expect(finished).toBe(false); // one pipe is still open
+    err.push(Buffer.from("cc"));
+    err.push(null);
+    await copy.done;
+    expect(readFileSync(path, "utf8")).toBe("aaaabb\n[factory: output capped at 6 bytes; 4 more bytes dropped]\n");
+    expect(() => writeSync(fd, "x")).toThrow(); // closed
+    copy.close(); // idempotent
   });
 });
