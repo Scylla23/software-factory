@@ -43,7 +43,7 @@ export function pendingReverification(store: Store, task: Task, comments: IssueC
           ? "unauthorized sender"
           : c.id <= announcement
             ? "command predates escalation"
-            : sha !== task.head || c.body !== `/reverify ${task.head}`
+            : sha !== task.head
               ? "stale or invalid reviewed head"
               : "owner requested re-verification";
     // accepted records an approval. A resolution authorizes only another verification.
