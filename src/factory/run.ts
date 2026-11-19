@@ -199,7 +199,7 @@ async function draft(store: Store, git: Publisher, task: Task, observe: Observer
   const writeSpec = (action: string) =>
     effect(store, task, action, { head: task.head, prompt }, async (a) => {
       await git.fetch(task.head);
-      const output = await dispatchWorker(store, task, a, task.spec ? "specRevision" : "spec", prompt, observe);
+      const output = await dispatchWorker(store, task, a, "spec", prompt, observe);
       const text = output.result.resultText?.trim() ?? "";
       if (!text.includes("AC-1") || text.length > 32_000) throw new Error("invalid spec writer output");
       return `${text}\n`;

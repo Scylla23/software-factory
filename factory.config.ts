@@ -9,7 +9,6 @@ export const config = {
   stateRoot: join(home, ".software-factory"),
   agents: {
     spec: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
-    specRevision: { harness: "claude", model: "haiku", effort: "low", timeoutMs: 300_000 },
     builder: { harness: "codex", model: "gpt-6.2-sol", effort: "high", timeoutMs: 900_000 },
     reviewer: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
   },
