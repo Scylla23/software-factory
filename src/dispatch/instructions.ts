@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { isUnder } from "./config";
+import { runGit } from "./git";
 
 /** Instruction files a project may have, as repo-relative paths, in the order they are passed. */
 export const PROJECT_INSTRUCTION_PATHS = ["AGENTS.md", "CLAUDE.md"] as const;
@@ -7,7 +8,6 @@ export const PROJECT_INSTRUCTION_PATHS = ["AGENTS.md", "CLAUDE.md"] as const;
 /** Bound on the combined instructions; Codex receives them in argv, which macOS caps at 1 MiB with the env. */
 export const MAX_INSTRUCTIONS_BYTES = 256 * 1024;
 
-const GIT_TIMEOUT_MS = 10_000;
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const PATH_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 
@@ -101,28 +101,4 @@ function treeEntry(git: (args: string[]) => Buffer, sha: string, path: string): 
   if (mode === "120000") throw new Error(`instruction file ${path} is a symlink at ${sha}`);
   if (type !== "blob" || (mode !== "100644" && mode !== "100755")) throw new Error(`instruction file ${path} is not a regular file at ${sha} (mode ${mode})`);
   return { path, oid: oid! };
-}
-
-/**
- * git from the trusted path, with no system or global config, replace refs, or prompts, so only the repo's objects
- * decide what is read.
- */
-function runGit(gitPath: string, repo: string, args: string[]): Buffer {
-  const r = Bun.spawnSync([gitPath, "--no-replace-objects", "-C", repo, ...args], {
-    env: {
-      PATH: "/usr/bin:/bin",
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_CONFIG_GLOBAL: "/dev/null",
-      GIT_NO_REPLACE_OBJECTS: "1",
-      GIT_LITERAL_PATHSPECS: "1",
-      GIT_TERMINAL_PROMPT: "0",
-      GIT_OPTIONAL_LOCKS: "0",
-    },
-    stdin: "ignore",
-    timeout: GIT_TIMEOUT_MS,
-    killSignal: "SIGKILL",
-  });
-  if (r.exitedDueToTimeout) throw new Error(`git ${args[0]} gave no answer within ${GIT_TIMEOUT_MS}ms`);
-  if (r.exitCode !== 0) throw new Error(`git ${args[0]} failed in ${repo}: ${r.stderr.toString("utf8").trim().slice(0, 300) || `exit ${r.exitCode}`}`);
-  return r.stdout;
 }

@@ -35,9 +35,11 @@ export function codexConfigArgs(policy: SandboxPolicy): string[] {
     // A duplicate key is a TOML error, and the intent (deny or read) would be ambiguous anyway.
     if (policy.denyRead.includes(p)) throw new Error(`cannot deny ${p}: Codex needs it readable to run`);
   }
+  // A write-denied path that is also read-denied stays "none"; anything else would be a duplicate key.
+  const readOnly = [...policy.readable, ...policy.denyWrite.filter((p) => !policy.denyRead.includes(p) && !policy.readable.includes(p))];
   const filesystem = [
     ...policy.denyRead.map((p) => `${tomlString(p)}="none"`),
-    ...policy.readable.map((p) => `${tomlString(p)}="read"`),
+    ...readOnly.map((p) => `${tomlString(p)}="read"`),
   ].join(",");
   return [
     "-c", `permissions={${PROFILE}={extends=":workspace", filesystem={${filesystem}}}}`,

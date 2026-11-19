@@ -588,6 +588,38 @@ The sweep takes about 0.3 seconds when it finds nothing.
 Tests: a real detached child (Perl `fork`, `setsid`, `fork`, so it is reparented to launchd in a session and group of its own) left in the worktree by a fake CLI that then exits is found, killed, and quarantines the worktree, and a direct check shows that supervision alone reports nothing for it; one in a subdirectory of the worktree is found; a process in the worktree whose live parent is outside it (like an Orca terminal shell) is skipped; a failing `lsof` and a hanging one quarantine the worktree.
 
 A detached process that changes its cwd out of the worktree remains undetectable, as does anything it starts later from outside the worktree (issue #3).
+In the real runs below, the sweep left the Orca worktree's default terminal shell alone (it sits in the worktree but descends from Orca) and found nothing, with `quarantineReasons: []`.
+
+### Git dir writes
+
+Agents never commit, so `gitWriteProtectedPaths` makes the run's git paths write-denied in both harnesses: the canonical common git dir (`git rev-parse --path-format=absolute --git-common-dir`, shared by every worktree of the repo, with its objects, refs, hooks, and config), the worktree's admin dir under it (`--git-dir`), and the worktree's `.git` link file, so an agent cannot point a later run's lookup somewhere else.
+git runs through the trusted runner of section 9; a worktree whose `.git` link is broken refuses the run instead of going unprotected, and a dir in no repository at all has nothing to protect.
+`runAgent` also refuses a write-deny that would cover the worktree itself.
+
+- Claude: the paths go in `sandbox.filesystem.denyWrite` (the setting name and its merge with `Edit(...)` deny rules are from Claude Code 2.1.325's own settings schema), plus `Edit(<path>)`, `Edit(<path>/**)`, `Write(<path>)`, and `Write(<path>/**)` deny rules.
+- Codex: the paths become `"<path>"="read"` entries in the `factory` profile; one that is also read-denied stays `"none"`.
+
+`scripts/git-write-probe.sh` checks it from inside the sandbox of a linked worktree: it tries to create an empty marker in `<common>/hooks`, `<common>/objects`, `<common>`, and the admin dir, opens `<common>/config`, `<admin>/HEAD`, and the `.git` link for append without writing, then edits a file in the worktree.
+The verify driver removes any marker that appears and reports it as a failure.
+Before this change Claude's sandbox let Bash write the shared git dir; only hooks and config were protected, by Claude's own built-in rule for those names:
+
+```
+claude  WRITE-DENIED .git/hooks   WRITE-ALLOWED .git/objects   WRITE-ALLOWED .git   WRITE-DENIED .git/config
+        WRITE-ALLOWED .git/worktrees/<wt>   WRITE-ALLOWED .git/worktrees/<wt>/HEAD   WRITE-DENIED <wt>/.git   RESULT LEAK
+        (three markers appeared and were removed)
+codex   all seven WRITE-DENIED, RESULT PASS
+```
+
+With it, both harnesses print `WRITE-DENIED` for all seven targets, `WORKTREE-EDIT-OK`, and `RESULT PASS`, and no marker appeared.
+Claude's Write tool, asked to create `<common>/objects/factory-git-write-marker`, got "File is in a directory that is denied by your permission settings", and the same tool then created a file in the worktree.
+
+### Verification
+
+`bun test` (146 tests) and the typecheck pass.
+Each new check was reverted and its test failed, except that resolving the git dirs with `realpathSync` cannot be observed: git already prints canonical paths for `--path-format=absolute`, even through a symlinked `.git` link (kept as a guard; a test covers that link).
+The `pgid <= 1` guard in `signalGroup` was not mutation-tested, because its mutant could send `kill(-1)` to every process of the user.
+Regression runs with `haiku` and `gpt-6-luna` at effort `low`, with both changes in place: the canary probe printed 23 DENIED, `INDIRECT-HIDDEN`, `ENV-HIDDEN`, `NET-BLOCKED`, and `RESULT PASS` in both harnesses with the monitor tab on, and the codeword test answered exactly PELICAN and CORMORANT in both, each with `noKnownSurvivors: true` and no quarantine.
+
 
 ## Proposed design changes
 
@@ -625,8 +657,9 @@ These contradict or refine [design.md](../design.md); 1, 3, and 4 are now decide
 - `src/dispatch/claude.ts` and `src/dispatch/codex.ts`: the proven flags and the parsers.
 - `src/dispatch/jsonl.ts`: the bounded streaming JSONL reader.
 - `src/dispatch/policy.ts`: deny-list, env allowlist, and the harness home variable.
+- `src/dispatch/git.ts`: the trusted git runner and the git paths a run must not write.
 - `src/dispatch/instructions.ts`: reading the project's instruction files from git blobs at the base commit and combining them.
-- `src/dispatch/process.ts`: process-group spawn, supervision, termination, and cleanup verification.
+- `src/dispatch/process.ts`: process-group spawn, supervision, termination, cleanup verification, and the worktree sweep.
 - `src/orca/cli.ts`: bounded `orca` calls with a fixed minimal env.
 - `src/orca/worktree.ts`: worktree create and remove.
 - `src/orca/monitor.ts`: the optional read-only monitor tab.
@@ -635,7 +668,7 @@ These contradict or refine [design.md](../design.md); 1, 3, and 4 are now decide
 
 ## Tests
 
-`bun test` runs 140 tests in `test/`.
+`bun test` runs 146 tests in `test/`.
 Parser tests use fixtures captured from the spike runs in `test/fixtures` (Claude stream, Codex JSONL, and a Codex session file trimmed to its metadata, turn context, and token records), with home paths and personal skill and plugin lists scrubbed and account ids replaced.
 `test/run.test.ts` drives `runAgent` and `terminateTree` against a fake CLI (`test/helpers.ts`) whose behavior is chosen by its last argument; the fake is passed through `DispatchConfig.executables`, never `PATH`.
 `test/config.test.ts` covers executable trust, harness home checks, managed settings, and log creation; `test/policy.test.ts` covers the deny-list merge for both harnesses, the Codex carve-out and hermetic flags, and the env allowlist.

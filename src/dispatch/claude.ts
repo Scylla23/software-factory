@@ -13,10 +13,17 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
  */
 export function claudeSettings(policy: SandboxPolicy): object {
   const denyRead = [...policy.denyRead];
+  const denyWrite = [...policy.denyWrite];
+  const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
   return {
     permissions: {
       allow: [...CLAUDE_BUILDER_TOOLS],
-      deny: ["WebFetch", "WebSearch", ...denyRead.flatMap((p) => [`Read(${rulePath(p)})`, `Read(${rulePath(p)}/**)`])],
+      deny: [
+        "WebFetch",
+        "WebSearch",
+        ...denyRead.flatMap((p) => rules("Read", p)),
+        ...denyWrite.flatMap((p) => [...rules("Edit", p), ...rules("Write", p)]),
+      ],
       blockReadsOutsideWorkingDirectories: true,
     },
     sandbox: {
@@ -25,7 +32,8 @@ export function claudeSettings(policy: SandboxPolicy): object {
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
       network: { allowedDomains: [] },
-      filesystem: { denyRead },
+      // Claude's sandbox makes a linked worktree's shared git dir writable for Bash; denyWrite takes it back.
+      filesystem: { denyRead, denyWrite },
     },
   };
 }

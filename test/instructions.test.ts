@@ -167,7 +167,7 @@ describe("tomlString", () => {
   );
 });
 
-const NO_POLICY = { denyRead: ["/denied"], readable: [] };
+const NO_POLICY = { denyRead: ["/denied"], readable: [], denyWrite: [] };
 
 describe("harness args", () => {
   test("Claude appends the instructions file to the system prompt, before the end of options", () => {

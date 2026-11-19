@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { runAgent } from "../src/dispatch";
 import { join } from "node:path";
 import { claudeArgs, claudeSettings } from "../src/dispatch/claude";
 import { codexArgs, codexConfigArgs, codexReadable } from "../src/dispatch/codex";
 import {
-  agentEnv, assertPolicySound, effectiveDenyRead, expandHome, MANDATORY_DENY_READ, type PolicyContext, type SandboxPolicy, SYSTEM_PATH_DIRS,
+  agentEnv, assertPolicySound, assertWorktreeWritable, effectiveDenyRead, expandHome, MANDATORY_DENY_READ, type PolicyContext, type SandboxPolicy, SYSTEM_PATH_DIRS,
 } from "../src/dispatch/policy";
+import { gitWriteProtectedPaths } from "../src/dispatch/git";
 import { makeSandbox, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
@@ -16,7 +18,7 @@ beforeEach(() => {
 });
 afterEach(() => sb.cleanup());
 
-const policyOf = (extra: string[] = [], readable: string[] = []): SandboxPolicy => ({ denyRead: effectiveDenyRead(ctx, extra), readable });
+const policyOf = (extra: string[] = [], readable: string[] = [], denyWrite: string[] = []): SandboxPolicy => ({ denyRead: effectiveDenyRead(ctx, extra), readable, denyWrite });
 const mandatory = () => MANDATORY_DENY_READ.map((p) => expandHome(p, sb.home));
 
 /** The paths a generated Codex profile carries with the given access. */
@@ -129,10 +131,10 @@ describe("deny-list", () => {
 
   test("a readable carve-out may not reopen the state root or a harness home, nor equal a deny entry", () => {
     const denied = effectiveDenyRead(ctx);
-    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.stateRoot, "logs")] }, ctx)).toThrow("overlaps factory state");
-    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.config.harnessHomes.codex, "bin")] }, ctx)).toThrow("overlaps factory state");
-    expect(() => assertPolicySound({ denyRead: denied, readable: [denied[0]!] }, ctx)).toThrow("Codex needs it readable");
-    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.home, ".codex", "packages", "bin")] }, ctx)).not.toThrow();
+    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.stateRoot, "logs")], denyWrite: [] }, ctx)).toThrow("overlaps factory state");
+    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.config.harnessHomes.codex, "bin")], denyWrite: [] }, ctx)).toThrow("overlaps factory state");
+    expect(() => assertPolicySound({ denyRead: denied, readable: [denied[0]!], denyWrite: [] }, ctx)).toThrow("Codex needs it readable");
+    expect(() => assertPolicySound({ denyRead: denied, readable: [join(sb.home, ".codex", "packages", "bin")], denyWrite: [] }, ctx)).not.toThrow();
   });
 });
 
@@ -216,5 +218,71 @@ describe("codex", () => {
     for (const flag of ["--json", "--ignore-user-config", "--ignore-rules"]) expect(args).toContain(flag);
     expect(args).toContain('model_reasoning_effort="low"');
     expect(args.slice(-2)).toEqual(["--", "-x"]);
+  });
+});
+
+describe("git dir writes", () => {
+  const GIT_ENV = { PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
+  const git = (cwd: string, ...args: string[]) => {
+    const r = Bun.spawnSync(["/usr/bin/git", "-C", cwd, "-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { env: GIT_ENV });
+    if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+  };
+  /** A main checkout under the state root and a linked worktree under the agent-writable temp worktree. */
+  const linkedWorktree = () => {
+    const main = join(sb.stateRoot, "main");
+    mkdirSync(main);
+    git(main, "init", "-q");
+    git(main, "commit", "-q", "--allow-empty", "-m", "base");
+    const wt = join(realpathSync(sb.worktree), "linked");
+    git(main, "worktree", "add", "-q", "-b", "agent", wt);
+    return { main: realpathSync(main), wt, common: join(realpathSync(main), ".git"), admin: join(realpathSync(main), ".git", "worktrees", "linked") };
+  };
+
+  test("a linked worktree protects the common git dir, its admin dir, and its .git link, canonical", () => {
+    const { wt, common, admin } = linkedWorktree();
+    expect(gitWriteProtectedPaths("/usr/bin/git", wt)).toEqual([common, admin, join(wt, ".git")]);
+    // A link that reaches the same git dir through a symlink still yields the canonical paths.
+    symlinkSync(join(sb.stateRoot, "main"), join(sb.stateRoot, "main-link"));
+    writeFileSync(join(wt, ".git"), `gitdir: ${join(sb.stateRoot, "main-link", ".git", "worktrees", "linked")}\n`);
+    expect(gitWriteProtectedPaths("/usr/bin/git", wt)).toEqual([common, admin, join(wt, ".git")]);
+  });
+
+  test("a dir that is not in any repository has nothing to protect, but a broken .git link refuses", () => {
+    expect(gitWriteProtectedPaths("/usr/bin/git", realpathSync(sb.worktree))).toEqual([]);
+    writeFileSync(join(sb.worktree, ".git"), "gitdir: /nonexistent/elsewhere\n");
+    expect(() => gitWriteProtectedPaths("/usr/bin/git", realpathSync(sb.worktree))).toThrow("not a git repository");
+  });
+
+  test("Claude denies them to sandboxed Bash and to the Edit and Write tools", () => {
+    const s = claudeSettings(policyOf([], [], ["/r/.git", "/r/.git/worktrees/w"])) as any;
+    expect(s.sandbox.filesystem.denyWrite).toEqual(["/r/.git", "/r/.git/worktrees/w"]);
+    for (const tool of ["Edit", "Write"]) {
+      expect(s.permissions.deny).toEqual(expect.arrayContaining([`${tool}(//r/.git)`, `${tool}(//r/.git/**)`, `${tool}(//r/.git/worktrees/w)`, `${tool}(//r/.git/worktrees/w/**)`]));
+    }
+  });
+
+  test("Codex makes them read-only, and a path also read-denied stays denied without a duplicate key", () => {
+    const args = codexConfigArgs(policyOf(["/r/.git/worktrees/w"], [], ["/r/.git", "/r/.git/worktrees/w"]));
+    expect(codexEntries(args, "read")).toEqual(["/r/.git"]);
+    expect(codexDenied(args)).toContain("/r/.git/worktrees/w");
+  });
+
+  test("a write-deny covering the worktree is refused", () => {
+    expect(() => assertWorktreeWritable({ denyRead: [], readable: [], denyWrite: ["/r"] }, "/r/wt")).toThrow("would cover the worktree");
+    expect(() => assertWorktreeWritable({ denyRead: [], readable: [], denyWrite: ["/r/.git"] }, "/r/wt")).not.toThrow();
+  });
+
+  test("runAgent passes the worktree's git dirs to both harnesses", async () => {
+    const { wt, common, admin } = linkedWorktree();
+    const argvOf = () => readFileSync(join(wt, "argv0"), "utf8").split("\0").slice(0, -1);
+    const base = { worktreePath: wt, prompt: `dump:${wt}`, model: "m", effort: "low", logDir: sb.logDir, timeoutMs: 30_000, instructions: null };
+    await runAgent({ ...base, harness: "claude", runId: crypto.randomUUID() }, sb.config);
+    const settings = JSON.parse(argvOf()[argvOf().indexOf("--settings") + 1]!);
+    expect(settings.sandbox.filesystem.denyWrite).toEqual([common, admin, join(wt, ".git")]);
+    expect(settings.permissions.deny).toEqual(expect.arrayContaining([`Write(/${common}/**)`, `Edit(/${admin}/**)`]));
+    await runAgent({ ...base, harness: "codex", runId: crypto.randomUUID() }, sb.config);
+    const codexArgv = argvOf();
+    const profile = codexArgv.findIndex((a) => a.startsWith("permissions="));
+    expect(codexEntries(codexArgv.slice(profile - 1), "read")).toEqual(expect.arrayContaining([common, admin, join(wt, ".git")]));
   });
 });

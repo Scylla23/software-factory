@@ -6,7 +6,8 @@ import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type Dispatch
 import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
-import { agentEnv, assertPolicySound, effectiveDenyRead, type PolicyContext, type SandboxPolicy } from "./policy";
+import { gitWriteProtectedPaths } from "./git";
+import { agentEnv, assertPolicySound, assertWorktreeWritable, effectiveDenyRead, type PolicyContext, type SandboxPolicy } from "./policy";
 import { type AgentProcess, spawnAgentProcess, superviseRun, sweepWorktree } from "./process";
 import type { RunOutcome, RunResult, RunSpec } from "./types";
 
@@ -41,8 +42,13 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const agentWritable = [worktree, ...tempRoots()];
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
   const denyRead = effectiveDenyRead(ctx, spec.extraDenyRead);
-  const policy: SandboxPolicy = { denyRead, readable: spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [] };
+  const policy: SandboxPolicy = {
+    denyRead,
+    readable: spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [],
+    denyWrite: gitWriteProtectedPaths(config.executables.git, worktree),
+  };
   assertPolicySound(policy, ctx);
+  assertWorktreeWritable(policy, worktree);
   assertStateRootIsolated(config.stateRoot, [...agentWritable, ...policy.readable]);
   assertSafeDir(config.stateRoot, config.accountHome);
   const instructions = spec.instructions ? buildProjectInstructions(spec.instructions, config.executables.git, agentWritable) : null;
