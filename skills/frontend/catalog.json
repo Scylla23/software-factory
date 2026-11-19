@@ -1,0 +1,1564 @@
+{
+  "$schema": "../_shared/catalog.schema.json",
+  "schemaVersion": 1,
+  "catalog": "frontend",
+  "title": "Frontend catalog: inspiration, fonts, and approved libraries",
+  "verifiedAt": "2026-11-19",
+  "maintenanceRule": "A library or service SDK counts as maintained when it is not archived or deprecated and has an npm release or a default-branch commit within 12 months of verifiedAt. Fonts are judged by their distribution package, because a finished typeface needs no commits. Entries with no package and no public repository are judged by the live page alone, and say so in evidence.note.",
+  "entries": [
+    {
+      "id": "navbar-gallery",
+      "name": "Navbar Gallery",
+      "kind": "inspiration",
+      "category": "navbar",
+      "url": "https://www.navbar.gallery/",
+      "tags": [
+        "navigation",
+        "header",
+        "menu"
+      ],
+      "whenToUse": "Choosing a navigation pattern for a marketing site or app shell: top bar, mega menu, mobile drawer, sticky behavior.",
+      "avoidWhen": "The project already has a navigation component; extend that instead.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "footer-design",
+      "name": "Footer",
+      "kind": "inspiration",
+      "category": "footer",
+      "url": "https://www.footer.design/",
+      "tags": [
+        "footer",
+        "sitemap",
+        "legal-links"
+      ],
+      "whenToUse": "Structuring a site footer: link columns, newsletter capture, legal row, how much to put in it.",
+      "avoidWhen": "In-app screens, which rarely need a marketing footer.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "land-book",
+      "name": "Landbook",
+      "kind": "inspiration",
+      "category": "landing-page",
+      "url": "https://land-book.com/",
+      "tags": [
+        "landing",
+        "marketing",
+        "gallery"
+      ],
+      "whenToUse": "Surveying whole landing pages by industry or style before fixing a page structure.",
+      "avoidWhen": "Deciding a single component; use the component-level entries instead.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 403,
+        "note": "curl receives 403 from a bot challenge; the page loaded in an isolated Orca browser profile on 2026-11-19 with the title 'Landbook - website design inspiration gallery'."
+      }
+    },
+    {
+      "id": "saaslandingpage",
+      "name": "SaaS Landing Page",
+      "kind": "inspiration",
+      "category": "landing-page",
+      "url": "https://saaslandingpage.com/",
+      "tags": [
+        "landing",
+        "saas",
+        "marketing"
+      ],
+      "whenToUse": "Landing pages for a software product: section order, proof, pricing placement, calls to action.",
+      "avoidWhen": "Non-software or editorial sites.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "landingfolio",
+      "name": "Landingfolio",
+      "kind": "inspiration",
+      "category": "landing-page",
+      "url": "https://www.landingfolio.com/",
+      "tags": [
+        "landing",
+        "sections",
+        "marketing"
+      ],
+      "whenToUse": "Comparing how individual landing sections (pricing, testimonials, features, FAQ) are built across sites.",
+      "avoidWhen": "App UI work.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "supahero",
+      "name": "Supahero",
+      "kind": "inspiration",
+      "category": "hero",
+      "url": "https://supahero.io/",
+      "tags": [
+        "hero",
+        "above-the-fold",
+        "landing"
+      ],
+      "whenToUse": "Designing the hero section: headline, supporting line, primary action, and visual arrangement.",
+      "avoidWhen": "Pages with no hero, such as dashboards and settings.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "cta-gallery",
+      "name": "CTA.gallery",
+      "kind": "inspiration",
+      "category": "call-to-action",
+      "url": "https://www.cta.gallery/",
+      "tags": [
+        "cta",
+        "conversion",
+        "landing"
+      ],
+      "whenToUse": "Closing sections and inline calls to action on marketing pages.",
+      "avoidWhen": "In-app primary actions, which follow the app's own button hierarchy.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "bentogrids",
+      "name": "Bento Grids",
+      "kind": "inspiration",
+      "category": "layout",
+      "url": "https://bentogrids.com/",
+      "tags": [
+        "bento",
+        "grid",
+        "feature-section"
+      ],
+      "whenToUse": "Feature overviews or dashboards-as-marketing laid out as a bento grid.",
+      "avoidWhen": "Dense data screens; a bento grid trades information density for looks.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "minimal-gallery",
+      "name": "Minimal Gallery",
+      "kind": "inspiration",
+      "category": "layout",
+      "url": "https://minimal.gallery/",
+      "tags": [
+        "minimal",
+        "whitespace",
+        "editorial"
+      ],
+      "whenToUse": "Restrained, typography-led layouts for portfolios, studios, and editorial pages.",
+      "avoidWhen": "Feature-heavy product marketing that needs more structure than a minimal page gives.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "dark-mode-design",
+      "name": "Dark Mode Design",
+      "kind": "inspiration",
+      "category": "layout",
+      "url": "https://www.darkmodedesign.com/",
+      "tags": [
+        "dark-mode",
+        "color",
+        "contrast"
+      ],
+      "whenToUse": "Designing a dark theme: surface layering, contrast, accent use.",
+      "avoidWhen": "Projects that ship light mode only.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "mobbin",
+      "name": "Mobbin",
+      "kind": "inspiration",
+      "category": "app-ui",
+      "url": "https://mobbin.com/",
+      "tags": [
+        "app",
+        "screens",
+        "patterns",
+        "mobile",
+        "web"
+      ],
+      "whenToUse": "Finding how shipped products design a specific app screen: onboarding, settings, empty states, billing.",
+      "avoidWhen": "Marketing pages. Full access needs a paid account, so cite the pattern, not a deep link.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "refero",
+      "name": "Refero",
+      "kind": "inspiration",
+      "category": "app-ui",
+      "url": "https://refero.design/",
+      "tags": [
+        "app",
+        "screens",
+        "web",
+        "search"
+      ],
+      "whenToUse": "Searching real web app screens by page type or element when Mobbin lacks the case.",
+      "avoidWhen": "Marketing pages. Full access needs a paid account.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "saasframe",
+      "name": "SaaSFrame",
+      "kind": "inspiration",
+      "category": "app-ui",
+      "url": "https://www.saasframe.io/",
+      "tags": [
+        "saas",
+        "product-screens",
+        "emails"
+      ],
+      "whenToUse": "Reference screens for common SaaS surfaces: dashboards, pricing pages, onboarding, transactional emails.",
+      "avoidWhen": "Consumer or content products.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "pageflows",
+      "name": "Page Flows",
+      "kind": "inspiration",
+      "category": "user-flow",
+      "url": "https://pageflows.com/",
+      "tags": [
+        "flows",
+        "onboarding",
+        "checkout",
+        "recordings"
+      ],
+      "whenToUse": "Designing a multi-step flow (sign-up, checkout, upgrade, cancel) and deciding step order.",
+      "avoidWhen": "Single static screens. Full access needs a paid account.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "component-gallery",
+      "name": "The Component Gallery",
+      "kind": "inspiration",
+      "category": "component-reference",
+      "url": "https://component.gallery/",
+      "tags": [
+        "components",
+        "design-systems",
+        "naming",
+        "accessibility"
+      ],
+      "whenToUse": "Naming a component correctly and seeing how established design systems build it, including its accessibility notes.",
+      "avoidWhen": "Page-level layout decisions.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "shape-of-ai",
+      "name": "The Shape of AI",
+      "kind": "inspiration",
+      "category": "ai-interface",
+      "url": "https://www.shapeof.ai/",
+      "tags": [
+        "ai",
+        "ux-patterns",
+        "chat",
+        "trust"
+      ],
+      "whenToUse": "Choosing interaction patterns for AI features: prompts, streaming, citations, regeneration, human approval.",
+      "avoidWhen": "Interfaces with no AI behavior.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "typewolf",
+      "name": "Typewolf",
+      "kind": "inspiration",
+      "category": "typography",
+      "url": "https://www.typewolf.com/",
+      "tags": [
+        "fonts",
+        "pairing",
+        "type-in-use"
+      ],
+      "whenToUse": "Picking a font pairing and seeing it used on real sites.",
+      "avoidWhen": "Choosing a font that is not in this catalog's font list; flag the gap instead.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "fonts-in-use",
+      "name": "Fonts In Use",
+      "kind": "inspiration",
+      "category": "typography",
+      "url": "https://fontsinuse.com/",
+      "tags": [
+        "fonts",
+        "archive",
+        "type-in-use"
+      ],
+      "whenToUse": "Checking how a specific typeface from the font list behaves in real layouts.",
+      "avoidWhen": "Choosing a font that is not in this catalog's font list; flag the gap instead.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "web-interface-guidelines",
+      "name": "Web Interface Guidelines (Vercel)",
+      "kind": "inspiration",
+      "category": "guidelines",
+      "url": "https://vercel.com/design/guidelines",
+      "tags": [
+        "quality-bar",
+        "interactions",
+        "forms",
+        "animation",
+        "performance"
+      ],
+      "whenToUse": "Setting the quality bar for interaction details: focus, forms, loading, motion, touch targets.",
+      "avoidWhen": "Never; treat as the default checklist for any web UI, below the project's own conventions.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "repository": {
+          "repo": "vercel-labs/web-interface-guidelines",
+          "archived": false,
+          "lastCommitAt": "2026-10-05"
+        }
+      }
+    },
+    {
+      "id": "aria-apg-patterns",
+      "name": "ARIA Authoring Practices Guide patterns",
+      "kind": "inspiration",
+      "category": "guidelines",
+      "url": "https://www.w3.org/WAI/ARIA/apg/patterns/",
+      "tags": [
+        "accessibility",
+        "keyboard",
+        "aria",
+        "widgets"
+      ],
+      "whenToUse": "Specifying keyboard and screen-reader behavior for a custom widget: dialog, combobox, menu, tabs, listbox.",
+      "avoidWhen": "Native HTML elements already give the behavior; prefer the native element.",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "note": "Returns 200 with the title 'Patterns | APG | WAI | W3C' to a plain curl request; a request with a browser user agent got a 403 bot challenge."
+      }
+    },
+    {
+      "id": "font-inter",
+      "name": "Inter",
+      "kind": "library",
+      "category": "font",
+      "url": "https://rsms.me/inter/",
+      "tags": [
+        "sans",
+        "ui",
+        "variable"
+      ],
+      "whenToUse": "Default UI sans for dense product interfaces, tables, and forms.",
+      "avoidWhen": "A brand that needs a distinctive voice; Inter is neutral by design.",
+      "packages": [
+        "@fontsource-variable/inter"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource-variable/inter",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "rsms/inter",
+          "archived": false,
+          "lastCommitAt": "2024-11-19",
+          "latestReleaseAt": "2024-11-16"
+        }
+      }
+    },
+    {
+      "id": "font-geist",
+      "name": "Geist and Geist Mono",
+      "kind": "library",
+      "category": "font",
+      "url": "https://vercel.com/font",
+      "tags": [
+        "sans",
+        "mono",
+        "ui",
+        "variable"
+      ],
+      "whenToUse": "A modern UI sans with a matching mono, for developer-facing products.",
+      "avoidWhen": "Long-form reading; pair with a serif from this list instead.",
+      "packages": [
+        "geist"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "geist",
+            "latestVersion": "1.9.2",
+            "latestReleaseAt": "2026-11-06",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "vercel/geist-font",
+          "archived": false,
+          "lastCommitAt": "2026-11-06",
+          "latestReleaseAt": "2026-11-06"
+        }
+      }
+    },
+    {
+      "id": "font-ibm-plex",
+      "name": "IBM Plex Sans and Mono",
+      "kind": "library",
+      "category": "font",
+      "url": "https://www.ibm.com/plex/",
+      "tags": [
+        "sans",
+        "mono",
+        "technical"
+      ],
+      "whenToUse": "Technical or data products that want more character than Inter, with a matching mono.",
+      "avoidWhen": "Playful or consumer brands.",
+      "packages": [
+        "@fontsource/ibm-plex-sans",
+        "@fontsource/ibm-plex-mono"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource/ibm-plex-sans",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          },
+          {
+            "package": "@fontsource/ibm-plex-mono",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "IBM/plex",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2024-11-13"
+        }
+      }
+    },
+    {
+      "id": "font-jetbrains-mono",
+      "name": "JetBrains Mono",
+      "kind": "library",
+      "category": "font",
+      "url": "https://www.jetbrains.com/lp/mono/",
+      "tags": [
+        "mono",
+        "code",
+        "variable"
+      ],
+      "whenToUse": "Code blocks, terminals, and tabular figures.",
+      "avoidWhen": "Body text.",
+      "packages": [
+        "@fontsource-variable/jetbrains-mono"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource-variable/jetbrains-mono",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "JetBrains/JetBrainsMono",
+          "archived": false,
+          "lastCommitAt": "2025-01-31",
+          "latestReleaseAt": "2023-01-14"
+        }
+      }
+    },
+    {
+      "id": "font-instrument-sans",
+      "name": "Instrument Sans",
+      "kind": "library",
+      "category": "font",
+      "url": "https://fonts.google.com/specimen/Instrument+Sans",
+      "tags": [
+        "sans",
+        "brand",
+        "variable"
+      ],
+      "whenToUse": "Marketing pages and headings that need a warmer sans than Inter.",
+      "avoidWhen": "Dense data tables.",
+      "packages": [
+        "@fontsource-variable/instrument-sans"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource-variable/instrument-sans",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "Instrument/instrument-sans",
+          "archived": false,
+          "lastCommitAt": "2023-06-14"
+        }
+      }
+    },
+    {
+      "id": "font-instrument-serif",
+      "name": "Instrument Serif",
+      "kind": "library",
+      "category": "font",
+      "url": "https://fonts.google.com/specimen/Instrument+Serif",
+      "tags": [
+        "serif",
+        "display",
+        "headline"
+      ],
+      "whenToUse": "Large display headlines on landing and editorial pages.",
+      "avoidWhen": "Body text or small sizes; it is a display face with one weight.",
+      "packages": [
+        "@fontsource/instrument-serif"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource/instrument-serif",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "Instrument/instrument-serif",
+          "archived": false,
+          "lastCommitAt": "2023-04-26"
+        }
+      }
+    },
+    {
+      "id": "font-fraunces",
+      "name": "Fraunces",
+      "kind": "library",
+      "category": "font",
+      "url": "https://fonts.google.com/specimen/Fraunces",
+      "tags": [
+        "serif",
+        "display",
+        "variable",
+        "expressive"
+      ],
+      "whenToUse": "Expressive headings where the brand wants personality.",
+      "avoidWhen": "Neutral product UI.",
+      "packages": [
+        "@fontsource-variable/fraunces"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource-variable/fraunces",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "undercasetype/Fraunces",
+          "archived": false,
+          "lastCommitAt": "2025-10-21",
+          "latestReleaseAt": "2020-10-29"
+        }
+      }
+    },
+    {
+      "id": "font-source-serif-4",
+      "name": "Source Serif 4",
+      "kind": "library",
+      "category": "font",
+      "url": "https://fonts.google.com/specimen/Source+Serif+4",
+      "tags": [
+        "serif",
+        "reading",
+        "variable"
+      ],
+      "whenToUse": "Long-form reading: docs, articles, changelogs.",
+      "avoidWhen": "Compact UI labels.",
+      "packages": [
+        "@fontsource-variable/source-serif-4"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource-variable/source-serif-4",
+            "latestVersion": "5.3.1",
+            "latestReleaseAt": "2026-10-11",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "adobe-fonts/source-serif",
+          "archived": false,
+          "lastCommitAt": "2026-09-13",
+          "latestReleaseAt": "2023-01-20"
+        }
+      }
+    },
+    {
+      "id": "font-newsreader",
+      "name": "Newsreader",
+      "kind": "library",
+      "category": "font",
+      "url": "https://fonts.google.com/specimen/Newsreader",
+      "tags": [
+        "serif",
+        "editorial",
+        "variable"
+      ],
+      "whenToUse": "Editorial layouts that want a news-style text and headline serif.",
+      "avoidWhen": "Compact UI labels.",
+      "packages": [
+        "@fontsource-variable/newsreader"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@fontsource-variable/newsreader",
+            "latestVersion": "5.3.0",
+            "latestReleaseAt": "2026-07-19",
+            "license": "OFL-1.1"
+          }
+        ],
+        "repository": {
+          "repo": "productiontype/Newsreader",
+          "archived": false,
+          "lastCommitAt": "2021-03-01"
+        }
+      }
+    },
+    {
+      "id": "cmdk",
+      "name": "cmdk",
+      "kind": "library",
+      "category": "command-palette",
+      "url": "https://github.com/dip/cmdk",
+      "tags": [
+        "command-menu",
+        "combobox",
+        "keyboard",
+        "react"
+      ],
+      "whenToUse": "A command palette or keyboard-first searchable menu in a React app.",
+      "avoidWhen": "A plain select or autocomplete over a short fixed list; use the project's select or combobox.",
+      "packages": [
+        "cmdk"
+      ],
+      "install": "npm",
+      "status": "flagged",
+      "flagReason": "Named by the owner, so kept. It fails the maintenance rule: latest release 2025-03-14 and last default-branch commit 2025-10-29, both more than 12 months before verifiedAt. Not archived. Pin the version and re-check before a major React upgrade.",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "cmdk",
+            "latestVersion": "1.1.1",
+            "latestReleaseAt": "2025-03-14",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "dip/cmdk",
+          "archived": false,
+          "lastCommitAt": "2025-10-29",
+          "latestReleaseAt": "2025-03-14"
+        }
+      }
+    },
+    {
+      "id": "beautiful-ui",
+      "name": "Beautiful UI",
+      "kind": "library",
+      "category": "ai-interface",
+      "url": "https://www.beautifului.dev/",
+      "tags": [
+        "ai",
+        "chat",
+        "thinking-state",
+        "approval",
+        "copy-paste",
+        "react"
+      ],
+      "whenToUse": "AI-native surfaces: chat prompt bar, streaming text, thinking traces, tool chips, human approval cards, task rows.",
+      "avoidWhen": "Interfaces with no agent or chat behavior, or a project whose design system already has these parts.",
+      "install": "copy-paste",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "note": "Copy-paste component source, MIT per https://www.beautifului.dev/license (200). There is no npm package and no public repository, so maintenance cannot be judged by release or commit date; only the live page was verified."
+      }
+    },
+    {
+      "id": "shadcn-ui",
+      "name": "shadcn/ui",
+      "kind": "library",
+      "category": "components",
+      "url": "https://ui.shadcn.com/",
+      "tags": [
+        "components",
+        "copy-in",
+        "tailwind",
+        "radix",
+        "react"
+      ],
+      "whenToUse": "Default component set for a new React and Tailwind project: buttons, dialogs, forms, tables, menus.",
+      "avoidWhen": "An existing project with its own component library; its components win.",
+      "packages": [
+        "shadcn"
+      ],
+      "install": "cli",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "shadcn",
+            "latestVersion": "4.23.0",
+            "latestReleaseAt": "2026-10-27",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "shadcn-ui/ui",
+          "archived": false,
+          "lastCommitAt": "2026-11-17",
+          "latestReleaseAt": "2026-10-27"
+        }
+      }
+    },
+    {
+      "id": "radix-ui",
+      "name": "Radix Primitives",
+      "kind": "library",
+      "category": "primitives",
+      "url": "https://www.radix-ui.com/primitives",
+      "tags": [
+        "unstyled",
+        "accessibility",
+        "primitives",
+        "react"
+      ],
+      "whenToUse": "An accessible unstyled primitive (dialog, popover, menu, tabs) that shadcn/ui does not already wrap.",
+      "avoidWhen": "The shadcn/ui component exists; add that instead of the raw primitive.",
+      "packages": [
+        "radix-ui"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "radix-ui",
+            "latestVersion": "1.8.1",
+            "latestReleaseAt": "2026-10-12",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "radix-ui/primitives",
+          "archived": false,
+          "lastCommitAt": "2026-10-14"
+        }
+      }
+    },
+    {
+      "id": "react-aria-components",
+      "name": "React Aria Components",
+      "kind": "library",
+      "category": "primitives",
+      "url": "https://react-aria.adobe.com/",
+      "tags": [
+        "accessibility",
+        "date-picker",
+        "collections",
+        "internationalization",
+        "react"
+      ],
+      "whenToUse": "Complex accessible widgets Radix does not cover well: date and time pickers, drag and drop lists, grid lists, internationalized inputs.",
+      "avoidWhen": "Simple overlays and menus already covered by shadcn/ui or Radix; do not mix two primitive systems for the same widget.",
+      "packages": [
+        "react-aria-components"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "react-aria-components",
+            "latestVersion": "1.22.1",
+            "latestReleaseAt": "2026-10-09",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "adobe/react-spectrum",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-10-09"
+        }
+      }
+    },
+    {
+      "id": "tailwindcss",
+      "name": "Tailwind CSS",
+      "kind": "library",
+      "category": "styling",
+      "url": "https://tailwindcss.com/",
+      "tags": [
+        "css",
+        "utility-first",
+        "design-tokens"
+      ],
+      "whenToUse": "Default styling for a new web project.",
+      "avoidWhen": "An existing project styled another way; follow its convention.",
+      "packages": [
+        "tailwindcss"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "tailwindcss",
+            "latestVersion": "4.3.5",
+            "latestReleaseAt": "2026-11-06",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "tailwindlabs/tailwindcss",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-06"
+        }
+      }
+    },
+    {
+      "id": "motion",
+      "name": "Motion",
+      "kind": "library",
+      "category": "animation",
+      "url": "https://motion.dev/",
+      "tags": [
+        "animation",
+        "gestures",
+        "layout-animation",
+        "react"
+      ],
+      "whenToUse": "Layout, presence, gesture, or orchestrated animation that CSS transitions cannot express.",
+      "avoidWhen": "Simple hover, fade, or slide effects; use CSS transitions.",
+      "packages": [
+        "motion"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "motion",
+            "latestVersion": "14.14.0",
+            "latestReleaseAt": "2026-11-13",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "motiondivision/motion",
+          "archived": false,
+          "lastCommitAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "lucide",
+      "name": "Lucide",
+      "kind": "library",
+      "category": "icons",
+      "url": "https://lucide.dev/",
+      "tags": [
+        "icons",
+        "svg",
+        "react"
+      ],
+      "whenToUse": "Default icon set for interface icons.",
+      "avoidWhen": "Brand logos or illustration; a project that already ships another icon set.",
+      "packages": [
+        "lucide-react"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "lucide-react",
+            "latestVersion": "1.76.0",
+            "latestReleaseAt": "2026-11-19",
+            "license": "ISC"
+          }
+        ],
+        "repository": {
+          "repo": "lucide-icons/lucide",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-19"
+        }
+      }
+    },
+    {
+      "id": "tanstack-query",
+      "name": "TanStack Query",
+      "kind": "library",
+      "category": "data-fetching",
+      "url": "https://tanstack.com/query/latest",
+      "tags": [
+        "server-state",
+        "cache",
+        "mutations",
+        "react"
+      ],
+      "whenToUse": "Client-side server state: caching, background refetch, optimistic mutations, pagination.",
+      "avoidWhen": "Data rendered on the server by the framework's own loader, or purely local UI state.",
+      "packages": [
+        "@tanstack/react-query"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@tanstack/react-query",
+            "latestVersion": "5.108.0",
+            "latestReleaseAt": "2026-11-17",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "TanStack/query",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-17"
+        }
+      }
+    },
+    {
+      "id": "tanstack-table",
+      "name": "TanStack Table",
+      "kind": "library",
+      "category": "tables",
+      "url": "https://tanstack.com/table/latest",
+      "tags": [
+        "data-grid",
+        "sorting",
+        "filtering",
+        "headless",
+        "react"
+      ],
+      "whenToUse": "Data tables that need sorting, filtering, column control, or pagination.",
+      "avoidWhen": "A static table with a handful of rows; use plain table markup.",
+      "packages": [
+        "@tanstack/react-table"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@tanstack/react-table",
+            "latestVersion": "9.3.1",
+            "latestReleaseAt": "2026-10-12",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "TanStack/table",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-14"
+        }
+      }
+    },
+    {
+      "id": "react-hook-form",
+      "name": "React Hook Form",
+      "kind": "library",
+      "category": "forms",
+      "url": "https://react-hook-form.com/",
+      "tags": [
+        "forms",
+        "validation",
+        "react"
+      ],
+      "whenToUse": "Forms with client-side validation, many fields, or field arrays.",
+      "avoidWhen": "A single input or a form fully handled by server actions without client validation.",
+      "packages": [
+        "react-hook-form"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "react-hook-form",
+            "latestVersion": "7.92.0",
+            "latestReleaseAt": "2026-11-11",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "react-hook-form/react-hook-form",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-11"
+        }
+      }
+    },
+    {
+      "id": "zod",
+      "name": "Zod",
+      "kind": "library",
+      "category": "validation",
+      "url": "https://zod.dev/",
+      "tags": [
+        "schema",
+        "validation",
+        "typescript",
+        "parsing"
+      ],
+      "whenToUse": "Parsing and validating untrusted input at a boundary: forms, API payloads, environment, URL params.",
+      "avoidWhen": "A project already standardized on another schema library.",
+      "packages": [
+        "zod"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "zod",
+            "latestVersion": "4.6.7",
+            "latestReleaseAt": "2026-10-12",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "colinhacks/zod",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-10-12"
+        }
+      }
+    },
+    {
+      "id": "sonner",
+      "name": "Sonner",
+      "kind": "library",
+      "category": "feedback",
+      "url": "https://sonner.emilkowal.ski/",
+      "tags": [
+        "toast",
+        "notifications",
+        "react"
+      ],
+      "whenToUse": "Transient confirmations and non-blocking errors.",
+      "avoidWhen": "Errors the user must act on; show those inline next to the cause.",
+      "packages": [
+        "sonner"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "sonner",
+            "latestVersion": "2.0.8",
+            "latestReleaseAt": "2026-08-09",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "emilkowalski/sonner",
+          "archived": false,
+          "lastCommitAt": "2026-08-10",
+          "latestReleaseAt": "2026-08-09"
+        }
+      }
+    },
+    {
+      "id": "recharts",
+      "name": "Recharts",
+      "kind": "library",
+      "category": "charts",
+      "url": "https://recharts.github.io/",
+      "tags": [
+        "charts",
+        "svg",
+        "data-viz",
+        "react"
+      ],
+      "whenToUse": "Standard line, bar, area, and pie charts in a React app.",
+      "avoidWhen": "Very large series or custom visual forms that need canvas or a lower-level library; flag the gap.",
+      "packages": [
+        "recharts"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "recharts",
+            "latestVersion": "3.11.0",
+            "latestReleaseAt": "2026-11-17",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "recharts/recharts",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2026-11-17"
+        }
+      }
+    },
+    {
+      "id": "date-fns",
+      "name": "date-fns",
+      "kind": "library",
+      "category": "dates",
+      "url": "https://date-fns.org/",
+      "tags": [
+        "dates",
+        "formatting",
+        "time"
+      ],
+      "whenToUse": "Date arithmetic and formatting beyond what Intl.DateTimeFormat covers.",
+      "avoidWhen": "Formatting a date for display only; use the platform Intl API.",
+      "packages": [
+        "date-fns"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "date-fns",
+            "latestVersion": "4.4.0",
+            "latestReleaseAt": "2026-05-29",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "date-fns/date-fns",
+          "archived": false,
+          "lastCommitAt": "2026-10-23",
+          "latestReleaseAt": "2026-05-29"
+        }
+      }
+    },
+    {
+      "id": "nuqs",
+      "name": "nuqs",
+      "kind": "library",
+      "category": "url-state",
+      "url": "https://nuqs.dev/",
+      "tags": [
+        "url",
+        "search-params",
+        "state",
+        "react"
+      ],
+      "whenToUse": "State that must survive reload and be shareable or capturable by URL: filters, tabs, pagination, open panels.",
+      "avoidWhen": "Ephemeral state such as hover or an unsaved draft.",
+      "packages": [
+        "nuqs"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "nuqs",
+            "latestVersion": "2.10.3",
+            "latestReleaseAt": "2026-11-10",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "47ng/nuqs",
+          "archived": false,
+          "lastCommitAt": "2026-11-17",
+          "latestReleaseAt": "2026-11-10"
+        }
+      }
+    },
+    {
+      "id": "zustand",
+      "name": "Zustand",
+      "kind": "library",
+      "category": "state",
+      "url": "https://zustand.docs.pmnd.rs/",
+      "tags": [
+        "client-state",
+        "store",
+        "react"
+      ],
+      "whenToUse": "Client state shared across distant components that is not server state and not URL state.",
+      "avoidWhen": "State one component tree can own with useState or context; server data (use TanStack Query).",
+      "packages": [
+        "zustand"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "zustand",
+            "latestVersion": "5.1.0",
+            "latestReleaseAt": "2026-11-06",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "pmndrs/zustand",
+          "archived": false,
+          "lastCommitAt": "2026-11-06",
+          "latestReleaseAt": "2026-11-06"
+        }
+      }
+    },
+    {
+      "id": "ai-sdk",
+      "name": "AI SDK",
+      "kind": "library",
+      "category": "ai-interface",
+      "url": "https://ai-sdk.dev/",
+      "tags": [
+        "ai",
+        "streaming",
+        "chat",
+        "tool-calls",
+        "typescript"
+      ],
+      "whenToUse": "Streaming model output and chat state from a TypeScript backend to a React client.",
+      "avoidWhen": "A feature that makes one non-streaming model call on the server; call the provider SDK directly.",
+      "packages": [
+        "ai",
+        "@ai-sdk/react"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "ai",
+            "latestVersion": "7.0.177",
+            "latestReleaseAt": "2026-11-18",
+            "license": "Apache-2.0"
+          },
+          {
+            "package": "@ai-sdk/react",
+            "latestVersion": "4.0.181",
+            "latestReleaseAt": "2026-11-18",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "vercel/ai",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-18"
+        }
+      }
+    },
+    {
+      "id": "streamdown",
+      "name": "Streamdown",
+      "kind": "library",
+      "category": "ai-interface",
+      "url": "https://streamdown.ai/",
+      "tags": [
+        "markdown",
+        "streaming",
+        "ai",
+        "react"
+      ],
+      "whenToUse": "Rendering model output as Markdown while it streams, including incomplete blocks.",
+      "avoidWhen": "Static Markdown content known at build time.",
+      "packages": [
+        "streamdown"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "streamdown",
+            "latestVersion": "2.8.0",
+            "latestReleaseAt": "2026-11-17",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "vercel/streamdown",
+          "archived": false,
+          "lastCommitAt": "2026-11-18",
+          "latestReleaseAt": "2026-11-17"
+        }
+      }
+    }
+  ],
+  "dropped": [
+    {
+      "id": "godly",
+      "name": "Godly",
+      "url": "https://godly.website/",
+      "reason": "The URL now redirects to a different site (recent.design), so the entry as named no longer exists.",
+      "checkedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "finalUrl": "https://recent.design/?ref=godly"
+      }
+    },
+    {
+      "id": "lapa-ninja",
+      "name": "Lapa Ninja",
+      "url": "https://www.lapa.ninja/",
+      "reason": "Could not be verified: 403 to curl and the page did not finish loading in the Orca browser.",
+      "checkedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 403
+      }
+    },
+    {
+      "id": "siteinspire",
+      "name": "Siteinspire",
+      "url": "https://www.siteinspire.com/",
+      "reason": "Could not be verified: 429 security checkpoint to curl and the page did not finish loading in the Orca browser.",
+      "checkedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 429
+      }
+    },
+    {
+      "id": "vaul",
+      "name": "Vaul",
+      "url": "https://vaul.emilkowal.ski/",
+      "reason": "Abandoned: the repository README states 'This repo is unmaintained'; latest release 2024-12-14.",
+      "checkedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "vaul",
+            "latestVersion": "1.1.2",
+            "latestReleaseAt": "2024-12-14"
+          }
+        ],
+        "repository": {
+          "repo": "emilkowalski/vaul",
+          "archived": false,
+          "lastCommitAt": "2025-10-03",
+          "latestReleaseAt": "2024-12-14"
+        }
+      }
+    },
+    {
+      "id": "next-themes",
+      "name": "next-themes",
+      "url": "https://github.com/pacocoursey/next-themes",
+      "reason": "Fails the maintenance rule: latest release 2025-03-11 and last commit 2025-05-31.",
+      "checkedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "next-themes",
+            "latestVersion": "0.4.6",
+            "latestReleaseAt": "2025-03-11"
+          }
+        ],
+        "repository": {
+          "repo": "pacocoursey/next-themes",
+          "archived": false,
+          "lastCommitAt": "2025-05-31",
+          "latestReleaseAt": "2025-03-11"
+        }
+      }
+    },
+    {
+      "id": "dnd-kit",
+      "name": "dnd kit",
+      "url": "https://dndkit.com/",
+      "reason": "The stable package @dnd-kit/core last released 2024-12-05, and its successor @dnd-kit/react is still 0.x; no stable maintained package to approve.",
+      "checkedAt": "2026-11-19",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@dnd-kit/core",
+            "latestVersion": "6.3.1",
+            "latestReleaseAt": "2024-12-05"
+          },
+          {
+            "package": "@dnd-kit/react",
+            "latestVersion": "0.5.3",
+            "latestReleaseAt": "2026-10-31"
+          }
+        ],
+        "repository": {
+          "repo": "clauderic/dnd-kit",
+          "archived": false,
+          "lastCommitAt": "2026-10-31",
+          "latestReleaseAt": "2026-10-31"
+        }
+      }
+    }
+  ]
+}

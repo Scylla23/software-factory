@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/catalog.schema.json",
+  "title": "Curated catalog",
+  "description": "A curated catalog owned by one specialist skill. Agents pick only from entries, never from dropped.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "catalog",
+    "title",
+    "verifiedAt",
+    "maintenanceRule",
+    "entries",
+    "dropped"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "catalog": {
+      "enum": [
+        "frontend",
+        "infra",
+        "architecture"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verifiedAt": {
+      "$ref": "#/$defs/date"
+    },
+    "maintenanceRule": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "dropped": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/dropped"
+      }
+    }
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "category",
+        "url",
+        "tags",
+        "whenToUse",
+        "avoidWhen",
+        "status",
+        "verifiedAt",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "description": "inspiration: reference only, never installed or copied. library: an installable dependency. service: a hosted dependency that needs an owner-provisioned account and credentials. pattern and anti-pattern: architecture guidance.",
+          "enum": [
+            "inspiration",
+            "library",
+            "service",
+            "pattern",
+            "anti-pattern"
+          ]
+        },
+        "category": {
+          "$ref": "#/$defs/id"
+        },
+        "url": {
+          "$ref": "#/$defs/url"
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "whenToUse": {
+          "type": "string",
+          "minLength": 1
+        },
+        "avoidWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packages": {
+          "description": "Exact registry package names a builder may add for this entry.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "install": {
+          "description": "npm: add the packages. cli: run the entry's own generator, which copies source into the project. copy-paste: copy component source from the entry's site.",
+          "enum": [
+            "npm",
+            "cli",
+            "copy-paste"
+          ]
+        },
+        "status": {
+          "description": "approved: free to pick. flagged: may be picked, but the decision file must repeat flagReason.",
+          "enum": [
+            "approved",
+            "flagged"
+          ]
+        },
+        "flagReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verifiedAt": {
+          "$ref": "#/$defs/date"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "flagged"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "flagReason"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "flagReason"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "inspiration",
+                  "pattern",
+                  "anti-pattern"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "packages"
+                  ]
+                },
+                {
+                  "required": [
+                    "install"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "library"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "install"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "install": {
+                "enum": [
+                  "npm",
+                  "cli"
+                ]
+              }
+            },
+            "required": [
+              "install"
+            ]
+          },
+          "then": {
+            "required": [
+              "packages"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence": {
+                "properties": {
+                  "httpStatus": {
+                    "not": {
+                      "const": 200
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "required": [
+                  "note"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dropped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "url",
+        "reason",
+        "checkedAt",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "$ref": "#/$defs/url"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkedAt": {
+          "$ref": "#/$defs/date"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "httpStatus"
+      ],
+      "properties": {
+        "httpStatus": {
+          "description": "Status of a GET on url after redirects.",
+          "type": "integer"
+        },
+        "finalUrl": {
+          "type": "string"
+        },
+        "npm": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "package",
+              "latestVersion",
+              "latestReleaseAt"
+            ],
+            "properties": {
+              "package": {
+                "type": "string"
+              },
+              "latestVersion": {
+                "type": "string"
+              },
+              "latestReleaseAt": {
+                "$ref": "#/$defs/date"
+              },
+              "license": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "repository": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repo",
+            "archived",
+            "lastCommitAt"
+          ],
+          "properties": {
+            "repo": {
+              "type": "string"
+            },
+            "archived": {
+              "type": "boolean"
+            },
+            "lastCommitAt": {
+              "$ref": "#/$defs/date"
+            },
+            "latestReleaseAt": {
+              "$ref": "#/$defs/date"
+            }
+          }
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
