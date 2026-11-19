@@ -18,6 +18,7 @@ import { userInfo } from "node:os";
 import { config } from "../../factory.config";
 import { loadDispatchConfig, runAgent, type RunResult } from "../dispatch";
 import { assertPrivateDir } from "../dispatch/config";
+import { isDiscoveryPath } from "../dispatch/discovery";
 import { runGit } from "../dispatch/git";
 import { PROJECT_INSTRUCTION_PATHS } from "../dispatch/instructions";
 import { assertRepoPath } from "../github/commit";
@@ -62,7 +63,7 @@ function jobDir(id: string, stateRoot: string) {
 /** The pilot's test discovery, executable scripts, dependencies and static-analysis policy are owner-controlled. */
 export function protectsChecks(path: string) {
   const name = path.split("/").at(-1)!.toLowerCase();
-  return /^(package\.json|bun\.lockb?|bunfig\.toml|tsconfig[^/]*\.json|biome\.jsonc?|eslint\.config\..+|\.eslintrc.*|\.eslintignore|\.gitignore)$/.test(name)
+  return isDiscoveryPath(path) || /^(package\.json|bun\.lockb?|bunfig\.toml|tsconfig[^/]*\.json|biome\.jsonc?|eslint\.config\..+|\.eslintrc.*|\.eslintignore|\.gitignore)$/.test(name)
     || path.toLowerCase().split("/").includes("node_modules");
 }
 
@@ -79,9 +80,7 @@ export function changes(path: string): WorkerOutput["files"] {
     if (protectsChecks(name)) throw new Uncertain(`builder changed check configuration: ${name}`);
     if (
       name.split("/").some((p) => p.startsWith(".")) ||
-      name.startsWith("docs/specs/") ||
-      name === "AGENTS.md" ||
-      name === "CLAUDE.md"
+      name.startsWith("docs/specs/")
     )
       throw new Error(`builder changed a protected path: ${name}`);
     const file = join(path, name);

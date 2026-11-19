@@ -1,3 +1,4 @@
+import { checkDiscoverySources } from "../dispatch/discovery";
 /**
  * Preview lifecycle: materialize an exact commit, run the project's setup commands sandboxed with egress only through
  * the factory's proxy, start its preview command sandboxed with only its own loopback port, wait until it answers, check that the listener
@@ -334,6 +335,7 @@ export async function prepareScratchRepo(config: VerifyConfig, input: {
 }) {
   if (!UUID.test(input.id) || realpathSync(input.scratch) !== input.scratch || realpathSync(input.checkout) !== join(input.scratch, "repo"))
     throw new Error("invalid scratch checkout");
+  checkDiscoverySources(input.checkout);
   assertEgressHosts(input.commands.egress);
   const home = join(input.scratch, "setup-home");
   mkdirSync(home, { mode: 0o700 });
@@ -345,7 +347,7 @@ export async function prepareScratchRepo(config: VerifyConfig, input: {
   try {
     proxy = config.egress.startPhase({allow: input.commands.egress, logFd: log.fd});
     const policy: ProjectSandbox = { writable: [input.checkout, home], readable: [...gitDirs, ...config.toolRoots],
-      denyWrite: gitDirs, denyRead: effectiveDenyRead(config), network: {kind: "proxy", port: proxy.port} };
+      protectDiscovery: true, denyWrite: gitDirs, denyRead: effectiveDenyRead(config), network: {kind: "proxy", port: proxy.port} };
     const env = projectEnv({home, path: config.toolPath, user: userInfo().username, proxy: proxy.url});
     for (const [i, argv] of input.commands.setup.entries()) {
       const dest = openLog(config, input.logDir, input.id + ".scratch-setup-" + i + ".log");

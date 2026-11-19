@@ -1,4 +1,5 @@
 import { count, safeSessionFile, sessionUuid } from "./validation";
+import { discoveryGlobs } from "./discovery";
 import { Glob } from "bun";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
 import { lstatSync, realpathSync } from "node:fs";
@@ -41,6 +42,7 @@ export function codexConfigArgs(policy: SandboxPolicy): string[] {
   const filesystem = [
     ...(policy.writable ? ['":root"="none"', '":minimal"="read"'] : []),
     ...(policy.writable ?? []).map((p) => `${tomlString(p)}="write"`),
+    ...(policy.discoveryRoots ?? []).flatMap(root => discoveryGlobs.map(pattern => `${tomlString(root + "/" + pattern)}="none"`)),
     ...policy.denyRead.map((p) => `${tomlString(p)}="none"`),
     ...readOnly.filter(p => !policy.writable?.includes(p)).map((p) => `${tomlString(p)}="read"`),
   ].join(",");

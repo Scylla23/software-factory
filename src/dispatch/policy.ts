@@ -42,6 +42,8 @@ export interface PolicyContext {
 export interface SandboxPolicy {
   /** Present for skill dispatches. All unlisted paths are closed. */
   writable?: readonly string[];
+  /** Skill workspaces whose instruction discovery sources must stay closed. */
+  discoveryRoots?: readonly string[];
   denyRead: readonly string[];
   /** Read access carved back out of a denied tree; Codex only. */
   readable: readonly string[];

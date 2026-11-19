@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkoutSnapshot, createAttempt } from "../src/dispatch/attempt";
 import { brokerCommands, BROKER_TOOL, prepareBroker } from "../src/dispatch/broker";
@@ -70,3 +70,19 @@ test("restricted broker negotiates MCP and accepts only fixed registered checks 
   expect(busy.result.isError).toBe(true);
   expect(readFileSync(join(sb.logDir,"broker-pending"),"utf8")).toBe("pending");
 }, 15000);
+
+
+test("the review command sandbox preserves ordinary scratch writes and denies nested discovery files", () => {
+  const {dirs,head}=review();
+  const {manifestPath}=prepareBroker(dirs,sb.config,sb.logDir,head,head);
+  const manifest=JSON.parse(readFileSync(manifestPath,"utf8"));
+  const parent=join(dirs.scratchRepo!,"fresh");
+  mkdirSync(parent);
+  const probe=(relative:string)=>Bun.spawnSync([...manifest.prefix,"/usr/bin/touch",join(parent,relative)],{cwd:manifest.cwd,env:manifest.env});
+  expect(probe("ordinary.txt").exitCode).toBe(0);
+  for(const name of ["AGENTS.override.md","claude.LOCAL.md",".agents",".codex",".Claude"]) {
+    const run=probe(name);
+    expect(run.stderr.toString()).toContain("Operation not permitted");
+    expect(existsSync(join(parent,name))).toBe(false);
+  }
+});

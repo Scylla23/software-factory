@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { changes } from "../src/factory/worker";
 import { Uncertain } from "../src/factory/machine";
 
@@ -26,7 +26,8 @@ test("deleting a tracked file requests escalation", () => withRepo((dir) => {
 }));
 
 test("builder changes to commands, test discovery, compiler or lint configuration escalate", () => withRepo((dir) => {
-  for (const name of ["package.json", "bunfig.toml", "tsconfig.build.json", "biome.jsonc", ".eslintrc.json", "bun.lock"]) {
+  for (const name of ["package.json", "bunfig.toml", "tsconfig.build.json", "biome.jsonc", ".eslintrc.json", "bun.lock","src/CLAUDE.local.md","sub/.agents/skills/note","lib/.CODEX/config.toml",".claude/commands/note.md","docs/Agents.Override.md"]) {
+    mkdirSync(dirname(join(dir,name)),{recursive:true});
     writeFileSync(join(dir, name), "{}");
     expect(() => changes(dir)).toThrow(Uncertain);
     rmSync(join(dir, name));

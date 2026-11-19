@@ -39,7 +39,7 @@ export function prepareBroker(dirs: AttemptDirectories, dispatch: DispatchConfig
   const denyRead = effectiveDenyRead({accountHome:dispatch.accountHome,stateRoot:dispatch.stateRoot,harnessHomes:Object.values(dispatch.harnessHomes)});
   const gitDirs = [dirs.worktree,dirs.scratchRepo].flatMap(tree => gitWriteProtectedPaths(dispatch.executables.git,tree));
   const policy = {writable:[dirs.scratchRepo], readable:[dirs.worktree,...gitDirs,...config.pilot.toolDirs.map(p => realpathSync(p))],
-    denyWrite:[dirs.worktree,...gitDirs],denyRead,network:{kind:"none" as const}};
+    protectDiscovery:true,denyWrite:[dirs.worktree,...gitDirs],denyRead,network:{kind:"none" as const}};
   const prefix = sandboxArgv("/usr/bin/sandbox-exec",policy,["/bin/true"]).slice(0,-1);
   const { test,lint,typecheck } = config.pilot.commands;
   const git = [dispatch.executables.git,"--no-pager","-C",dirs.worktree];

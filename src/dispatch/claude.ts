@@ -1,4 +1,5 @@
 import { count, money } from "./validation";
+import { discoveryGlobs } from "./discovery";
 import { BROKER_TOOL } from "./broker";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
 import type { SandboxPolicy } from "./policy";
@@ -13,7 +14,7 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
  * runAgent refuses to dispatch while any managed settings source exists (see config.ts).
  * Claude has no read carve-outs: `policy.readable` is for Codex's own binary.
  */
-export function claudeSettings(policy: SandboxPolicy, team = false, fileToolsOnly = false, broker = false): object {
+export function claudeSettings(policy: SandboxPolicy, team = false, fileToolsOnly = !!policy.discoveryRoots, broker = false): object {
   const denyRead = [...policy.denyRead];
   const denyWrite = [...new Set([...policy.denyWrite, ...(policy.writable ? policy.readable.filter(p => !policy.writable!.includes(p)) : [])])];
   const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
@@ -24,6 +25,7 @@ export function claudeSettings(policy: SandboxPolicy, team = false, fileToolsOnl
         : [...CLAUDE_BUILDER_TOOLS],
       deny: [
         ...(fileToolsOnly ? ["Bash"] : []),
+        ...(policy.discoveryRoots ? discoveryGlobs.flatMap(pattern => ["Write", "Edit", "Read"].map(tool => `${tool}(//${pattern})`)) : []),
         ...(team ? ["Agent(Explore)", "Agent(Plan)", "Agent(general-purpose)", "Agent(fork)"] : []),
         "WebFetch",
         "WebSearch",
@@ -73,6 +75,7 @@ export interface ClaudeCommandInput {
 /** Arguments after the executable, which the caller resolves (config.ts). */
 export function claudeArgs(input: ClaudeCommandInput): string[] {
   const cap = input.evaluationLimits;
+  const filesOnly = input.fileToolsOnly ?? !!input.policy.discoveryRoots;
   if (cap && (!Number.isSafeInteger(cap.maxTurns) || cap.maxTurns < 1 || !Number.isFinite(cap.maxUsd) || cap.maxUsd <= 0)) throw new Error("invalid Claude evaluation limits");
   return [
     "-p",
@@ -83,7 +86,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",
-    "--tools", [...CLAUDE_BUILDER_TOOLS.filter(tool => !input.fileToolsOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
+    "--tools", [...CLAUDE_BUILDER_TOOLS.filter(tool => !filesOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
     ...(input.team ? ["--agents", input.team.file, "--agent", "spec-lead"] : []),
     "--strict-mcp-config",
     ...(input.brokerFile ? ["--mcp-config", input.brokerFile] : []),
@@ -91,7 +94,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--disable-slash-commands",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
-    "--settings", JSON.stringify(claudeSettings(input.policy, !!input.team?.members.length, input.fileToolsOnly, !!input.brokerFile)),
+    "--settings", JSON.stringify(claudeSettings(input.policy, !!input.team?.members.length, filesOnly, !!input.brokerFile)),
     ...(input.directories ?? []).flatMap(p => ["--add-dir", p]),
     ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",
@@ -148,6 +151,7 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>, skill?:
     if (event.type === "system" && event.subtype === "init") {
       initialized = true;
       if (skill && (event.session_id !== skill.session || !Array.isArray(event.tools) ||
+          event.tools.includes("Bash") ||
           (!skill.members.length && event.tools.some(name => /^(Agent|Task)(?:\(|$)/.test(String(name)))))) {
         invalidRun = true;
         sample.add("skill session identity or tool inventory mismatch");

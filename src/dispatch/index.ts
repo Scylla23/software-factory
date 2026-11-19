@@ -78,7 +78,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: path, accountHome: config.accountHome });
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
-  const team = skill && brief && (skill.members.length || skill.namedLeadEvaluation) ? publishTeam(skill, brief, projectInstructions, fileToolsOnly) : undefined;
+  const team = skill && brief && (skill.members.length || skill.namedLeadEvaluation) ? publishTeam(skill, brief, projectInstructions) : undefined;
   const promptRevision = createHash("sha256").update(JSON.stringify([prompt, instructions, team?.revision ?? null])).digest("hex");
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
@@ -184,11 +184,10 @@ async function observedCodexModel(root: string, threadId: string, diagnostics: s
   }
 }
 
-function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, projectInstructions: string | null, fileToolsOnly: boolean) {
+function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, projectInstructions: string | null) {
   if (!skill.dirs.agentsDir) throw new Error("spec lead lacks its private definitions directory");
   const file = join(skill.dirs.agentsDir, "definitions.json");
   const definitions = claudeDefinitions(brief, skill.members, projectInstructions);
-  if (fileToolsOnly) definitions["spec-lead"]!.tools = definitions["spec-lead"]!.tools.filter(tool => tool !== "Bash");
   const bytes = JSON.stringify(definitions);
   writeFileSync(file, bytes, { flag: "wx", mode: 0o400 });
   return { file, members: skill.members, revision: createHash("sha256").update(bytes).digest("hex") };

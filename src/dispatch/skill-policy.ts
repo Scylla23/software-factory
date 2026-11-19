@@ -2,6 +2,7 @@ import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { SYSTEM_READ } from "../verify/sandbox";
 import type { AttemptDirectories } from "./attempt";
+import { checkDiscoverySources } from "./discovery";
 import { gitWriteProtectedPaths } from "./git";
 import { overlaps, type SandboxPolicy } from "./policy";
 
@@ -28,5 +29,8 @@ export function skillPolicy(
       throw new Error(`skill read root inside a mandatory denial: ${path}`);
   }
   const denyWrite = [...new Set([...gitDirs, dirs.skillsDir, dirs.taskDir, ...(builder ? [] : [dirs.worktree])])];
-  return { readable, writable, denyRead: deny, denyWrite };
+  const discoveryRoots = [dirs.worktree, dirs.outDir, dirs.scratchDir, dirs.skillsDir, dirs.taskDir];
+  if (discoveryRoots.some(root => /[?*\[\]{}\\]/.test(root))) throw new Error("workspace cannot be represented by a literal discovery root");
+  for (const root of discoveryRoots) checkDiscoverySources(root);
+  return { readable, writable, denyRead: deny, denyWrite, discoveryRoots };
 }

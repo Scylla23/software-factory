@@ -30,6 +30,7 @@ test("the brief contains one block and every selected specialist has its own aut
     const defs = claudeDefinitions(brief, team, "Project.");
     expect(Object.keys(defs)).toEqual(["spec-lead", ...team]);
     expect(defs["spec-lead"]!.tools[0]).toBe(`Agent(${team.join(", ")})`);
+    expect(defs["spec-lead"]!.tools).not.toContain("Bash");
     for (const name of team) {
       const member = defs[name]!;
       expect(member).toMatchObject(config.specTeam[name]);

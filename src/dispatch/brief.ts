@@ -61,7 +61,7 @@ export function claudeDefinitions(
     "spec-lead": {
       description: "Factory spec lead for this attempt",
       prompt: composeInstructions(brief.skillsDir, "spec-lead", projectInstructions),
-      tools: [...(members.length ? [`Agent(${members.join(", ")})`] : []), "Bash", "Read", "Edit", "Write", "Glob", "Grep"],
+      tools: [...(members.length ? [`Agent(${members.join(", ")})`] : []), "Read", "Edit", "Write", "Glob", "Grep"],
       model: config.agents.spec.model, effort: config.agents.spec.effort,
     },
   };
