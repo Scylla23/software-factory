@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../factory.config";
 import { checkAbandonedPreviews, previewId, ProjectChecks } from "../src/factory/checks";
+import { Uncertain } from "../src/factory/machine";
 import { Store } from "../src/factory/store";
 import { verifyPilot } from "../src/factory/verify";
 import { dispatchWorker } from "../src/factory/worker";
@@ -29,7 +30,7 @@ test("worker, project check and capture receipts are adopted only for the intend
     save({ output: { result: { ...result, runId: "foreign" }, files: [] } });
     await expect(dispatch()).rejects.toThrow("another attempt");
     save({ escalated: true, error: "builder deleted a tracked file" });
-    await expect(dispatch()).rejects.toThrow("deleted a tracked file");
+    await expect(dispatch()).rejects.toBeInstanceOf(Uncertain);
 
     const logs = join(root, "project-logs", a.id), dir = join(root, "evidence", a.id);
     mkdirSync(logs, { recursive: true }); mkdirSync(dir, { recursive: true });

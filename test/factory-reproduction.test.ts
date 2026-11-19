@@ -19,10 +19,9 @@ test("Bun JUnit requires one named assertion failure on base and one passing ass
       Bun.spawnSync([process.execPath, "test", "--reporter=junit", "--reporter-outfile=proof.xml", "./repro.test.ts"], { cwd: dir });
       const xml = readFileSync(join(dir, "proof.xml"), "utf8");
       expect(junitReproduction(xml, true)).toBe(base);
+      if (base) expect(junitReproduction(xml.replace("</testsuites>", " ".repeat(65_537) + "</testsuites>"), true)).toBe(false);
       expect(junitReproduction(xml, false)).toBe(head);
     }
-    const complete = readFileSync(join(dir, "proof.xml"), "utf8");
-    expect(junitReproduction(" ".repeat(65_537) + complete, true)).toBe(false);
     for (const invalid of ["", "(fail) AC-1\nerror: expect(", "<testsuites>", "<!DOCTYPE testsuites>"])
       expect(junitReproduction(invalid, true)).toBe(false);
   } finally { rmSync(dir, { recursive: true, force: true }); }

@@ -110,6 +110,20 @@ group("factory/worker", "worker, project check and capture receipts", [
 ], "factory-receipts")
 
 
+group("factory/checks", "Bun JUnit requires", [("Buffer.byteLength(xml) > 65_536", "false")], "factory-reproduction")
+group("factory/checks", "worker, project check and capture receipts", [
+    ("if (ids.includes(lease.attempt))", "if (false)"),
+], "factory-receipts")
+group("factory/worker", "a live launcher", [("claimedPid : launcherPid", "claimedPid : undefined")], "factory-receipts")
+group("factory/worker", "worker, project check and capture receipts", [
+    ("if (reply.escalated) throw new Uncertain", "if (reply.escalated) throw new AgentFailed"),
+], "factory-receipts")
+group("factory/run", "owner feedback returns a spec revision", [
+    ('dispatch(store, task, a, "spec",', 'dispatch(store, task, a, task.spec ? "reviewer" : "spec",'),
+], "factory-crash")
+group("factory/run", "real stages stop on infra", [("if (task.pr) {", "if (false) {")], "factory-crash")
+
+
 def run(directory, test_file, case):
     return subprocess.run(["bun", "test", f"test/{test_file}.test.ts", "--test-name-pattern", case],
                           cwd=directory, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
