@@ -70,7 +70,9 @@ test("specialist receipts bind a successful Write across the protected transcrip
     toolUseResult:{status:"async_launched",agentId:sessionId}};
   const parent = join(project,attemptId + ".jsonl");
   save(parent,[start,launched]);
-  expect((await claudeChildStarts(sb.stateRoot,home,attemptId)).get(sessionId)).toEqual({role:"architect",startCall:"spawn"});
+  expect((await claudeChildStarts(sb.stateRoot,home,attemptId)).get(sessionId)).toEqual({role:"architect",startCall:"spawn",started:1,completed:null});
+  save(parent,[start,{...launched,toolUseResult:{...launched.toolUseResult,status:"completed"}}]);
+  expect((await claudeChildStarts(sb.stateRoot,home,attemptId)).get(sessionId)?.completed).toBe(2);
   save(parent,[start,{...launched,sourceToolAssistantUUID:"other"}]);
   await expect(claudeChildStarts(sb.stateRoot,home,attemptId)).rejects.toThrow("ambiguous");
 });

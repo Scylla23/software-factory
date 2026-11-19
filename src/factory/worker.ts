@@ -24,10 +24,9 @@ import { assertRepoPath } from "../github/commit";
 import { createWorktree, removeWorktree } from "../orca/worktree";
 import type { Attempt, Store, Task } from "./store";
 import { createAttempt, checkoutSnapshot } from "../dispatch/attempt";
-import { claudeChildStarts, claudeWrites } from "../dispatch/claude-writes";
+import { claudeWrites } from "../dispatch/claude-writes";
 import { codexWrites } from "../dispatch/codex-writes";
-import { readJsonl } from "../dispatch/jsonl";
-import { readRegularFile } from "../dispatch/regular-file";
+import { authenticateTeam } from "../dispatch/team-outputs";
 import { type OutputAuthor, collectOutputs, outputDigest, OutputIntegrityError } from "../dispatch/output";
 import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
 import { archiveCollection, pinFactoryCommit, type Collection } from "./skill-store";
@@ -107,7 +106,7 @@ async function work(id: string) {
     const job: Job = JSON.parse(readFileSync(join(dir, "job.json"), "utf8"));
     const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
     const agent = job.agent ?? config.agents[job.role];
-    requireSkillProofs(agent.harness, job.input.role, job.input.members);
+    requireSkillProofs(agent.harness, job.input.role, job.input.members, job.input.stage, dispatch);
     const wt = job.role === "builder"
       ? await createWorktree(dispatch.executables.orca, `factory-${id}`, config.pilot.path, job.input.inputSha) : undefined;
     let quarantine = true;
@@ -143,24 +142,7 @@ async function work(id: string) {
         let captured: Map<string, Buffer>;
         try {
           const writes = await (agent.harness === "claude" ? claudeWrites : codexWrites)(identity, dispatch.stateRoot, home, dirs.outDir);
-          if (job.input.members.length) {
-            const team = JSON.parse(readRegularFile(join(dirs.skillsDir, "spec-lead/team.json"), 32 * 1024).toString());
-            const starts = await claudeChildStarts(dispatch.stateRoot, home, id);
-            expected.set("team-brief.md", author);
-            if (starts.size !== job.input.members.length) throw new Error("unexpected specialist session count");
-            for (const member of job.input.members) {
-              const matches = [...starts].filter(([,start]) => start.role === member);
-              const file = team.members.find((m: {name: string}) => m.name === member)?.writes;
-              if (matches.length !== 1 || typeof file !== "string" || expected.has(file)) throw new Error("missing or ambiguous specialist author");
-              const [sessionId, start] = matches[0]!;
-              const principal = {role: member, sessionId};
-              expected.set(file, principal);
-              writes.push(...await claudeWrites({...identity,...principal}, dispatch.stateRoot, home, dirs.outDir, sessionId,
-                {startCall:start.startCall, events:readJsonl(result.stdoutPath)}));
-            }
-            for (const record of writes) if (expected.get(record.path)?.sessionId !== record.sessionId)
-              throw new Error("output submitted by a different team member");
-          }
+          if (job.input.members.length) await authenticateTeam(dirs, job.input.members, identity, dispatch.stateRoot, home, result.stdoutPath, expected, writes);
           captured = collectOutputs(dirs, identity, expected, writes);
         } catch (error) {
           throw new OutputIntegrityError((error as Error).message);

@@ -64,6 +64,7 @@ export interface ClaudeCommandInput {
   instructionsFile?: string | null;
   /** Factory-selected attempt directories, excluding the definitions and the run root. */
   directories?: readonly string[];
+  evaluationLimits?: { maxTurns: number; maxUsd: number };
   fileToolsOnly?: boolean;
   brokerFile?: string;
   team?: { file: string; members: readonly string[] };
@@ -71,11 +72,14 @@ export interface ClaudeCommandInput {
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
 export function claudeArgs(input: ClaudeCommandInput): string[] {
+  const cap = input.evaluationLimits;
+  if (cap && (!Number.isSafeInteger(cap.maxTurns) || cap.maxTurns < 1 || !Number.isFinite(cap.maxUsd) || cap.maxUsd <= 0)) throw new Error("invalid Claude evaluation limits");
   return [
     "-p",
     "--output-format", "stream-json",
     "--verbose",
     "--model", input.model,
+    ...(cap ? ["--max-turns",String(cap.maxTurns),"--max-budget-usd",String(cap.maxUsd)] : []),
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",

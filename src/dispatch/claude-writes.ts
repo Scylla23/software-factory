@@ -76,8 +76,8 @@ function transcript(claudeHome: string, id: string, childId?: string) {
 export async function claudeChildStarts(stateRoot: string, home: string, attempt: string) {
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(attempt)) throw new Error("invalid Claude attempt");
   assertPrivateDir(home, stateRoot);
-  const requests = new Map<string, {role: string; uuid: string}>();
-  const children = new Map<string, {role: string; startCall: string}>();
+  const requests = new Map<string, {role: string; uuid: string; line: number}>();
+  const children = new Map<string, {role: string; startCall: string; started: number; completed: number | null}>();
   for await (const line of readJsonl(transcript(home, attempt))) {
     if (line.kind !== "record") throw new Error("invalid Claude parent record");
     const e = line.value;
@@ -86,7 +86,7 @@ export async function claudeChildStarts(stateRoot: string, home: string, attempt
       if (!isRecord(c)) continue;
       if (e.type === "assistant" && c.type === "tool_use" && c.name === "Agent" && isRecord(c.input) && typeof c.input.subagent_type === "string" && typeof c.id === "string" && typeof e.uuid === "string") {
         if (requests.has(c.id)) throw new Error("duplicate agent call");
-        requests.set(c.id, {role:c.input.subagent_type, uuid:e.uuid});
+        requests.set(c.id, {role:c.input.subagent_type, uuid:e.uuid, line:line.line});
       }
       const r = e.toolUseResult;
       if (e.type !== "user" || c.type !== "tool_result" || c.is_error || typeof c.tool_use_id !== "string" || !isRecord(r) || typeof r.agentId !== "string") continue;
@@ -94,7 +94,7 @@ export async function claudeChildStarts(stateRoot: string, home: string, attempt
       if (!req || req.uuid !== e.sourceToolAssistantUUID || !["completed","async_launched"].includes(String(r.status)) ||
           (r.agentType !== undefined && r.agentType !== req.role) || children.has(r.agentId))
         throw new Error("ambiguous Claude child identity");
-      children.set(r.agentId, {role:req.role, startCall:c.tool_use_id});
+      children.set(r.agentId, {role:req.role, startCall:c.tool_use_id, started:req.line, completed:r.status === "completed" ? line.line : null});
     }
   }
   return children;

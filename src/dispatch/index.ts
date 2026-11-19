@@ -49,7 +49,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (skill) {
     if (skill.dirs.worktree !== worktree || basename(skill.dirs.root) !== spec.runId) throw new Error("skill attempt or worktree mismatch");
     if (skill.namedLeadEvaluation && (spec.harness !== "claude" || skill.dirs.role !== "spec-lead")) throw new Error("named lead evaluation requires a Claude spec lead");
-    requireSkillProofs(spec.harness, skill.dirs.role, skill.members);
+    requireSkillProofs(spec.harness, skill.dirs.role, skill.members, skill.dirs.stage, config);
   }
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
   const denyRead = effectiveDenyRead(ctx, spec.extraDenyRead);
@@ -83,7 +83,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
     spec.harness === "claude"
-      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, instructionsFile: team ? null : instructionsPath, team, fileToolsOnly, brokerFile:broker?.mcpPath, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
+      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, evaluationLimits:spec.evaluationLimits, instructionsFile: team ? null : instructionsPath, team, fileToolsOnly, brokerFile:broker?.mcpPath, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
       : codexArgs({ prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
 
   // Reserve private log files before starting the harness.

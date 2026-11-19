@@ -13,6 +13,7 @@ import { verifyPilot } from "./verify";
 import { Store, type Attempt, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError, type WorkerOutput } from "./worker";
 
+import { loadDispatchConfig } from "../dispatch/config";
 import { requiredMembers } from "../dispatch/brief";
 import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
 import { InvalidSkillOutput } from "./skill-validation";
@@ -387,6 +388,7 @@ export async function run(url: string, observe: Observer = (event, id) => consol
     const task = store.intake(issue, base);
     if (task.issue.revision !== issue.revision) throw new Error("issue changed since intake, owner respec required");
     return await runStages(store, task, { git, stateRoot: project.stateRoot, dispatch: dispatchWorker, observe,
+      authorizeTeam: (harness,role,members) => requireSkillProofs(harness,role,members,"spec",loadDispatchConfig({agentWriteRoots:[config.workspaceRoot]})),
       test: (t, a, content) => project.test(t, a, content),
       verify: (t, a, prior) => verifyPilot(t, a, project, prior),
     });

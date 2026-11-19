@@ -17,6 +17,8 @@ export interface RunSpec {
   runId: string;
   timeoutMs: number;
   signal?: AbortSignal;
+  /** Approved evaluation stop rule backstops for one Claude session. */
+  evaluationLimits?: { maxTurns: number; maxUsd: number };
   /**
    * The project's instruction files (usually AGENTS.md and CLAUDE.md), passed to the harness explicitly and
    * identically, or null for none. Read before spawn as tracked blobs at the approved base commit, never from a
