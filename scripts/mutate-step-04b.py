@@ -6,6 +6,14 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
+    ("../../scripts/eval-budget", "eval-budget", "total.input + input > batchLimit.input", "false"),
+    ("../../scripts/eval-budget", "eval-budget", "total.output + output > batchLimit.output", "false"),
+    ("../../scripts/eval-budget", "eval-budget", "if (total.pending)", "if (false)"),
+    ("../../scripts/eval-budget", "eval-budget", "model !== approvedModel", "false"),
+    ("home-proof", "home-proof", "a.factoryLogin !== false", "false"),
+    ("home-proof", "home-proof", "a.sourceLoaded !== control", "false"),
+    ("../../scripts/batch-one-cases", "batch-one-cases", "output.includes(only.quote)", "true"),
+    ("../../scripts/batch-one-cases", "batch-one-cases", "matching.length === 1", "true"),
     ("claude-writes", "claude-writes", "live.resultUuid === e.uuid", "true"),
     ("claude-writes", "claude-writes", "e.parent_tool_use_id !== stream.startCall", "false"),
     ("claude-writes", "claude-writes", "e.subagent_type !== identity.role", "false"),

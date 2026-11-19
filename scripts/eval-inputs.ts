@@ -76,5 +76,5 @@ export function stageBlindInputs(git: string, factory: string, commit: string, r
     writeFileSync(dest,final,{flag:"wx",mode:0o400});
   }
   const brief = bindShas(input.brief,refs,specSet?.sha256,planHash) as Record<string,unknown>;
-  return {...brief,baseSha:refs.base,headSha:refs.head,...(specSet ? {specSet} : {})};
+  return {...brief,baseSha:refs.base,...(["code","repair","judge"].includes(String(brief.stage)) ? {headSha:refs.head} : {}),...(specSet ? {specSet} : {})};
 }
