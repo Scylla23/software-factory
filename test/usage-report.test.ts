@@ -162,3 +162,12 @@ test.each(["claude","codex"] as const)("interrupted %s reads its own real stdout
     ? "ed51dabc-86f7-4b37-bf7e-cb205ccfd44c" : "01a1f524-ad86-70c2-9dd8-396d9c5e64ec" }]);
   expect(costReport(store.db,"task").groups[0]!.tokens).toBe(harness === "claude" ? 12248 : 10665);
 });
+
+test("project reports group by repository ID and use the name recorded on the issue", async () => {
+  const j = job("dispatch");
+  await recordUsage(store.db,task,j,run(j),root);
+  task = store.intake({ ...issue, issueId:513, url:"https://github.com/moved/repo/issues/2" },task.base);
+  const other = job("dispatch");
+  await recordUsage(store.db,task,other,run(other),root);
+  expect(costReport(store.db,"project").groups).toMatchObject([{project:"moved/repo", repoId:issue.repoId, runs:2}]);
+});

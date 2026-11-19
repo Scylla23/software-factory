@@ -9,7 +9,7 @@ const priceLabel = "API-equivalent estimate (USD)";
 
 type Audit = {
   attempt: string; task: number; stage: string; requested_model: string; observed_model: string | null;
-  outcome: string; usage: string | null; repo_id: number; capture: string | null; model_flag: string | null;
+  outcome: string; usage: string | null; repo_id: number; issue_url: string; capture: string | null; model_flag: string | null;
 };
 type Coverage = Capture["coverage"];
 interface Totals {
@@ -46,13 +46,14 @@ function totalsBy(db: Database, by: Dimension) {
   const groups = new Map<string | number, Totals>();
   const flags: { task: number; attempt: string; flag: string; requested: string; observed: string | null }[] = [];
   const migrated = hasCaptures(db);
-  const rows = db.query<Audit, []>(`SELECT a.*,t.repo_id,${migrated ? "u.capture,u.model_flag" : "NULL AS capture,NULL AS model_flag"}
+  const rows = db.query<Audit, []>(`SELECT a.*,t.repo_id,json_extract(t.issue,'$.url') AS issue_url,${migrated ? "u.capture,u.model_flag" : "NULL AS capture,NULL AS model_flag"}
     FROM audit a JOIN tasks t ON t.id=a.task ${migrated ? "LEFT JOIN usage_captures u USING(attempt)" : ""} ORDER BY a.task,a.rowid`).all();
   function accumulate(key: string | number, lines: Line[], cost: number | null, state: Coverage, reportedTotal: boolean) {
     const group = groups.get(key) ?? empty();
     add(group, lines, cost, state, reportedTotal);
     groups.set(key, group);
   }
+  const projects = new Map<number,string>();
   for (const r of rows) {
     const capture: Capture = r.capture ? JSON.parse(r.capture) : legacyCapture(r.usage, r.observed_model, r.outcome);
     const flag = r.model_flag ?? modelFlag(r.requested_model, r.observed_model);
@@ -68,12 +69,15 @@ function totalsBy(db: Database, by: Dimension) {
       if (!billed.size) billed.set(r.observed_model ?? "unknown", []);
       for (const [key, lines] of billed) accumulate(key, lines, billed.size === 1 ? capture.costUsd : null, capture.coverage, billed.size === 1 && capture.reportedTotal);
     } else {
-      const project = r.repo_id === config.pilot.repoId ? config.pilot.owner + "/" + config.pilot.repo : String(r.repo_id);
-      accumulate(by === "task" ? r.task : by === "stage" ? r.stage : project, capture.lines, capture.costUsd, capture.coverage, capture.reportedTotal);
+      if (by === "project") {
+        const slug = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/\d+\/?$/i.exec(r.issue_url)?.[1];
+        if (slug) projects.set(r.repo_id,slug);
+      }
+      accumulate(by === "task" ? r.task : by === "stage" ? r.stage : r.repo_id, capture.lines, capture.costUsd, capture.coverage, capture.reportedTotal);
     }
   }
   // audit.attempt is the primary key and both joins are one-to-one.
-  return { groups, flags, distinctAttempts: rows.length };
+  return { groups, flags, projects, distinctAttempts: rows.length };
 }
 
 function signals(db: Database) {
@@ -94,8 +98,8 @@ function signals(db: Database) {
 }
 
 export function costReport(db: Database | null, by: Dimension) {
-  const { groups, flags, distinctAttempts } = db ? totalsBy(db, by) : { groups: new Map(), flags: [], distinctAttempts: 0 };
-  return { by, distinctAttempts, costLabel: priceLabel, groups: Array.from(groups, ([key, totals]) => ({ [by]: key, ...totals })),
+  const { groups, flags, projects, distinctAttempts } = db ? totalsBy(db, by) : { groups: new Map(), flags: [], projects: new Map(), distinctAttempts: 0 };
+  return { by, distinctAttempts, costLabel: priceLabel, groups: Array.from(groups, ([key, totals]) => ({ [by]: by === "project" ? projects.get(Number(key)) ?? String(key) : key, ...(by === "project" ? { repoId:key } : {}), ...totals })),
     modelFlags: flags, signals: db ? signals(db) : { repeatedAttempts: [], escalations: [], ownerComments: [] } };
 }
 
