@@ -37,9 +37,9 @@ export interface WorkerOutput {
   files: { path: string; content: string }[];
 }
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
-function jobDir(id: string) {
+function jobDir(id: string, stateRoot: string) {
   if (!uuid.test(id)) throw new Error("invalid worker attempt id");
-  return join(config.stateRoot, "jobs", id);
+  return join(stateRoot, "jobs", id);
 }
 
 /** The pilot's test discovery, executable scripts, dependencies and static-analysis policy are owner-controlled. */
@@ -77,7 +77,7 @@ export function changes(path: string): WorkerOutput["files"] {
 }
 
 async function work(id: string) {
-  const dir = jobDir(id);
+  const dir = jobDir(id, config.stateRoot);
   assertPrivateDir(dir, config.stateRoot);
   // An exclusive claim survives controller death and two concurrent launchers.
   writeFileSync(join(dir, "claim"), String(process.pid), { flag: "wx", mode: 0o600 });
@@ -125,28 +125,37 @@ export async function dispatchWorker(
   role: Role,
   prompt: string,
   observe: (event: string, id: string) => void,
+  stateRoot = config.stateRoot,
 ): Promise<WorkerOutput> {
-  const dir = jobDir(attempt.id);
+  const dir = jobDir(attempt.id, stateRoot);
   const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role] };
-  if (attempt.fresh || !existsSync(dir)) {
-    mkdirSync(join(config.stateRoot, "jobs"), { mode: 0o700, recursive: true });
-    mkdirSync(dir, { mode: 0o700 });
-    writeFileSync(join(dir, "job.json"), JSON.stringify(job), { flag: "wx", mode: 0o600 });
-    const fd = openSync(join(dir, "supervisor.log"), "wx", 0o600);
+  const claim = join(dir, "claim");
+  const receipt = join(dir, "result.json");
+  if (!attempt.fresh) observe("recover-worker", attempt.id);
+  let launcher: ReturnType<typeof spawn> | undefined;
+  if (!existsSync(claim) && !existsSync(receipt)) {
+    mkdirSync(dir, { mode: 0o700, recursive: true });
+    const path = join(dir, "job.json");
+    if (!existsSync(path)) {
+      const tmp = join(dir, `job-${process.pid}.tmp`);
+      writeFileSync(tmp, JSON.stringify(job), { mode: 0o600 });
+      renameSync(tmp, path);
+    } else {
+      const published: Job = JSON.parse(readFileSync(path, "utf8"));
+      if (published.base !== job.base || published.head !== job.head || published.prompt !== prompt || published.role !== role)
+        throw new Uncertain("worker job identity changed");
+    }
+    const fd = openSync(join(dir, "supervisor.log"), "a", 0o600);
     try {
       const owner = userInfo();
-      const worker = spawn(process.execPath, [import.meta.path, attempt.id], {
-        detached: true,
-        cwd: config.stateRoot,
+      // Concurrent launchers may race to claim the job, but the exclusive claim admits only one harness.
+      launcher = spawn(process.execPath, [import.meta.path, attempt.id], {
+        detached: true, cwd: stateRoot,
         env: { PATH: "/usr/bin:/bin", HOME: owner.homedir, USER: owner.username, LOGNAME: owner.username },
         stdio: ["ignore", fd, fd],
       });
-      worker.unref();
-    } finally {
-      closeSync(fd);
-    }
-  } else {
-    observe("recover-worker", attempt.id);
+      launcher.unref();
+    } finally { closeSync(fd); }
   }
   const start = Date.now();
   const timeout = config.agents[role].timeoutMs + 120_000;
@@ -160,8 +169,8 @@ export async function dispatchWorker(
     if (existsSync(join(dir, "result.json"))) break;
     if (Date.now() - start > timeout) throw new Uncertain(`worker completion is uncertain for ${attempt.id}`);
     if (Date.now() - start > 5000) {
-      if (!existsSync(join(dir, "claim"))) throw new Uncertain(`worker startup is uncertain for ${attempt.id}`);
-      const pid = Number(readFileSync(join(dir, "claim"), "utf8"));
+      const pid = existsSync(claim) ? Number(readFileSync(claim, "utf8")) : launcher?.pid;
+      if (!pid || pid <= 1) throw new Uncertain(`worker startup is uncertain for ${attempt.id}`);
       try {
         process.kill(pid, 0);
       } catch {
