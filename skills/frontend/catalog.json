@@ -760,7 +760,7 @@
       ],
       "install": "npm",
       "status": "flagged",
-      "flagReason": "Named by the owner, so kept. It fails the maintenance rule: latest release 2025-03-14 and last default-branch commit 2025-10-29, both more than 12 months before verifiedAt. Not archived. Pin the version and re-check before a major React upgrade.",
+      "flagReason": "Named by the owner, so kept. It fails the maintenance rule: latest release 2025-03-14 and last default-branch commit 2025-10-29, both more than 12 months before verifiedAt. Not archived. Pin the version, and re-check that it still works and is still maintained at every React upgrade.",
       "verifiedAt": "2026-11-19",
       "evidence": {
         "httpStatus": 200,

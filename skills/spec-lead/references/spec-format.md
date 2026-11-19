@@ -54,76 +54,72 @@ Rules the parser relies on:
 
 ## Worked example (tier S bug)
 
+The example is from an expense tracker.
+
 ```markdown
-# Task list sorts the Due column as text
+# Monthly report total shows a rounding error
 
 Tier: S - Builder: Sol 6.2 - Code reviewer: Opus 5.5
-Task: github Scylla23/factory-pilot#101 revision 1
+Task: github example-org/ledger#41 revision 1
 Flags: none
 
 ## Problem
 
-Clicking the Due column header on the task list orders rows by the date's text, so 10 Nov appears before 2 Nov.
-The owner expects chronological order.
-The API already returns ISO dates; only the list's comparator is wrong.
+The monthly report adds expense amounts as floating point numbers, so a month with expenses of 0.10, 0.20, and 0.40 shows a total of 0.7000000000000001.
+The owner expects 0.70.
+Amounts are stored as decimal strings and are correct; only the report's sum is wrong.
 
 ## Non-goals
 
-- No change to the API or to how dates are stored.
-- No new sort options or multi-column sorting.
-- No change to the date display format.
+- No change to how amounts are stored or to the expense form.
+- No currency conversion and no new report columns.
+- No change to the totals of other reports.
 
 ## Acceptance criteria
 
-### AC-1: Reproduction - ascending sort is chronological
+### AC-1: Reproduction - three expenses total 0.70
 
 - Tag: test
-- Fixture: three tasks due 2026-11-02, 2026-11-10, and 2026-11-20, inserted newest first.
-- Action: sort the list by due date, ascending.
-- Expected: the order is 2026-11-02, 2026-11-10, 2026-11-20; on base the test fails because 2026-11-10 sorts first.
+- Fixture: one month with three expenses of 0.10, 0.20, and 0.40.
+- Action: compute the monthly total.
+- Expected: the total is the string 0.70; on base the test fails because the total is 0.7000000000000001.
 
-### AC-2: Descending sort is reverse chronological
-
-- Tag: test
-- Fixture: the same three tasks.
-- Action: sort the list by due date, descending.
-- Expected: the order is 2026-11-20, 2026-11-10, 2026-11-02.
-
-### AC-3: Tasks without a due date sort last
+### AC-2: A month with no expenses totals 0.00
 
 - Tag: test
-- Fixture: the same three tasks plus one with no due date.
-- Action: sort the list by due date, ascending, then descending.
-- Expected: the task with no due date is last in both orders.
+- Fixture: one month with no expenses.
+- Action: compute the monthly total.
+- Expected: the total is the string 0.00.
 
-### AC-4: The sorted list renders in order
+### AC-3: The report shows the total
 
 - Tag: browser
-- Route: /tasks?sort=due&dir=asc
-- Fixture: the `seeded-tasks` project fixture.
+- Route: /reports?month=2026-10
+- Fixture: the `seeded-expenses` project fixture.
 - Action: load the route.
-- Expected: the first three rows show due dates 2 Nov, 10 Nov, 20 Nov, top to bottom, at both viewports.
+- Expected: the row labeled Total shows 0.70 at both viewports.
 
 ## Design choices
 
-- Compare parsed timestamps in the existing comparator rather than adding a date library; `Date.parse` on the API's ISO strings is sufficient and the project has no date dependency.
-- Keep the sort in the list module; the API's order is unchanged.
+- Sum in integer cents and format once at the end, rather than adding a decimal library; every amount has two decimal places and the project has no numeric dependency.
+- Keep the sum in the report module; the stored amounts are unchanged.
 
 ## Reused files
 
-- `src/ui/task-list/sort.ts`: the `compareBy` helper and its column map; only the `due` comparator changes.
-- `src/ui/task-list/sort.test.ts`: the existing table-driven test style for comparators.
+- `src/reports/total.ts`: the `monthlyTotal` function; only how it adds changes.
+- `src/expenses/parse.ts`: the `parseAmount` validator, which already rejects amounts with more than two decimal places.
+- `src/reports/total.test.ts`: the existing test style for report functions.
 
 ## Implementation plan
 
-1. Add the failing reproduction for AC-1 to the comparator tests, run it, and confirm it fails for the stated reason (files: `src/ui/task-list/sort.test.ts`; serves AC-1).
-2. Change the `due` comparator to compare timestamps, with missing dates last in both directions (files: `src/ui/task-list/sort.ts`; serves AC-1, AC-2, AC-3).
-3. Add tests for descending order and missing dates (files: `src/ui/task-list/sort.test.ts`; serves AC-2, AC-3).
-4. Confirm the list route honors `sort` and `dir` from the URL with the seeded fixture (files: none expected; serves AC-4).
+1. Add the failing reproduction for AC-1 to the report tests, run it, and confirm it fails for the stated reason (files: `src/reports/total.test.ts`; serves AC-1).
+2. Change `monthlyTotal` to add integer cents and format the result with two decimal places (files: `src/reports/total.ts`; serves AC-1, AC-2).
+3. Add the test for an empty month (files: `src/reports/total.test.ts`; serves AC-2).
+4. Confirm the report route renders the Total row from `monthlyTotal` with the seeded fixture (files: none expected; serves AC-3).
 
 ## Risks
 
-- A date string the API could return in a non-ISO form would parse inconsistently; the API schema guarantees ISO, and AC-1 to AC-3 use ISO fixtures.
+- An amount with more than two decimal places would lose precision in cents; `parseAmount` rejects those on input, and AC-1 and AC-2 use two-place fixtures.
 
 ## Open questions
 

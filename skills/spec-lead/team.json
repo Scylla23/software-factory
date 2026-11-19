@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "lead": "spec-lead",
-  "note": "Subagent definitions for the spec lead's team. The factory turns each member into a harness-native subagent for the spec lead's run: its prompt is the member's SKILL.md plus the shared contract, and its model and effort come from factory.config.ts under configRole. See docs/skills-delivery.md.",
+  "note": "Subagent definitions for the spec lead's team. The factory turns each member into a harness-native subagent for the spec lead's run: its prompt is the member's SKILL.md, the shared contract, and a child run brief the factory writes (skills/_shared/factory-contract.md, section 4), and its model and effort come from factory.config.ts under configRole. These four names are the only agent types the lead's run may start, enforced before launch. reads and writes are file names in the run's outDir, or in taskDir for a file carried over on a revision; the child brief gives them as absolute paths. runsWhen is the design's trigger table: a triggered member always runs. See docs/skills-delivery.md.",
   "phases": [["architect"], ["infra", "frontend"], ["threat-modeler"]],
   "members": [
     {

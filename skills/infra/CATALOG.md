@@ -62,7 +62,7 @@ This index is for people; agents and the factory read [catalog.json](catalog.jso
 
 | id | Name | Category | When to use | Avoid when |
 |---|---|---|---|---|
-| `github-actions` | [GitHub Actions](https://docs.github.com/en/actions) | ci | Default CI for test, lint, typecheck, and deploy workflows. | Never for projects hosted on GitHub; do not add a second CI system. |
+| `github-actions` | [GitHub Actions](https://docs.github.com/en/actions) | ci | Default CI for test, lint, typecheck, and deploy workflows. | Projects not hosted on GitHub, or a project that already has another CI system; do not add a second one. |
 | `renovate` | [Renovate](https://docs.renovatebot.com/) | ci | Automated dependency update pull requests. | A project the owner updates by hand on purpose. |
 
 ## Observability

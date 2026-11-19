@@ -687,7 +687,7 @@
         "checks"
       ],
       "whenToUse": "Default CI for test, lint, typecheck, and deploy workflows.",
-      "avoidWhen": "Never for projects hosted on GitHub; do not add a second CI system.",
+      "avoidWhen": "Projects not hosted on GitHub, or a project that already has another CI system; do not add a second one.",
       "status": "approved",
       "verifiedAt": "2026-11-19",
       "evidence": {
