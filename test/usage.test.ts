@@ -320,3 +320,16 @@ test("the design team roster has a dated Standard price for every named model", 
   }
   for (const id of ids) expect(priceFor(id)?.source).toStartWith("https://");
 });
+
+test("repeated Claude fragments retain each token bucket maximum independently", async () => {
+  const { path, run } = await replay("claude","killed");
+  const msg = JSON.parse(readFileSync(path,"utf8"));
+  const fragment = (input: number, read: number, short: number, hour: number, output: number, thinking: number) => JSON.stringify({
+    ...msg, message:{ ...msg.message, usage:{ input_tokens:input, cache_read_input_tokens:read, cache_creation_input_tokens:short+hour,
+      cache_creation:{ ephemeral_5m_input_tokens:short, ephemeral_1h_input_tokens:hour }, output_tokens:output, output_tokens_details:{ thinking_tokens:thinking } } },
+  });
+  writeFileSync(path,[fragment(11,3,7,0,20,8),fragment(1,30,0,5,27,4)].join("\n"));
+  const { capture } = await captureRun(run,dispatchHomes(root));
+  expect(capture.lines).toMatchObject([{ input:11,cacheRead:30,cacheWrite:12,output:27,reasoning:8 }]);
+  expect(capture.costUsd).toBeCloseTo((11*0.1+30*0.01+7*0.125+5*0.2+27*0.5)/1e6,12);
+});

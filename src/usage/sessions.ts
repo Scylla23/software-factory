@@ -19,7 +19,7 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
   let mainModel: string | null = null;
   for (const path of paths) {
     const child = path !== paths[0];
-    const localIds = new Set<string>();
+    const localWrites = new Map<string, { short: number; hour: number }>();
     if (!safeSessionFile(path)) continue;
     for await (const item of readJsonl(path)) {
       if (item.kind !== "record") continue;
@@ -31,14 +31,28 @@ async function claudeMessages(root: string, session: string, lines: Map<string, 
       const { input_tokens: input, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite, output_tokens: output } = u;
       if (!count(input) || !count(cacheRead) || !count(cacheWrite) || !count(output)) continue;
       const reasoning = isRecord(u.output_tokens_details) ? u.output_tokens_details.thinking_tokens : null;
-      const t = { input, cacheRead, cacheWrite, output, reasoning: count(reasoning) && reasoning <= output ? reasoning : null };
-      const longWrites = isRecord(u.cache_creation) ? u.cache_creation.ephemeral_1h_input_tokens : 0;
       const name = str(model) || null;
       if (!child) mainModel = name;
-      if (child && lines.has(id) && !localIds.has(id)) continue;
-      if (child) localIds.add(id);
-      lines.set(id, { ...t, model: name,
-        costUsd: count(longWrites) && longWrites <= cacheWrite ? estimate(name, t, longWrites, true) : null });
+      if (child && lines.has(id) && !localWrites.has(id)) continue;
+      const previous = lines.get(id);
+      const split = isRecord(u.cache_creation) ? u.cache_creation : {};
+      const hour = split.ephemeral_1h_input_tokens ?? 0;
+      const short = split.ephemeral_5m_input_tokens ?? 0;
+      const validSplit = count(short) && count(hour) && short + hour <= cacheWrite;
+      const before = localWrites.get(id);
+      const writes = {
+        short: Math.max(before?.short ?? 0, validSplit ? short : 0),
+        hour: Math.max(before?.hour ?? 0, validSplit ? hour : 0),
+      };
+      localWrites.set(id, writes);
+      const t = {
+        input: Math.max(previous?.input ?? 0, input),
+        cacheRead: Math.max(previous?.cacheRead ?? 0, cacheRead),
+        cacheWrite: Math.max(previous?.cacheWrite ?? 0, cacheWrite, writes.short + writes.hour),
+        output: Math.max(previous?.output ?? 0, output),
+        reasoning: count(reasoning) && reasoning <= output ? Math.max(previous?.reasoning ?? 0, reasoning) : previous?.reasoning ?? null,
+      };
+      lines.set(id, { ...t, model: name, costUsd: validSplit ? estimate(name, t, writes.hour, true) : null });
     }
   }
   return mainModel;
