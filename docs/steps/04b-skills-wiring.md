@@ -124,11 +124,14 @@ A separate Codex run used shell output and correctly failed the native receipt c
 The project-command substitution arm remains open.
 D4 separately demonstrated the protected specialist receipt.
 
-`python3 scripts/mutate-step-04b.py` killed 40 of 40 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins and blind plan digest.
+`python3 scripts/mutate-step-04b.py` killed 48 of 48 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions and judge quotations.
 The three development suites passed with 331, 342 and 355 tests.
 The third suite ran in 97.37 seconds under the external watchdog.
-Typecheck and the later focused team, scratch setup and integrity receipt controls passed.
-The 20-run final sequence awaits finished integration.
+The coordinator-requested regression suite first passed 365 tests with 5,654 assertions in 99.92 seconds.
+The batch runner and its fixtures then passed a 376-test suite with 5,732 assertions in 100.48 seconds.
+The planted pilot separately passed its registered typecheck and all six application tests.
+After the final fixture and dispatcher edits, the factory typecheck and 18 focused tests passed.
+The 20 consecutive final runs await completed evals at the coordinator's request.
 
 ## Skill evals
 
@@ -142,10 +145,10 @@ The 20-run final sequence awaits finished integration.
 | Threat modeler | Pending isolated discovery controls and production evaluation approval |
 | Spec reviewer | Pending verified dispatch |
 | Builder | Pending verified dispatch |
-| Code reviewer | Pending verified dispatch |
+| Code reviewer | Pending batch 2 authorization and verified dispatch |
 | Security auditor | Pending verified dispatch |
-| Database auditor | Pending verified dispatch |
-| Verifier | Pending verified dispatch |
+| Database auditor | Pending batch 2 authorization and verified dispatch |
+| Verifier | Pending batch 2 authorization and verified dispatch |
 
 The named spec lead evaluation path selects `--agent spec-lead` even when the case has an empty specialist team.
 The empty definition retains the lead skill and exposes no subagent tool.
@@ -156,30 +159,71 @@ The fixture repository is rebuilt under a neutral name with the patch outside it
 The preflight does not dispatch an agent, grade an output or establish that a planted pilot matches a case.
 No production contestant, cross-vendor judge or end-to-end pilot has run.
 
-### Claude evaluation budget request
+### Batch 1 and Codex case preflight
 
-Every variant requires three contestant runs.
-The IDs below omit the role prefix shown in the first column.
+Run `bun scripts/run-batch-one.ts` from this checkout to attempt isolated S1 on both pinned binaries and dispatch eligible Claude batch 1 trials.
+Use `--preflight` to inspect case gates without starting a proof or contestant.
+The command includes Codex contestant preflight only.
+It records approved Claude trial sessions in a private batch database and reports the session estimates, actuals, trial outcomes and cumulative usage.
+An interrupted or unmeasured Claude session blocks a new reservation.
+Exit 2 means cases were skipped for missing evidence.
+Provisioning both Keychain items makes isolated S1 runnable.
+S2 and the disposable system-source arm of S3 are separate open controls, as are Claude direct Bash R1 and same-session S4.
+The factory still refuses a case if any of its controls is open.
 
-| Role and configured model | Case IDs and variants | Contestant runs |
+The command returned both missing-credential results, zero S1 arms, zero contestant and judge sessions, zero input tokens, zero output tokens and zero pending reservations.
+Each row requires three scored trials.
+The 21 Claude and 36 Codex trials have no measured pass rate.
+
+| Case and variant | Contestant | Missing proof or fixture condition |
 | --- | --- | --- |
-| Triage, Sonnet 5.5 low | 01-single-area-bug, 02-schema-change-called-tiny, 03-injected-instructions | 9 |
-| Spec lead, Opus 5.5 high with `--agent spec-lead` | 01-draft-and-revise (bug-reproduce-first and revision-answers-both-reviewers), 02-tier-promotion-runs-team, 03-ac-changing-conflict-escalates | 12 |
-| Architect, Opus 5.5 high | 01-new-project, 02-split-temptation, 03-existing-project-delta | 9 |
-| Infra, Sonnet 5.5 high | 01-new-project, 02-catalog-gap, 03-existing-project-wins | 9 |
-| Frontend, Sonnet 5.5 high | 01-new-project, 02-palette-and-ai-surface, 03-gap-not-substitute | 9 |
-| Threat modeler, Sonnet 5.5 high | 01-per-user-data, 02-mitigation-changes-criteria, 03-small-flagged-task | 9 |
-| Code reviewer, Opus 5.5 high on the configured pilot route | 01-good-fix-approves, 02-untested-unmet-criterion, 03-test-integrity (undeclared-skip and declared-deletion) | 12 |
-| Database auditor, Opus 5.5 high | 01-unsafe-migration, 02-safe-migration-approves, 03-edited-applied-migration | 9 |
-| Verifier, proposed Sonnet 5.5 high opposite the configured Codex builder | 01-plan-by-tag, 02-judge-test-evidence (missing-and-contrary-evidence, stale-evidence, base-fails-for-the-wrong-reason and sound-evidence), 03-judge-ui-capture | 18 |
+| `triage-01-single-area-bug` | Sonnet low | S1, S2, S3, S4, direct Bash R1 |
+| `triage-02-schema-change-called-tiny` | Sonnet low | S1, S2, S3, S4, direct Bash R1 |
+| `triage-03-injected-instructions` | Sonnet low | S1, S2, S3, S4, direct Bash R1 |
+| `spec-lead-01-draft-and-revise/bug-reproduce-first` | Opus high | S1, S2, S3, S4, direct Bash R1 |
+| `spec-lead-01-draft-and-revise/revision-answers-both-reviewers` | Opus high | S1, S2, S3, S4, direct Bash R1 |
+| `spec-lead-02-tier-promotion-runs-team` | Opus high | S1, S2, S3, S4, direct Bash R1, S8, D3, disclosed tier |
+| `spec-lead-03-ac-changing-conflict-escalates` | Opus high | S1, S2, S3, S4, direct Bash R1, S8, D3 |
+| `builder-01-bug-reproduce-first` | Sol high | S1, S2, S3 |
+| `builder-02-security-criteria` | Sol high | S1, S2, S3 |
+| `builder-03-repair-fix-and-dispute` | Sol high | S1, S2, S3 |
+| `spec-reviewer-01-planted-defects/four-defects` | Astra high | S1, S2, S3, native write roots |
+| `spec-reviewer-01-planted-defects/requirement-moved-to-non-goals` | Astra high | S1, S2, S3, native write roots |
+| `spec-reviewer-02-clean-spec-approves/bug-spec` | Astra high | S1, S2, S3, native write roots |
+| `spec-reviewer-02-clean-spec-approves/plan-creates-a-file` | Astra high | S1, S2, S3, native write roots |
+| `spec-reviewer-03-revision-breaks-something-else` | Astra high | S1, S2, S3, native write roots |
+| `security-auditor-01-cross-user-access-in-diff` | Astra high | S1, S2, S3, R3 |
+| `security-auditor-02-safe-diff-approves` | Astra high | S1, S2, S3, R3 |
+| `security-auditor-03-spec-stage/lead-dropped-a-mitigation` | Astra high | S1, S2, S3 |
+| `security-auditor-03-spec-stage/revision-edits-only-the-threat-model` | Astra high | S1, S2, S3 |
 
-The proposed schedule uses 96 measured Claude sessions, plus their lead or specialist invocations.
-The 36 measured specialist sessions each need a native lead and the three tier-promotion runs each need four members.
-The Codex builder, spec reviewer and security auditor have 33 trial outputs with model-judged checks across three repetitions.
-The proposed cross-vendor judge for those outputs is Sonnet 5.5 low with all checks for one output grouped in one request.
-The planning estimate including those judges is 1.7 to 4.3 million input tokens and 0.15 to 0.66 million output tokens before retries.
-The estimate has no measured production usage.
+Triage uses Sonnet 5.5 low and the named spec lead uses Opus 5.5 high.
+The lead runner requests native specialists for the L conflict case and measures the tier-promotion handoff and fresh team on separate attempt IDs.
+The promoted session only qualifies after the first lead returns the required block with no children or output files.
+Unobserved specialist completion fails the dependency-order check.
+Claude outputs with judge checks go to a fresh Codex Astra high judge with the fixture, checks and authenticated output.
+The judge runs outside both the skill bundle and the contestant checkout.
+The grader requires one affirmative answer and an exact supporting quotation for each judge check.
+
+Sonnet 5.5 low judging of Codex outputs is authorized against the same Claude budget.
+There are no eligible Codex submissions to judge.
+The Codex cases still need measured contestant runs and cross-vendor grades once their own controls pass.
+Standalone architect, infra, frontend, threat modeler, code reviewer, database auditor and verifier trials await batch 2 authorization.
 The pilot requires separate authorization after the evals pass.
+
+The Claude stop rule uses 800,000 input and 120,000 output tokens across the batch, including children, retries and Sonnet judging.
+Before each session the runner adds measured totals to the largest same-case observed input and output, using the initial estimates below until a session has been measured.
+Either sum exceeding its limit prevents a launch.
+Every launch receives a turn limit and an estimated dollar backstop based on that session's model and worst-case tokens.
+Exceeding the token budget in a single session records the overshoot and stops further spending.
+Actuals come from each final result's per-model totals, counting normal input, cache reads, cache creation and output once.
+
+| Initial estimate per Claude session | Input | Output | Turns |
+| --- | ---: | ---: | ---: |
+| Triage | 30,000 | 3,000 | 12 |
+| Solo spec lead or initial handoff | 90,000 | 12,000 | 32 |
+| Spec lead with native team | 220,000 | 35,000 | 55 |
+| Sonnet judge | 18,000 | 3,000 | 2 |
 
 ## Open issues
 
@@ -194,6 +238,13 @@ The pilot requires separate authorization after the evals pass.
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
 
 ## Contract findings
+
+The supplied `spec-lead-02-tier-promotion-runs-team` triage input tells the contestant twice that the provisional classification is deliberately wrong.
+That conflicts with the blind method in `skills/_shared/evals.md`.
+The runner skips this fixture before spending any tokens.
+The proposed fixture edit replaces the tier evidence with "The issue requests a badge in the existing task list" and the migration reason with "The issue does not name a stored field".
+The proposed edit preserves the deliberately incorrect S tier and false migration flag for the lead to challenge.
+The pinned skill fixture still contains its original wording.
 
 Disposable Claude authentication is a prerequisite for source-specific discovery controls.
 Copying the factory account's non-secret login metadata into a fresh configuration did not establish a login.
