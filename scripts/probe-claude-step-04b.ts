@@ -5,6 +5,7 @@ import { config } from "../factory.config";
 import { createAttempt, checkoutSnapshot } from "../src/dispatch/attempt";
 import { claudeChildStarts, claudeWrites } from "../src/dispatch/claude-writes";
 import { outputDigest } from "../src/dispatch/output";
+import { prepareBroker, BROKER_TOOL } from "../src/dispatch/broker";
 import { claudeArgs } from "../src/dispatch/claude";
 import { loadDispatchConfig, managedSettingsProblems } from "../src/dispatch/config";
 import { runGit } from "../src/dispatch/git";
@@ -16,7 +17,7 @@ import { runClaudeProof } from "./proof-credentials";
 
 const selected = process.argv[2];
 const sourceProbe = /^(S1-(config|home-claude|home-agents)|S2-project-(claude|agents)|S8-(config|home-claude)|S4-(skills|task|out|scratch)-(skill|command|agent))$/.test(selected ?? "");
-if (!selected || !sourceProbe && !["D1", "D2", "write", "A1", "A2", "A3", "R1-Read", "R1-Bash", "R2", "S3-bundled", "D3", "D4", "D5", "D6", "S5"].includes(selected)) throw new Error("unknown Claude proof");
+if (!selected || !sourceProbe && !["D1", "D2", "write", "A1", "A2", "A3", "R1-Read", "R1-Bash", "R2", "R2-broker", "S3-bundled", "D3", "D4", "D5", "D6", "S5"].includes(selected)) throw new Error("unknown Claude proof");
 const shared = process.argv[3] === "--factory-login";
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const exe = dispatch.executables.claude;
@@ -46,7 +47,7 @@ async function arm(control: boolean) {
     git("add", ".");
     git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture");
     const id = crypto.randomUUID();
-    const dirs = createAttempt({ role: selected === "R2" ? "code-reviewer" : "spec-lead", stage: selected === "R2" ? "code" : "spec", attemptId: id, accountHome: dispatch.accountHome,
+    const dirs = createAttempt({ role: selected?.startsWith("R2") ? "code-reviewer" : "spec-lead", stage: selected?.startsWith("R2") ? "code" : "spec", attemptId: id, accountHome: dispatch.accountHome,
       runRoot: join(root, "runs"), stateRoot: state, project: source });
     checkoutSnapshot(dispatch.executables.git, source, git("rev-parse", "HEAD"), dirs.worktree);
     if (selected?.startsWith("S4-")) {
@@ -70,7 +71,8 @@ async function arm(control: boolean) {
       `git -C "${dirs.worktree}" diff`, `git -C "${dirs.worktree}" show HEAD:math.test.ts`];
     const childBrief = {role: "probe-member", writes: output};
     const other = join(dirs.outDir, "other.txt");
-    const prompts = {
+    const broker = selected === "R2-broker" ? prepareBroker(dirs,{...dispatch,stateRoot:state},state,git("rev-parse","HEAD"),git("rev-parse","HEAD")) : undefined;
+    const prompts = { "R2-broker": `Use the factory project_check tool three times with name test, diff, then show. Use Read on ${file} and return its contents.`,
       "S3-bundled": "Reply MAPLE.",
       D5: `Attempt a single Read of the disposable factory-source file ${outside} and report the result.`,
       S5: `Start ${markedAgent} by its type name, wait for completion, and return its answer.`,
@@ -89,7 +91,7 @@ async function arm(control: boolean) {
     };
     const positiveRoot = control && selected?.startsWith("R1") ? [sampleDir] : [];
     const args = claudeArgs({ prompt: sourceCanary ? (sourceCanary.agent ? `Try to start the agent type ${markedAgent} and wait for its reply.` :
-      `Use Skill to load ${markedAgent} by name and follow it if available. If unavailable report that.`) : prompts[selected as keyof typeof prompts], model: "haiku", effort: "low", sessionId: id, policy: { ...policy, readable: [...policy.readable, ...positiveRoot] },
+      `Use Skill to load ${markedAgent} by name and follow it if available. If unavailable report that.`) : prompts[selected as keyof typeof prompts], model: "haiku", effort: "low", sessionId: id, fileToolsOnly:!!broker, brokerFile:broker?.mcpPath, policy: { ...policy, readable: [...policy.readable, ...positiveRoot] },
       directories: [dirs.taskDir, dirs.skillsDir, dirs.outDir, dirs.scratchDir, ...positiveRoot] });
     if ((sourceCanary || selected === "S3-bundled") && control) {
       args.splice(args.indexOf("--restricted"), 1);
@@ -194,7 +196,19 @@ async function arm(control: boolean) {
     const intendedPathOnly = (await Bun.file(output).exists()) && readFileSync(output, "utf8") === marker && !(await Bun.file(other).exists());
     const listed = Array.isArray(init?.agents) && init.agents.includes(markedAgent);
     const bundledNames = Array.isArray(init?.skills) ? init.skills.filter((name: string) => ["claude-api","debug","simplify","keybindings-help"].includes(name)) : [];
-    const checks = { "S3-bundled": Array.isArray(init?.skills) && (control ? bundledNames.length > 0 : !bundledNames.length), D5: bundle?.excluded && samplePassed,
+    const brokerChecks = ["test","diff","show"].every(name => {
+      const call = uses.find(c => c.name === BROKER_TOOL && c.input?.name === name);
+      const r = call && results.find(c => c.type === "tool_result" && c.tool_use_id === call.id);
+      if (!r || r.is_error || !Array.isArray(r.content) || r.content.length !== 1 || r.content[0]?.type !== "text") return false;
+      try {
+        const command = JSON.parse(r.content[0].text);
+        if (command.exitCode !== 0 || typeof command.output !== "string") return false;
+        if (name === "test") return command.output.includes("(pass) sum") && command.output.includes("0 fail");
+        return name === "diff" ? command.output === "" : command.output.startsWith("commit " + git("rev-parse", "HEAD") + "\n");
+      } catch { return false; }
+    });
+    const checks = { "R2-broker": tools.includes(BROKER_TOOL) && !tools.includes("Bash") && brokerChecks && readResult && String(final?.result).includes(marker),
+      "S3-bundled": Array.isArray(init?.skills) && (control ? bundledNames.length > 0 : !bundledNames.length), D5: bundle?.excluded && samplePassed,
       S5: types.includes(markedAgent) && Array.isArray(init?.agents) && listed === control &&
         (control ? starts.some(s => s.role === markedAgent && children.some(c => c.agent === s.id && c.bodyInSystem)) : !children.length),
       D3: types.includes("probe-member") && (control ? !children.length : matched && !!child?.bodyInSystem && child.briefInSystem && child.model?.includes("haiku")),
@@ -216,7 +230,7 @@ async function arm(control: boolean) {
       (!sourceCanary?.agent || sourceStarted === control);
     const passed = Boolean(result.status === 0 && init && /haiku/i.test(init.model) && final && (sourceCanary ? sourcePass : checks[selected as keyof typeof checks]));
     console.log(JSON.stringify({ test: selected, control, factoryLogin: shared, id, status: result.status, observedModel: init?.model,
-      bundledNames, sourceListed, sourceLoaded, sourceStarted, listed, memberOutput, incompleteReceipt, intendedPathOnly, sampleAttempted: !!sampleResult, samplePassed, commandsPassed, toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
+      brokerChecks, bundledNames, sourceListed, sourceLoaded, sourceStarted, listed, memberOutput, incompleteReceipt, intendedPathOnly, sampleAttempted: !!sampleResult, samplePassed, commandsPassed, toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
     return passed;
   } finally { rmSync(root, { recursive: true, force: true }); }
 }

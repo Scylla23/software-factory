@@ -1,9 +1,10 @@
 import { sessionUuid } from "./validation";
-import { closeSync, realpathSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
 import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots, trustedAgentPath } from "./config";
+import { prepareBroker } from "./broker";
 import { briefPrompt, claudeDefinitions, runBrief } from "./brief";
 import { bundleDigest, composeInstructions, materializeBundle } from "./bundle";
 import { requireSkillProofs, type SkillLaunch } from "./skill-launch";
@@ -65,21 +66,24 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const bundleHash = skill ? materializeBundle(config.executables.git, skill.factoryRepo, skill.factoryCommit, skill.dirs.skillsDir,
     [...policy.readable, ...agentWritable]) : undefined;
   const instructions = skill ? composeInstructions(skill.dirs.skillsDir, skill.dirs.role, projectInstructions) : projectInstructions;
+  const fileToolsOnly = !!skill && spec.harness === "claude";
+  const broker = fileToolsOnly && skill.dirs.scratchRepo ? prepareBroker(skill.dirs, config, spec.logDir, skill.brief.baseSha, skill.brief.headSha!) : undefined;
   const brief = skill ? runBrief(skill.dirs, skill.brief, skill.members.length > 0) : undefined;
+
   const prompt = brief ? briefPrompt(brief) : spec.prompt;
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
   const path = skill ? trustedAgentPath([...skill.toolDirs, "/Library/Developer/CommandLineTools/usr/bin"], agentWritable) : config.agentPath;
   const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: path, accountHome: config.accountHome });
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
-  const team = skill && brief && skill.members.length ? publishTeam(skill, brief, projectInstructions) : undefined;
+  const team = skill && brief && skill.members.length ? publishTeam(skill, brief, projectInstructions, fileToolsOnly) : undefined;
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
     spec.harness === "claude"
-      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, instructionsFile: team ? null : instructionsPath, team, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
+      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, instructionsFile: team ? null : instructionsPath, team, fileToolsOnly, brokerFile:broker?.mcpPath, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
       : codexArgs({ prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
 
-  // Everything above only checks; from here the attempt id is used, and every step either spawns or undoes itself.
+  // Reserve private log files before starting the harness.
   const logs = reserveRunFiles(files, instructions);
   let proc: AgentProcess;
   try {
@@ -110,6 +114,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     noKnownSurvivors &&= verdict.noKnownSurvivors;
     quarantineReasons.push(...verdict.quarantineReasons.filter(reason => !quarantineReasons.includes(reason)));
   }
+  if (broker && existsSync(join(spec.logDir,"broker-pending"))) quarantineReasons.push("broker command cleanup requires inspection");
   if (skill && bundleHash) {
     try { if (bundleDigest(skill.dirs.skillsDir) !== bundleHash) throw new Error("digest mismatch"); }
     catch { quarantineReasons.push("pinned skill bundle changed during the run"); }
@@ -175,9 +180,11 @@ async function observedCodexModel(root: string, threadId: string, diagnostics: s
   }
 }
 
-function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, projectInstructions: string | null) {
+function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, projectInstructions: string | null, fileToolsOnly: boolean) {
   if (!skill.dirs.agentsDir) throw new Error("spec lead lacks its private definitions directory");
   const file = join(skill.dirs.agentsDir, "definitions.json");
-  writeFileSync(file, JSON.stringify(claudeDefinitions(brief, skill.members, projectInstructions)), { flag: "wx", mode: 0o400 });
+  const definitions = claudeDefinitions(brief, skill.members, projectInstructions);
+  if (fileToolsOnly) definitions["spec-lead"]!.tools = definitions["spec-lead"]!.tools.filter(tool => tool !== "Bash");
+  writeFileSync(file, JSON.stringify(definitions), { flag: "wx", mode: 0o400 });
   return { file, members: skill.members };
 }

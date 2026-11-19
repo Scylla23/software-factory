@@ -32,6 +32,7 @@ import { type OutputAuthor, collectOutputs, outputDigest, OutputIntegrityError }
 import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
 import { archiveCollection, pinFactoryCommit, type Collection } from "./skill-store";
 import { expectedFiles, skillInputs, skillRoles, stageInputs } from "./skill-inputs";
+import { brokerCommands } from "../dispatch/broker";
 import { InvalidSkillOutput, validateSkillOutput } from "./skill-validation";
 import { loadVerifyConfig, prepareScratchRepo } from "../verify/preview";
 import { AgentFailed, Uncertain } from "./machine";
@@ -125,6 +126,7 @@ async function work(id: string) {
       }
       const current = runGit(dispatch.executables.git, dirs.worktree, ["rev-parse", "HEAD"]).toString().trim();
       if (current !== job.input.inputSha) throw new Uncertain("checkout does not match intended skill input");
+      if (agent.harness === "claude" && dirs.scratchRepo) job.input.brief.project.commands = brokerCommands();
       const brief = stageInputs(dirs, job.input);
       const result = await runAgent({
         ...agent, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",

@@ -63,6 +63,7 @@ Run `bun scripts/probe-step-04b.ts` with the test name to reproduce a row.
 | Claude native parent output | Passed | In `c37d9f0c-a369-429f-b6cd-86e8a336581b` the adapter joined the native Write input and successful result and matched the exact UTF-8 digest |
 | Claude R1 file tool | Passed | The same disposable sample was read in `1e1636c4-0712-4ceb-ace2-b010aa6c367b` and denied by Read in `634f6694-d1af-407d-83c7-480f292b5657` |
 | Claude R1 shell and R2 | Failed positive controls | Bash reported a stdout permission error in `ccca16ca-bf76-480c-9d99-5dd4b06562fb`, and in `82bebd3a-d35e-48b1-8d0a-7e8f85f1a1e7` the Bun assertion passed but the command exited 1 and the Git shim could not access its developer directory |
+| Claude R2 with Q57 broker | Passed | Session `d23c7894-25e3-46d2-a1db-914e4272655e` had only file tools and the explicit factory MCP tool, read the bundle marker, ran the passing sum test, got an empty diff and showed the fixture SHA |
 | Codex D3, fact 13a | Verified declaration, partial D3 | Thread `01a1f5a5-087f-7052-8b3d-eac41afc2d3e` applied the command-line definition under ignored user configuration and its child received the marked instructions |
 | Codex A4 | Passed positive arm | Thread `01a1f5a5-2f85-7982-8d84-6340c0e9b2c0` started a default child with custom definitions enabled |
 | Codex S6, fact 13b | Unverified | Thread `01a1f5a5-5574-7862-aac2-aa0527c8d705` requested the project type and started no child, but the source-specific positive control is missing |
@@ -107,7 +108,8 @@ The collector test uses the archived `changes` verdict and the `review-approve` 
 Both documents pass the verdict schema.
 The collector accepts the authentic bytes and rejects the replacement against the authentic receipt.
 This is a factory-side control.
-Live R3 and child output provenance remain open.
+The live R3 project-command substitution arm remains open.
+D4 separately demonstrated the protected specialist receipt.
 
 `python3 scripts/mutate-step-04b.py` killed 28 of 28 implementation mutants after adding the parent receipt, semantic join and nonmanual criterion controls.
 The three development suites passed with 331, 342 and 355 tests.
@@ -121,10 +123,10 @@ The 20-run final sequence awaits finished integration.
 | --- | --- |
 | Triage | Pending |
 | Spec lead | Pending isolated Claude lead and team proofs |
-| Architect | Pending authenticated child launch |
-| Infra | Pending authenticated child launch |
-| Frontend | Pending authenticated child launch |
-| Threat modeler | Pending authenticated child launch |
+| Architect | Pending isolated discovery controls and production evaluation approval |
+| Infra | Pending isolated discovery controls and production evaluation approval |
+| Frontend | Pending isolated discovery controls and production evaluation approval |
+| Threat modeler | Pending isolated discovery controls and production evaluation approval |
 | Spec reviewer | Pending verified dispatch |
 | Builder | Pending verified dispatch |
 | Code reviewer | Pending verified dispatch |
@@ -141,7 +143,7 @@ Claude production evals and the end-to-end pilot have not run.
 | #15 | Open pending complete per-harness author receipts, cleanup and live collection through the store |
 | #16 | Closed after restoring the review validator and reproducing its 221 checks |
 | #17 | Open pending the remaining pinned proof matrix |
-| #18 | Open pending both arms of R1 and integration of the verified profile or broker |
+| #18 | Open pending the remaining native tool and integrity controls, with Codex R1, Claude native Read and the R2 broker verified |
 | #19 | Open pending authorized blind spec lead evals under the selected lead definition, with D1 verified separately |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
@@ -158,6 +160,12 @@ The child adapter now verifies the parent start and joins the protected outer st
 It never interprets tool-result text as an authentication record.
 The collector also rejects a designated path submitted from a second team session.
 Team-enabled dispatch remains gated on the remaining sandbox and discovery proofs.
-The Claude shell profile also requires a verified correction or the Q57 broker before production use.
+Claude's direct Bash positive control failed with the closed read profile.
+Restricted Claude reviewer launches now receive file tools and a private stdio MCP server with fixed operations for the registered test, lint, typecheck, diff and show.
+The broker freezes a closed Seatbelt profile before launch and keeps a protected in-flight marker until command exit, process sweep and output drain are verified.
+An interrupted command blocks another command and quarantines the attempt.
+The review snapshot remains read-only and project commands can write only the disposable checkout.
+The broker only serves code-stage reviewer and auditor attempts with a disposable checkout.
+The future Claude builder route still needs a test command execution path.
 The step 3 worker has one immutable GitHub issue revision per task and stages it as numeric revision 1 alongside the stored issue digest.
 The pilot keeps its registered AC-1 base and head checks and stages their fixture and reproduction path as task attachments.

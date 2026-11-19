@@ -1,4 +1,5 @@
 import { count, money } from "./validation";
+import { BROKER_TOOL } from "./broker";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
 import type { SandboxPolicy } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
@@ -12,16 +13,17 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
  * runAgent refuses to dispatch while any managed settings source exists (see config.ts).
  * Claude has no read carve-outs: `policy.readable` is for Codex's own binary.
  */
-export function claudeSettings(policy: SandboxPolicy, team = false): object {
+export function claudeSettings(policy: SandboxPolicy, team = false, fileToolsOnly = false, broker = false): object {
   const denyRead = [...policy.denyRead];
   const denyWrite = [...new Set([...policy.denyWrite, ...(policy.writable ? policy.readable.filter(p => !policy.writable!.includes(p)) : [])])];
   const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
   return {
     permissions: {
       allow: policy.writable
-        ? ["Read", "Glob", "Grep", "Bash", ...policy.writable.flatMap(p => [...rules("Write", p), ...rules("Edit", p)])]
+        ? ["Read", "Glob", "Grep", ...(fileToolsOnly ? [] : ["Bash"]), ...(broker ? [BROKER_TOOL] : []), ...policy.writable.flatMap(p => [...rules("Write", p), ...rules("Edit", p)])]
         : [...CLAUDE_BUILDER_TOOLS],
       deny: [
+        ...(fileToolsOnly ? ["Bash"] : []),
         ...(team ? ["Agent(Explore)", "Agent(Plan)", "Agent(general-purpose)", "Agent(fork)"] : []),
         "WebFetch",
         "WebSearch",
@@ -62,6 +64,8 @@ export interface ClaudeCommandInput {
   instructionsFile?: string | null;
   /** Factory-selected attempt directories, excluding the definitions and the run root. */
   directories?: readonly string[];
+  fileToolsOnly?: boolean;
+  brokerFile?: string;
   team?: { file: string; members: readonly string[] };
 }
 
@@ -75,14 +79,15 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",
-    "--tools", [...CLAUDE_BUILDER_TOOLS, ...(input.team ? ["Agent"] : [])].join(","),
+    "--tools", [...CLAUDE_BUILDER_TOOLS.filter(tool => !input.fileToolsOnly || tool !== "Bash"), ...(input.team ? ["Agent"] : [])].join(","),
     ...(input.team ? ["--agents", input.team.file, "--agent", "spec-lead"] : []),
     "--strict-mcp-config",
+    ...(input.brokerFile ? ["--mcp-config", input.brokerFile] : []),
     // No skills or slash commands at all; the dedicated CLAUDE_CONFIG_DIR already drops the owner's, this drops the built-ins.
     "--disable-slash-commands",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
-    "--settings", JSON.stringify(claudeSettings(input.policy, !!input.team)),
+    "--settings", JSON.stringify(claudeSettings(input.policy, !!input.team, input.fileToolsOnly, !!input.brokerFile)),
     ...(input.directories ?? []).flatMap(p => ["--add-dir", p]),
     ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",

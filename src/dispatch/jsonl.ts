@@ -15,7 +15,11 @@ export type JsonlItem =
  * Streams a JSONL file from disk, one item per line, holding at most one record in memory.
  * Blank lines are skipped; every other line yields a record or an invalid item, so callers see corruption.
  */
-export async function* readJsonl(path: string, maxRecordBytes = MAX_RECORD_BYTES): AsyncGenerator<JsonlItem> {
+export function readJsonl(path: string, maxRecordBytes = MAX_RECORD_BYTES): AsyncGenerator<JsonlItem> {
+  return parseJsonl(Bun.file(path).stream(), maxRecordBytes);
+}
+
+export async function* parseJsonl(stream: AsyncIterable<Uint8Array>, maxRecordBytes: number): AsyncGenerator<JsonlItem> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let parts: Uint8Array[] = [];
   let size = 0;
@@ -58,7 +62,7 @@ export async function* readJsonl(path: string, maxRecordBytes = MAX_RECORD_BYTES
     return isRecord(value) ? { kind: "record", line, value } : invalid("not-object");
   };
 
-  for await (const chunk of Bun.file(path).stream()) {
+  for await (const chunk of stream) {
     let start = 0;
     for (let nl = chunk.indexOf(10, start); nl !== -1; nl = chunk.indexOf(10, start)) {
       append(chunk.subarray(start, nl));
