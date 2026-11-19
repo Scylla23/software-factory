@@ -5,14 +5,18 @@ import { Uncertain } from "../../src/factory/machine";
 import { runStages } from "../../src/factory/run";
 import { Store, type Task, type Attempt } from "../../src/factory/store";
 import type { Review } from "../../src/factory/gates";
-import type { WorkerOutput } from "../../src/factory/worker";
+import { WorkerLoginError, type WorkerOutput } from "../../src/factory/worker";
 
 const root = process.argv[2]!;
-const scenario = process.argv[3] ?? "crash";
+const mode = process.argv[3] ?? "crash";
+const scenario = mode.replace(/^crash-/, "");
+const recoveryAction: Record<string, string> = { infra: "report-escalation", reverify: "report-verification-escalation",
+  "resume-check": "report-interruption", login: "dispatch-spec-after-login" };
 const base = "a".repeat(40), spec = "b".repeat(40), head = "c".repeat(40);
 function checkpoint(key: string) {
   const path = join(root, key + ".kill");
-  if (scenario !== "crash" || existsSync(path)) return;
+  const covered = mode === "crash" || (mode.startsWith("crash-") && key.startsWith(recoveryAction[scenario] + "."));
+  if (!covered || existsSync(path)) return;
   writeFileSync(path, key, { flag: "wx" });
   process.kill(process.pid, "SIGKILL");
 }
@@ -89,6 +93,10 @@ try {
   const final = await runStages(s, initial, {
     git, stateRoot: root, observe: () => {},
     dispatch: async (_s, t, a, role, prompt) => {
+      if (scenario === "login" && a.action === "dispatch-spec") {
+        remote(a.action, "login refused", a.id);
+        throw new WorkerLoginError("fixture login");
+      }
       const body = role === "spec" ? "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
       if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
         throw Error("reviewer did not see both reproduction results");

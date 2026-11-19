@@ -68,3 +68,22 @@ for (const scenario of ["resume-base", "resume-check", "resume-capture", "reveri
     } finally { s.db.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const [scenario, action] of [
+  ["infra", "report-escalation"], ["resume-check", "report-interruption"],
+  ["reverify", "report-verification-escalation"], ["login", "dispatch-spec-after-login"],
+] as const) test("restart adopts the recovery effect " + action, async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-recovery-crash-"));
+  try {
+    for (let i = 0; i < 4; i++) expect(await invoke(root, "crash-" + scenario)).toBe(false);
+    expect(await invoke(root, "crash-" + scenario)).toBe(true);
+    const s = new Store(join(root, "state.sqlite"));
+    try {
+      expect(s.task(1).state).toBe(scenario === "infra" ? "escalated" : "done");
+      const files = readdirSync(root);
+      expect(files.filter(n => n.endsWith(action + ".resource"))).toHaveLength(1);
+      expect(files.filter(n => n.endsWith(".kill")).sort()).toEqual(
+        ["before-finish", "external", "finished", "planned"].map(p => action + "." + p + ".kill"));
+    } finally { s.db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
