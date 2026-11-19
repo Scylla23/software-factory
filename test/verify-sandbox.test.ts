@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type NetworkMode, projectEnv, type ProjectSandbox, sandboxArgv, sandboxProfile } from "../src/verify/sandbox";
+import { canonicalRoots, type NetworkMode, projectEnv, type ProjectSandbox, sandboxArgv, sandboxProfile } from "../src/verify/sandbox";
 import { BUN_DIR } from "./verify-helpers";
 
 let dir: string;
@@ -22,6 +22,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const policy = (network: NetworkMode, extra: Partial<ProjectSandbox> = {}): ProjectSandbox => ({
+  readable: [BUN_DIR],
   denyRead: [join(dir, "secret")],
   denyWrite: [gitDir],
   writable: [writable],
@@ -29,9 +30,9 @@ const policy = (network: NetworkMode, extra: Partial<ProjectSandbox> = {}): Proj
   ...extra,
 });
 
-/** Runs `script` with /bin/sh under the sandbox and returns stdout. */
-function run(p: ProjectSandbox, script: string, env: Record<string, string> = { PATH: `${BUN_DIR}:/usr/bin:/bin` }): string {
-  const r = Bun.spawnSync(sandboxArgv("/usr/bin/sandbox-exec", p, ["/bin/sh", "-c", script]), { env, stdout: "pipe", stderr: "pipe", timeout: 20_000 });
+/** Runs `script` with /bin/sh under the sandbox, in the writable root as a project command would, and returns stdout. */
+function run(p: ProjectSandbox, script: string, env: Record<string, string> = { PATH: `${BUN_DIR}:/usr/bin:/bin` }, cwd?: string): string {
+  const r = Bun.spawnSync(sandboxArgv("/usr/bin/sandbox-exec", p, ["/bin/sh", "-c", script]), { env, cwd: cwd ?? writable, stdout: "pipe", stderr: "pipe", timeout: 20_000 });
   return r.stdout.toString();
 }
 
@@ -63,6 +64,38 @@ describe("files", () => {
     expect(out).not.toContain("SECRET-VALUE");
     expect(out).toContain("Operation not permitted");
     expect(out).toContain("READ-OTHER-OK");
+  });
+
+  test("reads are closed by default: an unrelated file outside every root is unreadable without being on any deny-list", () => {
+    const sibling = join(dir, "sibling-project");
+    mkdirSync(sibling);
+    writeFileSync(join(sibling, ".env"), "SIBLING-CANARY\n");
+    writeFileSync(join(writable, "own.txt"), "OWN-FILE\n");
+    const out = run(policy({ kind: "none" }), `cat '${sibling}/.env' 2>&1; ls '${dir}' 2>&1; ls /Users 2>&1; cat own.txt; head -c 2 /etc/hosts >/dev/null && echo SYSTEM-OK; bun -e 'console.log("TOOL-OK")'`);
+    expect(out).not.toContain("SIBLING-CANARY");
+    // Residual: the directory above the worktree may be listed (Bun needs it), so the sibling's name shows, not its files.
+    expect(out.split("\n")).toContain("sibling-project");
+    expect(out.match(/Operation not permitted/g)?.length).toBe(2); // the sibling's .env and /Users
+    expect(out).toContain("OWN-FILE");
+    expect(out).toContain("SYSTEM-OK");
+    expect(out).toContain("TOOL-OK");
+  });
+
+  test("a readable root is readable, not writable, and the deny-list still applies inside it", () => {
+    const lib = join(dir, "lib");
+    mkdirSync(join(lib, "private"), { recursive: true });
+    writeFileSync(join(lib, "a.txt"), "LIB-FILE\n");
+    writeFileSync(join(lib, "private", "k"), "LIB-SECRET\n");
+    const out = run(policy({ kind: "none" }, { readable: [lib], denyRead: [join(lib, "private")] }), `cat '${lib}/a.txt'; : > '${lib}/w' 2>/dev/null || echo WRITE-DENIED; cat '${lib}/private/k' 2>&1`);
+    expect(out).toContain("LIB-FILE");
+    expect(out).toContain("WRITE-DENIED");
+    expect(out).not.toContain("LIB-SECRET");
+    expect(existsSync(join(lib, "w"))).toBe(false);
+  });
+
+  test("a readable root inside a denied path is refused, and a missing root fails loudly naming it", () => {
+    expect(() => sandboxProfile(policy({ kind: "none" }, { readable: [join(dir, "secret", "x")] }))).toThrow("is inside denied");
+    expect(() => canonicalRoots("toolchain", [join(dir, "no-such-tool")])).toThrow(`sandbox toolchain path does not exist: ${join(dir, "no-such-tool")}`);
   });
 
   test("writes land only in the writable roots, never in the git dir or elsewhere", () => {
@@ -97,7 +130,7 @@ describe("network", () => {
     const port = 20_000 + Math.floor(Math.random() * 20_000);
     try {
       const p = policy({ kind: "serve", port });
-      const proc = Bun.spawn(sandboxArgv("/usr/bin/sandbox-exec", p, [process.execPath, "-e", `Bun.serve({hostname:"127.0.0.1",port:${port},fetch:()=>new Response("in-sandbox")}); setTimeout(()=>process.exit(0), 8000)`]), { env: { PATH: "/usr/bin:/bin" }, stdout: "ignore", stderr: "pipe" });
+      const proc = Bun.spawn(sandboxArgv("/usr/bin/sandbox-exec", p, [process.execPath, "-e", `Bun.serve({hostname:"127.0.0.1",port:${port},fetch:()=>new Response("in-sandbox")}); setTimeout(()=>process.exit(0), 8000)`]), { env: { PATH: "/usr/bin:/bin" }, cwd: writable, stdout: "ignore", stderr: "pipe" });
       let body = "";
       for (let i = 0; i < 50 && body !== "in-sandbox"; i++) {
         await Bun.sleep(100);

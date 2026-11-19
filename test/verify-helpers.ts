@@ -37,6 +37,7 @@ export function makeVerifyEnv(): VerifyEnv {
     stateRoot,
     harnessHomes: [],
     toolPath: `${BUN_DIR}:/usr/bin:/bin`,
+    toolRoots: [BUN_DIR],
     untrustedRoots: tempRoots(),
   };
   return {

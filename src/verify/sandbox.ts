@@ -3,22 +3,51 @@
  * writes itself and applies with `/usr/bin/sandbox-exec`, chosen over `codex sandbox` and Claude's sandbox runtime in
  * spike 02 because it is the only one that lets a preview bind its own port while making no outbound connection at all.
  *
- * Closed by default. Reads are open except the dispatch deny-list; writes only in the given roots, never in the git
- * dirs; no mach services except user lookup, so the keychain daemon (securityd) is unreachable; no unix sockets except
- * DNS; and the network is one of: none, outbound IP except loopback (dependency install), or bind and accept on one
- * loopback port (preview).
+ * Closed by default. Reads only in the readable roots (the project, its private home, its git dirs, the toolchain) and
+ * the system list below, with the dispatch deny-list applied again on top; writes only in the writable roots, never in
+ * the git dirs; no mach services except user lookup, so the keychain daemon (securityd) is unreachable; no unix sockets;
+ * and the network is one of: none, the factory's egress proxy only (setup), or the preview's own loopback port only.
  * Paths travel as `-D` parameters, never spliced into the profile text, so no path needs escaping.
  */
+import { realpathSync } from "node:fs";
 import { overlaps } from "../dispatch/policy";
+
+/**
+ * What every project command may read besides its readable roots: system binaries, libraries, frameworks, the dyld
+ * cache, the Command Line Tools (git and python3 shims), the links that select them and /bin/sh, configuration under
+ * /etc, and time zones. Nothing under /Users, /Volumes, /opt, /usr/local, or /private/var/folders.
+ */
+export const SYSTEM_READ = [
+  "/bin",
+  "/sbin",
+  "/usr/bin",
+  "/usr/sbin",
+  "/usr/lib",
+  "/usr/libexec",
+  "/usr/share",
+  "/System/Library",
+  "/System/Cryptexes",
+  "/System/Volumes/Preboot/Cryptexes",
+  "/Library/Apple/usr/lib",
+  "/Library/Developer/CommandLineTools",
+  "/private/etc",
+  "/private/var/db/timezone",
+  "/private/var/select",
+] as const;
+
+/** Device files every command may read and write. */
+const DEVICES = ["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/dtracehelper"];
 
 export type NetworkMode = { kind: "none" } | { kind: "outbound" } | { kind: "serve"; port: number };
 
 export interface ProjectSandbox {
-  /** Absolute paths no project command may read (the dispatch deny-list, already expanded with realpaths). */
+  /** Canonical roots the command may read besides the writable roots and SYSTEM_READ: git dirs and the toolchain. */
+  readable: readonly string[];
+  /** Absolute paths no project command may read, even inside a readable root (the dispatch deny-list, with realpaths). */
   denyRead: readonly string[];
   /** Absolute paths that stay read-only even under a writable root: the worktree's git dirs. */
   denyWrite: readonly string[];
-  /** Canonical roots the command may write: the worktree and the preview's private home. */
+  /** Canonical roots the command may read and write: the worktree and the preview's private home. */
   writable: readonly string[];
   network: NetworkMode;
 }
@@ -33,22 +62,54 @@ export function assertPort(port: number): void {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error(`port must be an integer in 1024-65535: ${port}`);
 }
 
-/** The profile text and its `-D` parameters. Refuses a policy whose writable roots would reopen a denied path. */
+/**
+ * The canonical form of each root, which must exist: Seatbelt matches resolved paths, so a root given through a
+ * symlink would silently allow nothing, and a missing toolchain or system path is a setup error to fix, not to skip.
+ */
+export function canonicalRoots(kind: string, paths: readonly string[]): string[] {
+  return paths.map((p) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      throw new Error(`sandbox ${kind} path does not exist: ${p}`);
+    }
+  });
+}
+
+/** Every proper ancestor of `path`, from `/` down, so lookups can stat their way to a readable root. */
+function ancestors(path: string): string[] {
+  const out = ["/"];
+  const parts = path.split("/").filter(Boolean);
+  for (let i = 1; i < parts.length; i++) out.push(`/${parts.slice(0, i).join("/")}`);
+  return out;
+}
+
+/** The profile text and its `-D` parameters. Refuses a policy whose readable or writable roots would reopen a denied path. */
 export function sandboxProfile(s: ProjectSandbox): { profile: string; params: string[] } {
   assertAbsolute("deny-read", s.denyRead);
   assertAbsolute("deny-write", s.denyWrite);
   assertAbsolute("writable", s.writable);
+  assertAbsolute("readable", s.readable);
   if (s.writable.length === 0) throw new Error("a project command needs at least one writable root");
   for (const w of s.writable) {
     for (const d of s.denyRead) if (overlaps(w, d)) throw new Error(`writable root ${w} overlaps denied ${d}`);
     for (const d of s.denyWrite) if (w === d || w.startsWith(`${d}/`)) throw new Error(`write-deny ${d} would cover writable root ${w}`);
   }
+  for (const r of s.readable) for (const d of s.denyRead) if (r === d || r.startsWith(`${d}/`)) throw new Error(`readable root ${r} is inside denied ${d}`);
+  const system = canonicalRoots("system", SYSTEM_READ);
   const params: string[] = [];
-  const param = (prefix: string, values: readonly string[]) =>
+  const param = (prefix: string, values: readonly string[], kind: "subpath" | "literal" = "subpath") =>
     values.map((v, i) => {
       params.push("-D", `${prefix}${i}=${v}`);
-      return `(subpath (param "${prefix}${i}"))`;
+      return `(${kind} (param "${prefix}${i}"))`;
     });
+  const roots = [...s.writable, ...s.readable, ...system];
+  const insideRoot = (a: string) => roots.some((r) => a === r || a.startsWith(`${r}/`));
+  // Bun's resolver lists every directory above its working directory and fails without them ("error loading current
+  // directory", or an empty process.env), so the directories above a writable root may be listed; names only, since
+  // the files in them stay closed. Above any other root, lookups may only stat.
+  const listable = [...new Set(s.writable.flatMap(ancestors))].filter((a) => a !== "/" && !insideRoot(a));
+  const lookups = [...new Set([...roots.flatMap(ancestors), "/etc", "/var", "/tmp"])].filter((a) => a !== "/" && !insideRoot(a) && !listable.includes(a));
   const lines = [
     "(version 1)",
     "(deny default)",
@@ -58,11 +119,18 @@ export function sandboxProfile(s: ProjectSandbox): { profile: string; params: st
     "(allow sysctl-read)",
     "(allow ipc-posix-sem)",
     `(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))`,
-    "(allow file-read* file-test-existence)",
-    ...(s.denyRead.length > 0 ? [`(deny file-read* ${param("DENY_READ_", s.denyRead).join(" ")})`] : []),
-    `(allow file-write* ${param("WRITABLE_", s.writable).join(" ")})`,
-    `(allow file-read* file-write* file-ioctl (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper"))`,
+    `(allow file-read-metadata ${param("LOOKUP_", lookups, "literal").join(" ")})`,
+    ...(listable.length > 0 ? [`(allow file-read-metadata file-read-data ${param("LIST_", listable, "literal").join(" ")})`] : []),
+    // dyld reads the root directory itself at every exec; its listing names only the top-level system folders.
+    `(allow file-read* (literal "/"))`,
+    `(allow file-read* ${param("SYSTEM_", system).join(" ")})`,
+    // A rule with no filter would match everything, so an empty list emits no rule at all.
+    ...(s.readable.length > 0 ? [`(allow file-read* ${param("READABLE_", s.readable).join(" ")})`] : []),
+    `(allow file-read* file-write* ${param("WRITABLE_", s.writable).join(" ")})`,
+    `(allow file-read* file-write* file-ioctl ${DEVICES.map((d) => `(literal "${d}")`).join(" ")})`,
     `(allow file-read* file-write* (subpath "/dev/fd"))`,
+    // The dispatch deny-list again, so a readable root can never reopen a credential store or the state root.
+    ...(s.denyRead.length > 0 ? [`(deny file-read* file-write* ${param("DENY_READ_", s.denyRead).join(" ")})`] : []),
     ...(s.denyWrite.length > 0 ? [`(deny file-write* ${param("DENY_WRITE_", s.denyWrite).join(" ")})`] : []),
     ...networkRules(s.network),
   ];

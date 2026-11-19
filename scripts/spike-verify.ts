@@ -34,7 +34,7 @@ const WORKSPACES = join(HOME, "orca/workspaces");
 const PILOT = join(HOME, "orca/projects/factory-pilot");
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [WORKSPACES] });
-const config = loadVerifyConfig(dispatch, { toolDirs: [join(HOME, ".bun/bin")], agentWriteRoots: [WORKSPACES] });
+const config = loadVerifyConfig(dispatch, { toolDirs: [join(HOME, ".bun/bin")], toolRoots: [join(HOME, ".bun/bin")], agentWriteRoots: [WORKSPACES] });
 const spikeDir = join(dispatch.stateRoot, "spike-02");
 const runDir = join(spikeDir, `run-${Date.now()}`);
 const logDir = join(runDir, "logs");

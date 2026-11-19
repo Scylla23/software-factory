@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, startPreview } from "../src/verify/preview";
+import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, startPreview, toolchainRoots } from "../src/verify/preview";
 import { gone } from "./helpers";
-import { makeRepo, makeVerifyEnv, serverSource, type VerifyEnv } from "./verify-helpers";
+import { BUN_DIR, makeRepo, makeVerifyEnv, serverSource, type VerifyEnv } from "./verify-helpers";
 
 let env: VerifyEnv;
 let started: Preview[] = [];
@@ -90,13 +90,14 @@ describe("startPreview", () => {
     } finally {
       delete process.env.FACTORY_CANARY;
     }
-    const r = await p.run(["/bin/sh", "-c", `cat '${env.home}/.ssh/id_test' 2>&1; env; echo PORT-IS-$PORT`], { network: "serve", name: "probe", timeoutMs: 10_000 });
+    const r = await p.run(["/bin/sh", "-c", `cat '${env.home}/.ssh/id_test' 2>&1; env; echo PORT-IS-$PORT; echo HEAD-IS-$(git rev-parse HEAD)`], { network: "serve", name: "probe", timeoutMs: 10_000 });
     const out = readFileSync(r.logPath, "utf8");
     expect(r).toMatchObject({ exitCode: 0, stopped: null, quarantineReasons: [] });
     expect(out).toContain("Operation not permitted");
     expect(out).not.toContain("PLANTED-SSH-SECRET");
     expect(out).not.toContain("FACTORY_CANARY");
     expect(out).toContain(`PORT-IS-${p.port}`);
+    expect(out).toContain(`HEAD-IS-${repo.shas[0]}`); // its own git dirs are readable
     expect(await (await fetch(`${p.origin}/`)).text()).toBe("up");
   });
 
@@ -183,5 +184,14 @@ describe("listenerOwnership", () => {
       server.stop(true);
     }
     expect(listenerOwnership(env.config, port, { pid: process.pid, identity: null, exitedAt: () => null })).toMatchObject({ ok: false, reason: "nothing of this user listens on it" });
+  });
+});
+
+describe("toolchainRoots", () => {
+  test("requires existing roots outside agent-writable dirs that cover every tool dir", () => {
+    expect(toolchainRoots([BUN_DIR, "/usr/bin"], [BUN_DIR], [env.repos])).toEqual([BUN_DIR]);
+    expect(() => toolchainRoots([BUN_DIR], [], [])).toThrow(`tool dir ${BUN_DIR} is outside every toolchain root`);
+    expect(() => toolchainRoots([BUN_DIR], [BUN_DIR], [BUN_DIR])).toThrow("is under agent-writable");
+    expect(() => toolchainRoots([], ["/no/such/toolchain"], [])).toThrow("sandbox toolchain path does not exist: /no/such/toolchain");
   });
 });

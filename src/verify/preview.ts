@@ -12,7 +12,7 @@ import { effectiveDenyRead } from "../dispatch/policy";
 import { type AgentProcess, assessCleanup, type ProcIdentity, snapshot, spawnAgentProcess, type Supervised, superviseRun, type SweepResult, sweepWorktree, type TerminationReport, Tracker } from "../dispatch/process";
 import { type Materialized, materializeCommit, removeMaterialized } from "./materialize";
 import { type PortRange, taskPort, tcpListeners } from "./port";
-import { type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv } from "./sandbox";
+import { canonicalRoots, type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv, SYSTEM_READ } from "./sandbox";
 
 /** What verification trusts, resolved once from factory-controlled sources like DispatchConfig. */
 export interface VerifyConfig {
@@ -22,12 +22,15 @@ export interface VerifyConfig {
   harnessHomes: readonly string[];
   /** The whole PATH of a project command: verified tool dirs (such as Bun's), then the system dirs. */
   toolPath: string;
+  /** Canonical toolchain dirs project commands may read (such as Bun's install dir); every tool dir is inside one. */
+  toolRoots: readonly string[];
   /** Roots agents can write; a project checkout under any of them is refused. */
   untrustedRoots: readonly string[];
 }
 
-export function loadVerifyConfig(dispatch: DispatchConfig, opts: { toolDirs: readonly string[]; agentWriteRoots: readonly string[] }): VerifyConfig {
+export function loadVerifyConfig(dispatch: DispatchConfig, opts: { toolDirs: readonly string[]; toolRoots: readonly string[]; agentWriteRoots: readonly string[] }): VerifyConfig {
   const untrustedRoots = [...tempRoots(), ...opts.agentWriteRoots.map((r) => realpathSync(r))];
+  const toolRoots = toolchainRoots(opts.toolDirs, opts.toolRoots, untrustedRoots);
   return {
     executables: {
       git: dispatch.executables.git,
@@ -40,8 +43,22 @@ export function loadVerifyConfig(dispatch: DispatchConfig, opts: { toolDirs: rea
     stateRoot: dispatch.stateRoot,
     harnessHomes: Object.values(dispatch.harnessHomes),
     toolPath: trustedAgentPath(opts.toolDirs, untrustedRoots),
+    toolRoots,
     untrustedRoots,
   };
+}
+
+/**
+ * The canonical toolchain roots project commands may read. Each must exist and sit outside agent-writable roots, and
+ * every tool dir on the PATH must be inside one of them or a system dir: one the sandbox cannot read would fail every
+ * command with a bare "Operation not permitted".
+ */
+export function toolchainRoots(toolDirs: readonly string[], roots: readonly string[], untrustedRoots: readonly string[]): string[] {
+  const toolRoots = canonicalRoots("toolchain", roots);
+  for (const r of toolRoots) for (const u of untrustedRoots) if (isUnder(r, u)) throw new Error(`toolchain root ${r} is under agent-writable ${u}`);
+  const readable = [...toolRoots, ...canonicalRoots("system", SYSTEM_READ)];
+  for (const d of canonicalRoots("tool", toolDirs)) if (!readable.some((r) => isUnder(d, r))) throw new Error(`tool dir ${d} is outside every toolchain root and system dir, so sandboxed commands could not read it`);
+  return toolRoots;
 }
 
 /** A project's declared commands; each is an argv run under the sandbox with the tool PATH, never through a shell. */
@@ -222,9 +239,13 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
   try {
     mkdirSync(home, { mode: 0o700 });
     mkdirSync(join(home, "tmp"), { mode: 0o700 });
+    const gitDirs = gitWriteProtectedPaths(config.executables.git, wt.path);
+    if (gitDirs.length === 0) throw new Error(`${wt.path} has no git dirs`);
     const base = {
+      // The project's own git dirs (read-only) and the toolchain; everything else outside the worktree and home is closed.
+      readable: [gitDirs[0]!, ...config.toolRoots],
       denyRead: effectiveDenyRead({ accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: config.harnessHomes }),
-      denyWrite: gitWriteProtectedPaths(config.executables.git, wt.path),
+      denyWrite: gitDirs,
       writable: [wt.path, realpathSync(home)],
     };
     const sandbox = (network: NetworkMode): ProjectSandbox => ({ ...base, network });
