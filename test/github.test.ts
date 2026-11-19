@@ -4,6 +4,8 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { inspect } from "node:util";
 import { join } from "node:path";
+import { Publisher } from "../src/factory/github";
+import type { Task } from "../src/factory/store";
 import { RepoClient } from "../src/github/api";
 import { type AppMetadata, appJwt, assertFresh, GitHubError, InstallationToken, loadAppKey, loadAppMetadata, mintInstallationToken, TOKEN_REFRESH_MARGIN_MS, TokenSource } from "../src/github/app";
 import { commitFiles } from "../src/github/commit";
@@ -227,6 +229,18 @@ describe("commitFiles", () => {
     expect(gh.calls.filter((x) => x.url.endsWith("/git/blobs"))).toHaveLength(1); // blobs are not re-uploaded
   });
 
+  test("expected parent forbids rebasing a publication after a 422", async () => {
+    const state = { head: SHA(1), refUpdates: [] as unknown[], failNextUpdate: true };
+    const gh = fakeGitHub(gitRoutes("b", state));
+    const c = new RepoClient("Scylla23", "factory-pilot", tokens(), gh.fetchImpl);
+    await expect(commitFiles(c, { branch: "b", message: "m", startFrom: SHA(1), expectedHead: SHA(1),
+      files: [{ path: "a", content: new Uint8Array() }] })).rejects.toThrow("422");
+    expect(state.refUpdates).toHaveLength(1);
+    await expect(commitFiles(c, { branch: "b", message: "m", startFrom: SHA(1), expectedHead: SHA(1),
+      files: [{ path: "a", content: new Uint8Array() }] })).rejects.toThrow("branch moved");
+    expect(state.refUpdates).toHaveLength(1);
+  });
+
   test("gives up after one rebuild instead of looping", async () => {
     const state = { head: SHA(1), refUpdates: [] as unknown[], failNextUpdate: true };
     const routes = gitRoutes("b", state);
@@ -436,5 +450,93 @@ describe("pulls", () => {
     expect(r.created).toBe(true);
     expect((gh.calls.at(-1)!.body as { draft: boolean }).draft).toBe(true);
     await expect(postComment(c, 1, "x".repeat(65_001))).rejects.toThrow("65536");
+  });
+});
+
+describe("factory publisher", () => {
+  const root = "/repos/Scylla23/factory-pilot";
+  const app = { slug: "fixture", tokens };
+  const task = { id: 1, issue: { number: 4, issueId: 22, title: "stock" }, pr: 5, base: SHA(1), head: SHA(2), state: "building" } as Task;
+  test("adopts exactly its commit tree, parent and marker", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "factory-publisher-"));
+    const git = (...args: string[]) => {
+      const r = Bun.spawnSync(["/usr/bin/git", "-C", dir, "-c", "user.name=Fixture", "-c", "user.email=t@example.invalid", ...args]);
+      if (r.exitCode) throw Error(r.stderr.toString());
+      return r.stdout.toString().trim();
+    };
+    try {
+      git("init", "-q"); git("commit", "--allow-empty", "-qm", "base");
+      const parent = git("rev-parse", "HEAD");
+      writeFileSync(join(dir, "app.ts"), "fixed"); git("add", "app.ts"); git("commit", "-qm", "patch");
+      const match = git("rev-parse", "HEAD");
+      writeFileSync(join(dir, "extra"), "unplanned"); git("add", "extra"); git("commit", "--amend", "--no-edit", "-q");
+      const extra = git("rev-parse", "HEAD");
+      let tip = match, remoteParent = parent;
+      const message = "fix: stock\n\nFactory-Task: github-22\nFactory-Agent: builder\nFactory-Attempt: attempt";
+      let remoteMessage = message;
+      const commit = (): [number, unknown] => [200, { message: remoteMessage, parents: [{ sha: remoteParent }] }];
+      const gh = fakeGitHub({ [`GET ${root}/git/ref/heads/factory/issue-4`]: () => [200, { object: { sha: tip } }],
+        [`GET ${root}/git/commits/${match}`]: commit, [`GET ${root}/git/commits/${extra}`]: commit });
+      const publisher = new Publisher({ ...app, tokens: () => tokens() }, dir, gh.fetchImpl);
+      publisher.fetch = async () => {}; // Both immutable trees are already in this private checkout.
+      const adopt = (content = "fixed") => publisher.commit(task, "attempt", "fix: stock", [{ path: "app.ts", content: Buffer.from(content) }], parent);
+      expect(await adopt()).toBe(match);
+      await expect(adopt("wrong blob")).rejects.toThrow("foreign");
+      tip = extra; await expect(adopt()).rejects.toThrow("foreign");
+      tip = match; remoteParent = extra; await expect(adopt()).rejects.toThrow("foreign");
+      remoteParent = parent; remoteMessage = "foreign tip"; await expect(adopt()).rejects.toThrow("foreign");
+      expect(gh.calls.every(c => c.method === "GET")).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  test("adopts an existing marked draft, comment and already-ready head", async () => {
+    const pull = { number: 5, html_url: "url", state: "open", draft: true, head: { sha: task.head }, base: { ref: "main", sha: task.base },
+      user: { login: "fixture[bot]" }, body: "" };
+    const remote: typeof pull[] = [];
+    const comments: {id: number; html_url: string; body: string; user: { login: string }}[] = [];
+    const gh = fakeGitHub({
+      [`GET ${root}/pulls`]: () => [200, remote],
+      [`POST ${root}/pulls`]: c => { pull.body = (c.body as {body:string}).body; remote.push(pull); return [201, pull]; },
+      [`GET ${root}/pulls/5`]: () => [200, pull],
+      [`GET ${root}/git/ref/heads/factory/issue-4`]: () => [200, { object: { sha: task.head } }],
+      [`GET ${root}/issues/5/comments`]: () => [200, comments],
+      [`POST ${root}/issues/5/comments`]: c => {
+        const item = { id: 70, html_url: "url", body: (c.body as {body:string}).body, user: pull.user }; comments.push(item); return [201,item];
+      },
+    });
+    const publisher = new Publisher({ ...app, tokens: () => tokens() }, "/unused", gh.fetchImpl);
+    expect(await publisher.draft(task, "one", task.head)).toBe(5);
+    expect(pull.body).toContain("Fixes #4");
+    expect(await publisher.draft(task, "one", task.head)).toBe(5);
+    await expect(publisher.draft(task, "foreign", task.head)).rejects.toThrow("identity");
+    expect(await publisher.comment(5, "two", "hello")).toBe(70);
+    expect(await publisher.comment(5, "two", "hello")).toBe(70);
+    pull.draft = false;
+    await publisher.ready(task);
+    expect(gh.calls.filter(c => c.method !== "GET")).toHaveLength(2);
+    expect(comments).toHaveLength(1);
+  });
+  test("the GitHub review boundary uses the later of ready and the published evidence", async () => {
+    let ready = "2026-01-01T00:00:00Z";
+    const summary = "2026-01-02T00:00:00Z";
+    const gh = fakeGitHub({
+      [`GET ${root}/issues/5/timeline`]: () => [200, [{ event: "ready_for_review", created_at: ready }]],
+      [`GET ${root}/issues/comments/72`]: () => [200, { updated_at: summary }],
+    });
+    const publisher = new Publisher({ ...app, tokens: () => tokens() }, "/unused", gh.fetchImpl);
+    expect(Date.parse(await publisher.reviewBoundary(task,72))).toBe(Date.parse(summary));
+    ready = "2026-01-03T00:00:00Z";
+    expect(Date.parse(await publisher.reviewBoundary(task,72))).toBe(Date.parse(ready));
+    ready = ""; await expect(publisher.reviewBoundary(task,72)).rejects.toThrow("timestamps");
+  });
+  test("command comment edit history includes same-second edits and fails closed on disagreement", async () => {
+    const date = "2026-01-01T00:00:00Z";
+    const command = { id: 72, node_id: "node1", body: "/approve " + task.head, html_url: "url",
+      created_at: date, updated_at: date, user: { id: 7, login: "fixture" } };
+    let body = command.body;
+    const gh = fakeGitHub({ [`GET ${root}/issues/5/comments`]: () => [200, [command]],
+      "POST /graphql": () => [200, { data: { nodes: [{ id: command.node_id, body, lastEditedAt: date }] } }] });
+    const publisher = new Publisher({ ...app, tokens: () => tokens() }, "/unused", gh.fetchImpl);
+    expect((await publisher.comments(5))[0]?.lastEditedAt).toBe(date);
+    body = "different"; expect((await publisher.comments(5))[0]?.lastEditedAt).toBeUndefined();
   });
 });

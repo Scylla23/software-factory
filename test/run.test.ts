@@ -180,13 +180,18 @@ describe("runAgent", () => {
     const pidFile = join(sb.worktree, "late.pid");
     const ac = new AbortController();
     const pending = runAgent(spec("claude", `late:${pidFile}`, { signal: ac.signal }), sb.config);
-    await Bun.sleep(300); // let the fake install its trap
-    ac.abort();
-    const r = await pending;
-    const late = await readPid(pidFile);
-    expect(r.outcome).toBe("cancelled");
+    try {
+      await readPid(`${pidFile}.ready`);
+    } finally {
+      ac.abort();
+      await pending;
+    }
+    // The handler writes this before the CLI exits. A missing file is already a definitive failure.
+    const late = Number(readFileSync(pidFile, "utf8").trim());
+    expect(late).toBeGreaterThan(1);
+    expect((await pending).outcome).toBe("cancelled");
     expect(await gone(late)).toBe(true);
-  });
+  }, 30_000);
 
   test("a child already reparented to launchd before cancellation is killed through the process group", async () => {
     const pidFile = join(sb.worktree, "orphan.pid");

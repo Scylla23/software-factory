@@ -1,0 +1,46 @@
+import { userInfo } from "node:os";
+import { join } from "node:path";
+import { REGISTRY_HOSTS } from "./src/verify/proxy";
+
+const home = userInfo().homedir;
+export const config = {
+  ownerId: 89606989,
+  workspaceRoot: join(home, "orca/workspaces"),
+  stateRoot: join(home, ".software-factory"),
+  agents: {
+    spec: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
+    builder: { harness: "codex", model: "gpt-6.2-sol", effort: "high", timeoutMs: 900_000 },
+    reviewer: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
+  },
+  pilot: {
+    owner: "Scylla23",
+    repo: "factory-pilot",
+    repoId: 1463084565,
+    base: "main",
+    path: join(home, "orca/projects/factory-pilot"),
+    stack: "bun",
+    toolDirs: [join(home, ".bun/bin"), join(home, ".nvm/versions/node/v24.22.1/bin")],
+    commands: {
+      setup: [["bun", "install", "--frozen-lockfile", "--ignore-scripts"]],
+      egress: REGISTRY_HOSTS.npm,
+      preview: ["bun", "server.ts"],
+      readyPath: "/health",
+      portRange: [4100, 4199],
+      test: ["bun", "test"],
+      lint: ["bun", "run", "lint"],
+      typecheck: ["bun", "run", "typecheck"],
+    },
+    fixtures: {
+      inventory: {
+        issue: 4,
+        path: "/",
+        api: "/api/inventory",
+        rows: [
+          { name: "Bench vises", count: 4, before: "4", after: "4" },
+          { name: "Measuring tapes", count: 0, before: "Uncounted", after: "0" },
+          { name: "Tool chests", count: null, before: "Uncounted", after: "Uncounted" },
+        ],
+      },
+    },
+  },
+} as const;

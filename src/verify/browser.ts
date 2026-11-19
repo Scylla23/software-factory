@@ -121,6 +121,8 @@ export interface ProfileOptions {
   orcaPath: string;
   /** Orca worktree selector the tabs open in, such as `path:<worktree>`. */
   worktree: string;
+  /** Optional owner-visible prefix for identifying a crashed capture. */
+  attemptId?: string;
 }
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -151,7 +153,8 @@ async function listProfiles(orcaPath: string): Promise<{ id: string; label: stri
  */
 export async function withVerificationProfile<T>(opts: ProfileOptions, use: (browser: VerificationBrowser) => Promise<T>): Promise<T> {
   const { orcaPath } = opts;
-  const label = `factory-verify-${randomUUID()}`;
+  if (opts.attemptId && !/^[0-9a-f-]{36}$/.test(opts.attemptId)) throw new Error("invalid verification attempt id");
+  const label = `factory-verify-${opts.attemptId ? `${opts.attemptId}-` : ""}${randomUUID()}`;
   let profileId: string;
   try {
     const r = await orcaJson(orcaPath, ["tab", "profile", "create", "--label", label, "--scope", "isolated"]);

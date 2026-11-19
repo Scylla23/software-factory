@@ -1,9 +1,24 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, fstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DispatchConfig } from "../src/dispatch/config";
 
 export const FIXTURES = join(import.meta.dir, "fixtures");
+
+/** Identify regular-file descriptors even when a failed reservation has unlinked the file. */
+export function openFileDescriptors(): Set<string> {
+  const files = new Set<string>();
+  for (const fd of readdirSync("/dev/fd")) {
+    try {
+      const file = fstatSync(Number(fd), { bigint: true });
+      if (file.isFile()) files.add(`${fd}:${file.dev}:${file.ino}`);
+    } catch (error) {
+      // Reading /dev/fd may list the directory descriptor that readdirSync itself just closed.
+      if ((error as NodeJS.ErrnoException).code !== "EBADF") throw error;
+    }
+  }
+  return files;
+}
 
 /**
  * Where tests keep state that must be outside the temp roots: `test/.state`, or the run's own directory when the
@@ -32,8 +47,9 @@ case "$last" in
     wait ;;
   late:*)
     trap 'sleep 301 & echo $! > "$arg"; exit 0' TERM
-    sleep 300 &
-    wait ;;
+    echo $$ > "$arg.ready"
+    # A signal to the current sleep can return wait before the shell itself receives TERM.
+    while :; do sleep 300 & wait; done ;;
   detach:*)
     # A real detached child: setsid in a forked child, then fork again so it is reparented to launchd in a group
     # and session of its own, with its cwd still the worktree; the CLI exits once the pid is written.

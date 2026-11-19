@@ -13,8 +13,8 @@ export interface OrcaWorktree {
  * Orca answers `repo_not_found` for a path that is only a worktree of the repo.
  * `orcaPath` is the trusted executable from DispatchConfig.
  */
-export async function createWorktree(orcaPath: string, name: string, repoPath: string): Promise<OrcaWorktree> {
-  const result = await orcaJson(orcaPath, ["worktree", "create", "--repo", `path:${repoPath}`, "--name", name, "--no-parent", "--setup", "skip"]);
+export async function createWorktree(orcaPath: string, name: string, repoPath: string, base?: string): Promise<OrcaWorktree> {
+  const result = await orcaJson(orcaPath, ["worktree", "create", "--repo", `path:${repoPath}`, "--name", name, "--no-parent", "--setup", "skip", ...(base ? ["--base-branch", base] : [])]);
   const wt = isRecord(result.worktree) ? result.worktree : {};
   const id = str(wt.id);
   const path = str(wt.path);

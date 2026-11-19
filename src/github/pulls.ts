@@ -8,13 +8,15 @@ export interface PullRequest {
   baseSha: string;
   baseRef: string;
   draft: boolean;
+  state?: string;
 }
 
 function toPull(raw: unknown): PullRequest {
   if (!isRecord(raw) || typeof raw.number !== "number" || typeof raw.html_url !== "string" || !isRecord(raw.head) || typeof raw.head.sha !== "string" || !isRecord(raw.base) || typeof raw.base.sha !== "string" || typeof raw.base.ref !== "string") {
     throw new Error("GitHub returned an unexpected pull request shape");
   }
-  return { number: raw.number, htmlUrl: raw.html_url, headSha: raw.head.sha, baseSha: raw.base.sha, baseRef: raw.base.ref, draft: raw.draft === true };
+  return { number: raw.number, htmlUrl: raw.html_url, headSha: raw.head.sha, baseSha: raw.base.sha, baseRef: raw.base.ref,
+    draft: raw.draft === true, ...(typeof raw.state==="string" ? {state:raw.state} : {}) };
 }
 
 /** The open pull request from `head` (a branch of this repo) into `base`, or a new draft one; never a second. */
@@ -36,11 +38,19 @@ export interface IssueComment {
   body: string;
   /** The author's login, such as `software-factory-9f09[bot]`. */
   author: string;
+  authorId?: number;
+  nodeId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastEditedAt?: string | null;
 }
 
 function toComment(raw: unknown): IssueComment {
   if (!isRecord(raw) || typeof raw.id !== "number" || typeof raw.html_url !== "string") throw new Error("GitHub returned an unexpected comment shape");
-  return { id: raw.id, htmlUrl: raw.html_url, body: typeof raw.body === "string" ? raw.body : "", author: isRecord(raw.user) && typeof raw.user.login === "string" ? raw.user.login : "" };
+  const author = isRecord(raw.user) ? raw.user : {};
+  return { id: raw.id, htmlUrl: raw.html_url, body: typeof raw.body === "string" ? raw.body : "", author: typeof author.login === "string" ? author.login : "", ...(typeof raw.node_id === "string" ? { nodeId: raw.node_id } : {}),
+    ...(typeof raw.created_at === "string" ? { createdAt: raw.created_at } : {}),
+    ...(typeof raw.updated_at === "string" ? { updatedAt: raw.updated_at } : {}), ...(typeof author.id === "number" ? {authorId: author.id} : {}) };
 }
 
 const MAX_COMMENT_CHARS = 65_000;

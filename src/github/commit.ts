@@ -17,6 +17,8 @@ export interface CommitRequest {
    * An existing branch always gets the new commit on top of its head, never a force update.
    */
   startFrom: string | null;
+  /** When supplied, publish only on this exact parent, or only to a missing branch for null. */
+  expectedHead?: string | null;
 }
 
 export interface CommitResult {
@@ -59,6 +61,7 @@ export async function commitFiles(client: RepoClient, req: CommitRequest): Promi
   for (let attempt = 0; ; attempt++) {
     const head = await client.request<{ object: { sha: string } }>("GET", `${client.base}/git/ref/heads/${req.branch}`, undefined, { allow404: true });
     const parentSha = head ? shaOf(isRecord(head) ? head.object : null, "ref") : null;
+    if (req.expectedHead !== undefined && parentSha !== req.expectedHead) throw new Error("branch moved before publication");
     const parent = parentSha ?? req.startFrom;
     let baseTree: string | null = null;
     if (parent) {
@@ -81,7 +84,7 @@ export async function commitFiles(client: RepoClient, req: CommitRequest): Promi
       return { commitSha, parentSha };
     } catch (err) {
       // 422: the branch moved (not a fast-forward) or appeared since it was read; rebuild once on its new head.
-      if (attempt === 0 && err instanceof GitHubError && err.status === 422) continue;
+      if (req.expectedHead === undefined && attempt === 0 && err instanceof GitHubError && err.status === 422) continue;
       throw err;
     }
   }

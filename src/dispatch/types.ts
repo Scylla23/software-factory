@@ -24,6 +24,8 @@ export interface RunSpec {
   instructions: InstructionSource | null;
   /** Paths denied in addition to MANDATORY_DENY_READ, which always applies. */
   extraDenyRead?: readonly string[];
+  /** Also protect the reviewed source against writes from the harness. */
+  readOnlyWorktree?: boolean;
   /**
    * Opens a read-only Orca terminal titled `factory: <agent> <runId>` that tails the stdout log, closed when the run ends.
    * Best effort: its failures only add `monitor:` diagnostics.
