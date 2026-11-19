@@ -77,7 +77,7 @@ function totalsBy(db: Database, by: Dimension) {
 
 function signals(db: Database) {
   const escalations = db.query("SELECT task,visit,reason FROM transitions WHERE state='escalated' ORDER BY task,visit").all();
-  const retries = db.query(`WITH numbered AS (SELECT task,id AS attempt,visit,action,
+  const repeatedAttempts = db.query(`WITH numbered AS (SELECT task,id AS attempt,visit,action,
     row_number() OVER (PARTITION BY task,replace(action,'-after-login','') ORDER BY visit,rowid) AS ordinal FROM attempts)
     SELECT task,attempt,visit,action,ordinal FROM numbered WHERE ordinal>1 ORDER BY task,visit,action`).all();
   const feedback = hasCaptures(db) ? "UNION SELECT task,kind,id FROM owner_feedback" : "";
@@ -89,13 +89,13 @@ function signals(db: Database) {
     const anchor = r.kind === "inline" ? "discussion_r" : r.kind === "review" ? "pullrequestreview-" : "issuecomment-";
     return { task: r.task, kind: r.kind, id: r.id, url: pr + "#" + anchor + r.id };
   });
-  return { retries, escalations, ownerComments };
+  return { repeatedAttempts, escalations, ownerComments };
 }
 
 export function costReport(db: Database | null, by: Dimension) {
   const { groups, flags } = db ? totalsBy(db, by) : { groups: new Map(), flags: [] };
   return { by, costLabel: priceLabel, groups: Array.from(groups, ([key, totals]) => ({ [by]: key, ...totals })),
-    modelFlags: flags, signals: db ? signals(db) : { retries: [], escalations: [], ownerComments: [] } };
+    modelFlags: flags, signals: db ? signals(db) : { repeatedAttempts: [], escalations: [], ownerComments: [] } };
 }
 
 export function statusReport(db: Database | null) {
