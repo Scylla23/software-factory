@@ -132,28 +132,61 @@ describe("startPreview", () => {
     expect(await (await bounded(`${p.origin}/`)).text()).toBe("up");
   });
 
-  it("setup egress dies with the phase: a detached setup child that escaped the sweeps loses the proxy when setup ends", async () => {
+  it("setup egress dies with the phase: a detached setup child that escaped the sweeps finds only a factory-held port that refuses it, in later phases too", async () => {
     // The leaker moves to / at once, so no sweep finds it by its working directory (the documented blind spot), and
-    // keeps asking the proxy for a host outside the allowlist, logging the CONNECT status it gets.
-    const leak = `cd / || exit 1; echo $$ > "$HOME/leak.pid"; i=0; while [ $i -lt 150 ]; do
+    // keeps asking the proxy for a host outside the allowlist, logging the CONNECT status it gets. It writes the proxy's
+    // port (never the credential) so the test can check who holds it.
+    const leak = `cd / || exit 1; echo $$ > "$HOME/leak.pid"; echo "\${HTTPS_PROXY##*:}" > "$HOME/proxy.port"; i=0; while [ $i -lt 200 ]; do
   c=$(/usr/bin/curl -s -m 2 -o /dev/null -w '%{http_connect}' -p -x "$HTTPS_PROXY" http://denied.example:443/); echo "$c" >> "$HOME/leak.log"; i=$((i+1)); sleep 0.1; done`;
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up"), "leak.sh": leak }]);
     const setup = [["/bin/sh", "-c", `/usr/bin/perl -MPOSIX -e 'exit 0 if fork; POSIX::setsid(); exit 0 if fork; exec "/bin/sh", "leak.sh"'; sleep 1`]];
     const p = await start(spec(repo.path, repo.shas[0]!, { setup }));
-    const logPath = join(p.home, "leak.log");
-    const codes = () => (existsSync(logPath) ? readFileSync(logPath, "utf8").trim().split("\n") : []);
-    // A curl can also time out (000) while the factory's event loop is briefly busy, so judge a whole window after the
-    // phase ended: every attempt in it must fail, where a proxy still alive would answer 403 again.
-    const atPhaseEnd = codes().length;
-    await Bun.sleep(1_500);
     const pid = Number(readFileSync(join(p.home, "leak.pid"), "utf8"));
-    process.kill(pid, "SIGKILL");
-    const seen = codes();
-    const after = seen.slice(atPhaseEnd);
-    expect(seen[0]).toBe("403"); // during setup: the proxy answers, and refuses the host
-    expect(after.length).toBeGreaterThanOrEqual(3);
-    expect(after).toEqual(after.map(() => "000")); // after setup: nothing listens; the profile allows no other destination
-    expect(readFileSync(p.logs.find((l) => l.endsWith(".egress.log"))!, "utf8")).toContain("DENY denied.example:443 host not in the allowlist");
+    try {
+      const logPath = join(p.home, "leak.log");
+      const codes = () => (existsSync(logPath) ? readFileSync(logPath, "utf8").trim().split("\n") : []);
+      const atPhaseEnd = codes().length;
+      const port = Number(readFileSync(join(p.home, "proxy.port"), "utf8"));
+      expect(env.config.egress.ports).toContain(port);
+      expect(await gone(pid)).toBe(false); // the survivor outlived its phase
+      // An unrelated listener cannot take the port the survivor was granted.
+      let bind = "BOUND";
+      try {
+        Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } }).stop(true);
+      } catch (err) {
+        bind = String((err as NodeJS.ErrnoException).code);
+      }
+      expect(bind).toBe("EADDRINUSE");
+
+      // A later setup phase on the same port with its own credential works; the survivor's credential stays refused.
+      const next = makeRepo(env.repos, "next", [{ "server.ts": serverSource("next") }]);
+      const nextSetup = [["/bin/sh", "-c", `echo "\${HTTPS_PROXY##*:}" > "$HOME/proxy.port"; /usr/bin/curl -s -m 5 -o /dev/null -w '%{http_connect}' -p -x "$HTTPS_PROXY" http://denied.example:443/ > "$HOME/connect.code"; sleep 1.5`]];
+      const q = await start(spec(next.path, next.shas[0]!, { setup: nextSetup }));
+      expect(Number(readFileSync(join(q.home, "proxy.port"), "utf8"))).toBe(port);
+      expect(readFileSync(join(q.home, "connect.code"), "utf8")).toBe("403"); // its credential passed; the host is refused
+      const nextLog = readFileSync(q.logs.find((l) => l.endsWith(".egress.log"))!, "utf8");
+      expect(nextLog).toContain("DENY denied.example:443 missing or wrong phase credential"); // the survivor, during the new phase
+      await q.stop();
+
+      await Bun.sleep(500);
+      const seen = codes();
+      const after = seen.slice(atPhaseEnd);
+      expect(seen[0]).toBe("403"); // during setup: the proxy answers, and refuses the host
+      // After setup, every attempt is refused by the factory (407) or timed out while its event loop was busy (000);
+      // a credential still live would get 403 again.
+      expect(after.filter((c) => c === "407").length).toBeGreaterThanOrEqual(3);
+      expect(after.filter((c) => c !== "407" && c !== "000")).toEqual([]);
+      expect(readFileSync(p.logs.find((l) => l.endsWith(".egress.log"))!, "utf8")).toContain("DENY denied.example:443 host not in the allowlist");
+    } finally {
+      process.kill(pid, "SIGKILL");
+    }
+  }, 30_000);
+
+  it("a preview that listens beyond 127.0.0.1 is refused, even on its own port", async () => {
+    const wide = serverSource("wide").replace('hostname: "127.0.0.1"', 'hostname: "0.0.0.0"');
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": wide }]);
+    const e = await startError(spec(repo.path, repo.shas[0]!));
+    expect(e.message).toMatch(/is not served by the preview: the preview listens on \*:\d+, beyond 127\.0\.0\.1/);
   });
 
   it("the preview may call itself on its port, but no other loopback service and nothing outbound", async () => {
@@ -407,6 +440,25 @@ describe("listenerOwnership", () => {
       server.stop(true);
     }
     expect(listenerOwnership(env.config, port, { pid: process.pid, identity: null, exitedAt: () => null })).toMatchObject({ ok: false, reason: "nothing of this user listens on it" });
+  });
+
+  it("refuses the root's own listener on any address but 127.0.0.1", () => {
+    const me = { pid: process.pid, identity: null, exitedAt: () => null };
+    const wide = Bun.listen({ hostname: "0.0.0.0", port: 0, socket: { data() {} } });
+    try {
+      expect(listenerOwnership(env.config, wide.port, me)).toEqual({ ok: false, reason: `the preview listens on *:${wide.port}, beyond 127.0.0.1` });
+    } finally {
+      wide.stop(true);
+    }
+    // Loopback plus a second, wider listener on the same port is refused too.
+    const loop = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+    const v6 = Bun.listen({ hostname: "::1", port: loop.port, socket: { data() {} } });
+    try {
+      expect(listenerOwnership(env.config, loop.port, me)).toEqual({ ok: false, reason: `the preview listens on [::1]:${loop.port}, beyond 127.0.0.1` });
+    } finally {
+      v6.stop(true);
+      loop.stop(true);
+    }
   });
 });
 

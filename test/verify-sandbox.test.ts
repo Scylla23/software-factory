@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startEgressProxy } from "../src/verify/proxy";
+import { networkInterfaces } from "node:os";
 import { canonicalRoots, carveOut, type NetworkMode, projectEnv, type ProjectSandbox, sandboxArgv, sandboxProfile } from "../src/verify/sandbox";
-import { BUN_DIR } from "./verify-helpers";
+import { BUN_DIR, TEST_EGRESS } from "./verify-helpers";
 
 let dir: string;
 let writable: string;
@@ -145,6 +145,29 @@ async function runAsync(p: ProjectSandbox, script: string, env: Record<string, s
   return out;
 }
 
+/** The first non-internal IPv4 address of this Mac, if it has one: where a LAN peer would reach it. */
+const LAN = Object.values(networkInterfaces())
+  .flat()
+  .find((a) => a && a.family === "IPv4" && !a.internal)?.address;
+
+/** Tries, under `p`, a TCP listen and a UDP bind on each `host:port`; returns `tcp|udp host:port RESULT` lines. */
+function binds(p: ProjectSandbox, specs: readonly string[]): string[] {
+  writeFileSync(
+    join(writable, "binds.js"),
+    `for (const spec of ${JSON.stringify(specs)}) {
+  const i = spec.lastIndexOf(":"); const hostname = spec.slice(0, i).replace(/^\\[|\\]$/g, ""); const port = Number(spec.slice(i + 1));
+  try { Bun.listen({ hostname, port, socket: { data() {} } }).stop(true); console.log("tcp " + spec + " BOUND"); } catch (e) { console.log("tcp " + spec + " " + e.code); }
+  try { (await Bun.udpSocket({ hostname, port })).close(); console.log("udp " + spec + " BOUND"); } catch (e) { console.log("udp " + spec + " " + e.code); }
+}`,
+  );
+  return run(p, `${process.execPath} binds.js`).trim().split("\n");
+}
+
+/** Tries, under `p`, a TCP connect to `host:port`; returns CONNECTED or the error code (a denied connect shows as a refusal). */
+function connectTo(p: ProjectSandbox, host: string, port: number): string {
+  return run(p, `${process.execPath} -e 'try { (await Bun.connect({hostname:"${host}",port:${port},socket:{data(){}}})).end(); console.log("CONNECTED") } catch (e) { console.log(e.code) } process.exit(0)'`).trim();
+}
+
 describe("network", () => {
   const curl = (url: string, extra = "") => `/usr/bin/curl -sS -m 3 ${extra} -o /dev/null -w '%{http_code}' ${url} 2>/dev/null; echo`;
   const connect = (path: string) => `${process.execPath} -e 'try { await Bun.connect({unix:"${path}",socket:{data(){}}}); console.log("UNIX-OPEN") } catch { console.log("UNIX-DENIED") } process.exit(0)'`;
@@ -186,6 +209,39 @@ setTimeout(() => process.exit(0), 15000);`;
     }
   });
 
+  test("serve: listens only on its own port, over IPv4 TCP; no second port, no IPv6, no UDP, no ephemeral port", () => {
+    const port = 20_000 + Math.floor(Math.random() * 20_000);
+    const specs = [`127.0.0.1:${port}`, `[::]:${port}`, `[::1]:${port}`, `127.0.0.1:${port + 1}`, `0.0.0.0:${port + 1}`, "127.0.0.1:0"];
+    expect(binds(policy({ kind: "serve", port }), specs)).toEqual([
+      `tcp 127.0.0.1:${port} BOUND`,
+      `udp 127.0.0.1:${port} EPERM`,
+      ...specs.slice(1).flatMap((s) => [`tcp ${s} EPERM`, `udp ${s} EPERM`]),
+    ]);
+  });
+
+  test("serve and proxy connect over IPv4 only: a listener on [::1] at the granted port is out of reach", () => {
+    const port = 20_000 + Math.floor(Math.random() * 20_000);
+    const v4 = Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } });
+    const v6 = Bun.listen({ hostname: "::1", port, socket: { data() {} } });
+    try {
+      for (const kind of ["serve", "proxy"] as const) {
+        expect([kind, connectTo(policy({ kind, port }), "127.0.0.1", port)]).toEqual([kind, "CONNECTED"]);
+        expect([kind, connectTo(policy({ kind, port }), "::1", port)]).toEqual([kind, "ECONNREFUSED"]);
+      }
+    } finally {
+      v6.stop(true);
+      v4.stop(true);
+    }
+  });
+
+  test("proxy: setup can listen nowhere, so it can run no relay: not the proxy's port on any address, no other port, no UDP", () => {
+    const port = TEST_EGRESS.ports[0]!;
+    const addrs = ["127.0.0.1", "0.0.0.0", "[::]", "[::1]", ...(LAN ? [LAN] : [])];
+    const specs = [...addrs.map((a) => `${a}:${port}`), `127.0.0.1:${port + 1}`, "0.0.0.0:0"];
+    expect(LAN).toBeDefined(); // the LAN address is the case that matters most; a Mac without one would test less
+    expect(binds(policy({ kind: "proxy", port }), specs)).toEqual(specs.flatMap((s) => [`tcp ${s} EPERM`, `udp ${s} EPERM`]));
+  });
+
   test("none: cannot connect, not even to loopback", () => {
     const owner = ownerService();
     try {
@@ -199,7 +255,7 @@ setTimeout(() => process.exit(0), 15000);`;
     const owner = ownerService();
     const registry = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("registry") });
     const logFd = openSync(join(dir, "egress.log"), "wx", 0o600);
-    const proxy = startEgressProxy({ allow: ["registry.test"], logFd, upstream: async () => ({ address: "127.0.0.1", port: registry.port! }) });
+    const proxy = TEST_EGRESS.startPhase({ allow: ["registry.test"], logFd, upstream: async () => ({ address: "127.0.0.1", port: registry.port! }) });
     const sock = `/tmp/vsock-${process.pid}`;
     const listener = Bun.listen({ unix: sock, socket: { data() {} } });
     try {

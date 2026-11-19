@@ -26,14 +26,17 @@ describe("taskPort", () => {
 });
 
 describe("port probes", () => {
-  test("portIsFree and tcpListeners see a real listener and its pid", async () => {
+  test("portIsFree and tcpListeners see a real listener, its pid, and the address it listens on", async () => {
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
     const port = server.port!;
+    const wide = Bun.listen({ hostname: "0.0.0.0", port: 0, socket: { data() {} } });
     try {
       expect(await portIsFree(port)).toBe(false);
-      expect(tcpListeners("/usr/sbin/lsof", port)).toEqual([process.pid]);
+      expect(tcpListeners("/usr/sbin/lsof", port)).toEqual([{ pid: process.pid, address: `127.0.0.1:${port}` }]);
+      expect(tcpListeners("/usr/sbin/lsof", wide.port)).toEqual([{ pid: process.pid, address: `*:${wide.port}` }]);
     } finally {
       server.stop(true);
+      wide.stop(true);
     }
     expect(await portIsFree(port)).toBe(true);
     expect(tcpListeners("/usr/sbin/lsof", port)).toEqual([]);

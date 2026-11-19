@@ -41,7 +41,12 @@ const DEVICES = ["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/
 
 /**
  * none: no network. proxy: outbound only to the factory's egress proxy on that loopback port (setup). serve: bind and
- * accept on the preview's loopback port, and connect only to that same port, so an app can call itself (preview).
+ * accept on the preview's port, and connect only to that same port, so an app can call itself (preview).
+ *
+ * Every rule is IPv4 only: Seatbelt's `localhost` also matches `::1` and `[::]`, where any process could listen on
+ * the same port number. No mode may listen except serve on its own port, so no sandboxed process can run a relay.
+ * Seatbelt cannot tell 127.0.0.1 from other local addresses (its hosts are only `*` and `localhost`), so serve could
+ * still bind its port on 0.0.0.0 or a LAN address; the factory refuses such a preview from its listener check.
  */
 export type NetworkMode = { kind: "none" } | { kind: "proxy"; port: number } | { kind: "serve"; port: number };
 
@@ -171,14 +176,15 @@ function networkRules(n: NetworkMode): string[] {
       return [];
     case "proxy":
       assertPort(n.port);
-      // No DNS, no unix sockets, no other port: the proxy resolves names and decides which hosts are reachable.
-      return ["(allow system-socket)", `(allow network-outbound (remote ip "localhost:${n.port}"))`];
+      // No DNS, no unix sockets, no other port, no listening: the proxy resolves names and decides which hosts are
+      // reachable. The deny repeats the default so that no later allow can give setup a listener.
+      return ["(allow system-socket)", `(allow network-outbound (remote tcp4 "localhost:${n.port}"))`, "(deny network-bind network-inbound)"];
     case "serve":
       assertPort(n.port);
       return [
         "(allow system-socket)",
-        `(allow network-bind network-inbound (local ip "localhost:${n.port}"))`,
-        `(allow network-outbound (remote ip "localhost:${n.port}"))`,
+        `(allow network-bind network-inbound (local tcp4 "localhost:${n.port}"))`,
+        `(allow network-outbound (remote tcp4 "localhost:${n.port}"))`,
       ];
   }
 }

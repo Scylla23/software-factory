@@ -308,7 +308,7 @@ The owner decided four questions.
 
 Setup had outbound IP access, and a detached install helper that escaped the sweeps kept it after setup ended.
 Setup now runs under a profile that may connect only to a factory-run HTTP CONNECT proxy on loopback (`src/verify/proxy.ts`, Bun, no dependency).
-The proxy tunnels to the project's egress allowlist on 443 only, checks a fresh credential per phase, resolves names itself and dials only public addresses, logs every decision to the attempt's private log, and is stopped when setup ends, which revokes egress for every process the phase started.
+The proxy tunnels to the project's egress allowlist on 443 only, checks a fresh credential per phase, resolves names itself and dials only public addresses, and logs every decision to the attempt's private log.
 `Preview.run` accepts only `none` or `serve`, checked at run time too, so no command beside the live preview can get egress back.
 The preview profile may now connect to its own port, so an app can call itself; section 2's `LOOPBACK-SELF 000` no longer holds.
 
@@ -323,6 +323,53 @@ DENY example.com:443 host not in the allowlist
 DENY registry.npmjs.org:443 missing or wrong phase credential
 STOP allowed 2 denied 3
 ```
+
+### Blocker 3 follow-up: held proxy ports and no sandboxed listener
+
+The final check of 394f7aa found the revocation incomplete.
+The setup profile grants a port number, and the proxy released its port when setup ended, so a surviving install helper could reach whatever unrelated listener took that port later.
+The proxy is now a pool (`openEgressPool`): the factory binds 4 ports on `127.0.0.1` when it loads its config and holds them for its whole lifetime, never releasing one between phases.
+Each setup phase takes a free pooled port and a fresh credential; ending the phase closes its connections and revokes the credential, and the port stays bound.
+A survivor that tries again reaches the factory's port and gets `407`, with no phase live or with a later phase's different credential, and connections to a port are bounded whether or not a phase is live.
+
+Probes of what the grant reaches (a factory listener on `127.0.0.1:P`, an unrelated one on another address at the same port):
+
+```
+stranger binds 127.0.0.1:P, plain or SO_REUSEPORT     EADDRINUSE
+stranger binds 0.0.0.0:P, [::]:P, [::1]:P              bound
+grant (remote ip "localhost:P"), connect [::1]:P       reaches the stranger
+grant (remote ip "localhost:P"), connect LAN:P         reaches a stranger on 0.0.0.0:P
+grant (remote tcp4 "localhost:P"), connect [::1]:P     refused
+grant (remote tcp4 "localhost:P"), connect LAN:P       reaches a stranger on 0.0.0.0:P
+grant on another port or no network, connect LAN:P     refused
+```
+
+Seatbelt accepts only `*` and `localhost` as hosts (`127.0.0.1:P` is a profile error), and its `localhost` also matches `::1`, `[::]`, and the Mac's own LAN address.
+Every network rule is now IPv4 only (`tcp4`), which closes the IPv6 path.
+
+No sandboxed process can run a relay.
+Setup may listen nowhere: `(deny default)` already refused every bind, and its profile repeats the deny after the outbound rule, so no later allow can give setup a listener.
+The preview may bind only its own port, over IPv4 TCP, and connect only to that same port.
+Binds probed under each profile, P being the phase's port:
+
+```
+setup    tcp and udp on 127.0.0.1:P 0.0.0.0:P [::]:P [::1]:P LAN:P 127.0.0.1:P+1 0.0.0.0:0    EPERM, every one
+preview  tcp 127.0.0.1:P                                                                    bound
+preview  udp 127.0.0.1:P; tcp and udp on [::]:P [::1]:P 127.0.0.1:P+1 0.0.0.0:P+1 127.0.0.1:0    EPERM
+preview  tcp 0.0.0.0:P, tcp LAN:P                                                           bound, answers on the LAN address
+```
+
+Seatbelt cannot tell `127.0.0.1` from `0.0.0.0` or a LAN address, so the preview could still listen on its own port beyond loopback.
+The factory refuses that from its listener check: every listener on the port must be the preview's and listen on `127.0.0.1:P` only, at readiness and at every `serving()` check, and a preview that listens on `*:P` fails with `the preview listens on *:P, beyond 127.0.0.1`.
+From its bind to the next check, such a listener answers on the LAN address, and it can reach nothing but its own port.
+
+Two residuals are accepted.
+First, the LAN-address path: a setup survivor can connect to the Mac's LAN address at its granted port, where only a process listening on `0.0.0.0:P` or the LAN address would answer.
+No sandboxed process can listen there, so the precondition is an unsandboxed local process listening on a pooled port (or on a preview's port, which a setup grant never names) and relaying; a local accomplice outside every sandbox already defeats the whole model, and binding refuse-only sinks on every LAN address would put the factory on the network, prompt the firewall, and need re-checks as addresses change.
+Second, the pool lives as long as the factory process: if the factory exits while a survivor lives, the ports are released, and that attempt was already quarantined by the cleanup rule (a survivor is found or the attempt says it cannot be sure).
+Step 9's daemon will hold the pool for its lifetime.
+
+The proof, in tests and mutation-checked: a detached `setsid` setup child survives its phase, an unrelated listener binding its port gets `EADDRINUSE`, its requests through the port get `407` after the phase, and a new phase on the same port with a new credential gets through while the old credential stays refused (`verify-preview`, `verify-proxy`); every bind above, and the IPv6 connect, as `verify-sandbox` tests.
 
 ### Q51: reads closed by default
 

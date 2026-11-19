@@ -172,10 +172,11 @@ function releaseLease(path: string, body: string): void {
 
 const LSOF_TIMEOUT_MS = 10_000;
 
-/** Pids of this user's processes listening on TCP `port`, from `lsof` by absolute path with a fixed env, bounded. */
-export function tcpListeners(lsofPath: string, port: number): number[] {
+/** This user's listeners on TCP `port`, each a pid and the address it listens on as lsof prints it (`127.0.0.1:4100`,
+ * `*:4100`, `[::1]:4100`), from `lsof` by absolute path with a fixed env, bounded. */
+export function tcpListeners(lsofPath: string, port: number): { pid: number; address: string }[] {
   assertPort(port);
-  const r = Bun.spawnSync([lsofPath, "-w", "-n", "-P", "-a", "-u", String(process.getuid!()), `-iTCP:${port}`, "-sTCP:LISTEN", "-F", "p"], {
+  const r = Bun.spawnSync([lsofPath, "-w", "-n", "-P", "-a", "-u", String(process.getuid!()), `-iTCP:${port}`, "-sTCP:LISTEN", "-F", "pn"], {
     env: { LC_ALL: "C", PATH: "/usr/bin:/bin" },
     stdin: "ignore",
     stdout: "pipe",
@@ -186,7 +187,11 @@ export function tcpListeners(lsofPath: string, port: number): number[] {
   if (r.exitedDueToTimeout) throw new Error(`lsof gave no answer within ${LSOF_TIMEOUT_MS}ms`);
   // lsof exits 1 when nothing matches.
   if (r.exitCode !== 0 && !(r.exitCode === 1 && r.stdout.length === 0)) throw new Error(`lsof exited ${r.exitCode}: ${r.stderr.toString().trim().slice(0, 200)}`);
-  const pids = new Set<number>();
-  for (const line of r.stdout.toString().split("\n")) if (/^p\d+$/.test(line)) pids.add(Number(line.slice(1)));
-  return [...pids];
+  const found: { pid: number; address: string }[] = [];
+  let pid: number | null = null;
+  for (const line of r.stdout.toString().split("\n")) {
+    if (/^p\d+$/.test(line)) pid = Number(line.slice(1));
+    else if (line.startsWith("n") && pid !== null) found.push({ pid, address: line.slice(1) });
+  }
+  return found;
 }

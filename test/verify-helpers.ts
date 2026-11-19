@@ -5,9 +5,13 @@ import { dirname, join } from "node:path";
 import { tempRoots } from "../src/dispatch/config";
 import { STATE_DIR } from "./helpers";
 import type { VerifyConfig } from "../src/verify/preview";
+import { openEgressPool } from "../src/verify/proxy";
 
 /** Directory of the running Bun, so sandboxed project commands can run `bun` from a verified tool PATH. */
 export const BUN_DIR = dirname(realpathSync(process.execPath));
+
+/** One egress pool for the whole test process, as the factory holds one for its lifetime. */
+export const TEST_EGRESS = openEgressPool();
 
 export interface VerifyEnv {
   /** Account home in the config: deny entries point here; holds a planted `.ssh/id_test`. */
@@ -40,6 +44,7 @@ export function makeVerifyEnv(): VerifyEnv {
     toolPath: `${BUN_DIR}:/usr/bin:/bin`,
     toolRoots: [BUN_DIR],
     untrustedRoots: tempRoots(),
+    egress: TEST_EGRESS,
   };
   return {
     home,

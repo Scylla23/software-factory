@@ -166,8 +166,10 @@ Clarifying questions may also be asked and answered in the source channel.
   They read only the worktree, a private home, the project's own git dirs, declared toolchain roots, and fixed system dirs, with the dispatch deny-list applied again on top.
   They write only the worktree and the private home, never the git dirs, and reach no keychain and no unix socket.
 - Network follows the phase.
-  Setup connects only to a factory-run egress proxy that tunnels to the project's allowlisted registry hosts on 443, checks a per-phase credential, dials only public addresses, and is stopped when setup ends, which revokes egress for every process the phase started.
-  The preview may bind and connect to its own loopback port only.
+  Setup connects only to a factory-run egress proxy that tunnels to the project's allowlisted registry hosts on 443, checks a per-phase credential, and dials only public addresses.
+  The proxy's ports are bound once and held for the factory's lifetime; ending a phase revokes its credential, so every process the phase started, found or not, reaches only the factory and is refused.
+  Setup may listen on nothing, and the preview may listen only on its own port, so no sandboxed process can relay; the factory also refuses a preview that listens anywhere but `127.0.0.1`.
+  The preview may connect to its own port only, and every network rule is IPv4 only.
   A command beside the live preview gets that port or no network, never egress.
 - Previews, their private homes, port leases, logs, and evidence live under the state root, in a per-attempt directory created exclusively, outside every agent-writable root; cleanup removes only what the attempt created.
 - Isolation is proven with a harmless credential canary before it is trusted.
@@ -255,5 +257,8 @@ Signals for later improvement are recorded from day one: owner review comments, 
 - Each GitHub operation mints its own installation token, limited to the named repository and the permissions it needs, and refuses a token GitHub granted less than asked.
   A token is refreshed 5 minutes before it expires, and an expired one is never used; the App does not request `issues: write`.
 - Verification evidence never leaves the factory host; the PR gets redacted text only.
+- Accepted residual: a surviving setup process can connect to the Mac's LAN address at its proxy port, which Seatbelt cannot tell from loopback (spike 02, blocker 3 follow-up).
+  Only an unsandboxed local process listening on that port could answer and relay, and a local accomplice outside every sandbox already defeats the model.
+  The proxy ports are released only when the factory process exits, and an attempt that leaves a survivor is quarantined.
 - Known gap: the verification browser's network is not restricted (spike 02, Q52).
   A preview page can request any host while it is captured; the profile holds no credentials and no GitHub session, and the records list every other origin the page requested.

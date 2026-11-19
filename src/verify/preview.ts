@@ -13,7 +13,7 @@ import { effectiveDenyRead } from "../dispatch/policy";
 import { type AgentProcess, assessCleanup, type ProcIdentity, snapshot, spawnAgentProcess, type Supervised, superviseRun, type SweepResult, sweepWorktree, type TerminationReport, Tracker } from "../dispatch/process";
 import { type Materialized, materializeCommit, removeMaterialized } from "./materialize";
 import { leasePort, type PortLease, type PortRange, portIsFree, tcpListeners } from "./port";
-import { assertEgressHosts, type EgressProxy, startEgressProxy } from "./proxy";
+import { assertEgressHosts, type EgressPool, type EgressProxy, openEgressPool } from "./proxy";
 import { canonicalRoots, carveOut, type NetworkMode, type ProjectSandbox, projectEnv, sandboxArgv, SYSTEM_READ } from "./sandbox";
 
 /** What verification trusts, resolved once from factory-controlled sources like DispatchConfig. */
@@ -28,6 +28,8 @@ export interface VerifyConfig {
   toolRoots: readonly string[];
   /** Roots agents can write; a project checkout under any of them is refused. */
   untrustedRoots: readonly string[];
+  /** The setup phases' egress proxy ports, bound once and held for the factory's lifetime. */
+  egress: EgressPool;
 }
 
 export function loadVerifyConfig(dispatch: DispatchConfig, opts: { toolDirs: readonly string[]; toolRoots: readonly string[]; agentWriteRoots: readonly string[] }): VerifyConfig {
@@ -47,6 +49,7 @@ export function loadVerifyConfig(dispatch: DispatchConfig, opts: { toolDirs: rea
     toolPath: trustedAgentPath(opts.toolDirs, untrustedRoots),
     toolRoots,
     untrustedRoots,
+    egress: openEgressPool(),
   };
 }
 
@@ -451,14 +454,15 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       return runCommand(argv, { name: opts.name, timeoutMs: opts.timeoutMs, network: opts.network === "serve" ? { kind: "serve", port: port! } : { kind: "none" } });
     };
 
-    // The setup phase: egress only through a proxy that lives exactly as long as the phase. Stopping it revokes the
-    // network of every process the phase started, including any the sweeps did not find.
+    // The setup phase: egress only through a factory-held proxy port with a credential that lives exactly as long as
+    // the phase. Ending the phase revokes the network of every process it started, including any the sweeps did not
+    // find; the port stays held, so a survivor reaches only the factory and is refused.
     if (spec.project.setup.length > 0) {
       const egressLog = openLog(config, spec.logDir, `${spec.id}.egress.log`);
       logs.push(egressLog.path);
       let proxy: EgressProxy | null = null;
       try {
-        proxy = startEgressProxy({ allow: spec.project.egress, logFd: egressLog.fd });
+        proxy = config.egress.startPhase({ allow: spec.project.egress, logFd: egressLog.fd });
         for (const [i, argv] of spec.project.setup.entries()) {
           const r = await runCommand(argv, { network: { kind: "proxy", port: proxy.port }, proxy: proxy.url, name: `setup-${i}`, timeoutMs: spec.setupTimeoutMs });
           if (r.stopped || r.exitCode !== 0 || r.quarantineReasons.length > 0) {
@@ -543,20 +547,27 @@ export async function waitReady(url: string, timeoutMs: number, exited: Promise<
   return { ok: false, reason: `no 200 from ${url} within ${timeoutMs}ms (last probe: ${last})` };
 }
 
-/** Every listener on the port must be the preview's root or one of its descendants, and there must be one. */
+/**
+ * Every listener on the port must be the preview's root or one of its descendants, there must be one, and each must
+ * listen on 127.0.0.1 only. The sandbox limits the preview to its port but cannot tell 127.0.0.1 from 0.0.0.0 or a LAN
+ * address, so a preview that listens beyond loopback is refused here, at readiness and at every `serving()` check.
+ */
 export function listenerOwnership(config: Pick<VerifyConfig, "executables">, port: number, root: Pick<AgentProcess, "pid" | "identity" | "exitedAt">): Readiness & { pids?: number[] } {
-  let pids: number[];
+  let listeners: { pid: number; address: string }[];
   let snap;
   try {
-    pids = tcpListeners(config.executables.lsof, port);
+    listeners = tcpListeners(config.executables.lsof, port);
     snap = snapshot(config.executables.ps);
   } catch (err) {
     return { ok: false, reason: `cannot list listeners: ${(err as Error).message}` };
   }
-  if (pids.length === 0) return { ok: false, reason: "nothing of this user listens on it" };
+  if (listeners.length === 0) return { ok: false, reason: "nothing of this user listens on it" };
   const tracker = new Tracker(root);
   tracker.expand(snap);
+  const pids = [...new Set(listeners.map((l) => l.pid))];
   const strangers = pids.filter((p) => !tracker.tracked.has(p));
   if (strangers.length > 0) return { ok: false, reason: `listener pids ${strangers.join(", ")} are outside the preview's process tree` };
+  const beyond = [...new Set(listeners.map((l) => l.address).filter((a) => a !== `127.0.0.1:${port}`))];
+  if (beyond.length > 0) return { ok: false, reason: `the preview listens on ${beyond.join(", ")}, beyond 127.0.0.1` };
   return { ok: true, pids };
 }
