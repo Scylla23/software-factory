@@ -5,7 +5,7 @@
   "description": "Written by the verifier in mode judge. Each row is one row of the pull request's acceptance evidence table. Before publishing, the factory joins every row and proof entry to the approved spec, the plan, and the evidence index, and rejects a result that fails any join. It renders rows into the PR after redaction, so no field may hold raw page text, command output, or a secret.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "specSetSha256", "attemptId", "planSha256", "overall", "rows", "ownerChecklist", "untrustedTextFlagged", "notes"],
+  "required": ["schemaVersion", "taskId", "round", "baseSha", "headSha", "specSetSha256", "attemptId", "captureAttemptId", "planSha256", "overall", "rows", "ownerChecklist", "untrustedTextFlagged", "notes"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
@@ -13,7 +13,8 @@
     "baseSha": { "$ref": "#/$defs/sha" },
     "headSha": { "$ref": "#/$defs/sha" },
     "specSetSha256": { "description": "specSet.sha256 from the run brief, which must equal the plan's.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "attemptId": { "description": "Copied from the evidence index.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "attemptId": { "description": "Fresh judge dispatch ID copied from the run brief.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "captureAttemptId": { "description": "Immutable capture ID from the brief, equal to attemptId in the staged evidence index.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
     "planSha256": { "description": "SHA-256 of plan.json, which must equal the evidence index's.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "overall": {
       "description": "fail: at least one row failed. blocked: no row failed and at least one is blocked. manual-pending: every row passed or awaits the owner, and at least one awaits the owner. pass: every row passed.",

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-swatch",
+  "round": 1,
+  "baseSha": "0000000000000000000000000000000000000000",
+  "headSha": "1111111111111111111111111111111111111111",
+  "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "attemptId": "68b72d13-b426-4956-a790-548c5f36d616",
+  "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "overall": "pass",
+  "rows": [
+    {
+      "acId": "AC-1",
+      "tag": "browser",
+      "method": "capture",
+      "fixture": "the green swatch.",
+      "action": "open the new `/swatch` route.",
+      "expected": "the entire viewport is green.",
+      "observed": "Both captures show green across the entire viewport.",
+      "proof": [
+        {
+          "kind": "screenshot",
+          "planId": "c1",
+          "ref": "swatch-head-desktop",
+          "side": "head",
+          "viewport": "desktop",
+          "sha256": "1bfea8b7b0d80723130f683536ef75509460fb26e791acf38650b0fea6fc727d"
+        },
+        {
+          "kind": "screenshot",
+          "planId": "c1",
+          "ref": "swatch-head-mobile",
+          "side": "head",
+          "viewport": "mobile",
+          "sha256": "bbe1e056bc1a9bf623aa8ff01f5e5a2b2bfc0d9022450b03749aed801b4666b2"
+        }
+      ],
+      "commit": "1111111111111111111111111111111111111111",
+      "verdict": "pass",
+      "rubric": []
+    }
+  ],
+  "ownerChecklist": [],
+  "untrustedTextFlagged": false,
+  "notes": "",
+  "captureAttemptId": "0b9f4c1e-6a57-4d0e-9c53-2f7a1d8e4b60"
+}

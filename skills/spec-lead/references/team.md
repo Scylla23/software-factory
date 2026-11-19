@@ -14,9 +14,10 @@ You are the only agent the factory dispatched, and you own the result.
 | `frontend` | New project, or confirmed tier L, after the architect. |
 | `threat-modeler` | New project, confirmed tier L, or the `security` flag at any tier. |
 
-A triggered member always runs.
-When a task has nothing to host or no user interface, `infra` or `frontend` still runs and writes a short decision file that says so; that judgment is the specialist's, and the factory checks from the harness's own records that every triggered member ran.
-`spec-lead.json` `team` has one entry per triggered member, with status `ran` or `failed`.
+Run every triggered member on its first decision, including infra or frontend when the specialist's decision is that there is nothing to host or display.
+On a revision run newly triggered members and those whose decisions need to change.
+Record a fresh session as `ran` or `failed` and an unaffected decision staged with its authenticated provenance as `inherited`.
+When a phase inherits a file, later members receive its read-only path in `taskDir`.
 
 ## What a member knows
 

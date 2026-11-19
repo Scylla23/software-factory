@@ -19,7 +19,7 @@ Nothing here has been run yet.
 | `expect` | Properties the output must have. Output paths are relative to the run's `outDir`. |
 | `pass` | The rule that turns the checks into pass or fail. |
 | `variants` | Optional: the inputs the case is tried against. Each variant has its own `id`, `input`, and `expect`, and may have `answerKey` and `pass`; the case then has no `input` of its own, and its `expect`, when present, applies to every variant as well. Each variant is run and judged as a case: three runs, all passing. |
-| `controls` | Optional: canned responses the case must fail, listed below. |
+| `controls` | Optional canned responses graded against this case or variant; each named check must exist and fail in every variant to which the control applies. |
 
 ## How a case is judged
 

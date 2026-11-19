@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-swatch",
+  "attemptId": "0b9f4c1e-6a57-4d0e-9c53-2f7a1d8e4b60",
+  "baseSha": "0000000000000000000000000000000000000000",
+  "headSha": "1111111111111111111111111111111111111111",
+  "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "textRedacted": true,
+  "testRuns": [],
+  "captures": [
+    {
+      "planId": "c1",
+      "side": "head",
+      "acId": "AC-1",
+      "name": "swatch-head-desktop",
+      "commitSha": "1111111111111111111111111111111111111111",
+      "url": "http://localhost/swatch",
+      "origin": "http://localhost",
+      "browserEgress": "unrestricted",
+      "externalOrigins": [],
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900
+      },
+      "screenshotFile": "swatch-head-desktop.png",
+      "screenshotSha256": "1bfea8b7b0d80723130f683536ef75509460fb26e791acf38650b0fea6fc727d",
+      "consoleErrors": [],
+      "networkFailures": [],
+      "pageText": "[withheld]",
+      "truncated": {
+        "console": false,
+        "network": false,
+        "pageText": true
+      },
+      "stabilized": null,
+      "capturedAt": "2026-11-19T00:00:00Z"
+    },
+    {
+      "planId": "c1",
+      "side": "head",
+      "acId": "AC-1",
+      "name": "swatch-head-mobile",
+      "commitSha": "1111111111111111111111111111111111111111",
+      "url": "http://localhost/swatch",
+      "origin": "http://localhost",
+      "browserEgress": "unrestricted",
+      "externalOrigins": [],
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "screenshotFile": "swatch-head-mobile.png",
+      "screenshotSha256": "bbe1e056bc1a9bf623aa8ff01f5e5a2b2bfc0d9022450b03749aed801b4666b2",
+      "consoleErrors": [],
+      "networkFailures": [],
+      "pageText": "[withheld]",
+      "truncated": {
+        "console": false,
+        "network": false,
+        "pageText": true
+      },
+      "stabilized": null,
+      "capturedAt": "2026-11-19T00:00:00Z"
+    }
+  ],
+  "notExecuted": []
+}

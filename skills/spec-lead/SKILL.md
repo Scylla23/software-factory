@@ -60,7 +60,8 @@ Review, the owner's approval, and everything built afterwards are bound to the h
   A new project is L.
 
 The confirmed tier goes in the header line and in `spec-lead.json`.
-A promotion takes effect in this run: if you confirm L and the team has not run, run it now.
+If a confirmed tier or flag requires a fresh specialist and `teamEnabled` is false, write no spec outputs and end with `BLOCKED: team required`, followed by the confirmed tier, flags and members.
+Resume drafting only on a fresh dispatch that can start the required team.
 Flags you confirm (`security`, `migration`, `newProject`) are what trigger the threat modeler and the auditors later, so set a flag whenever the plan touches its subject, whatever triage said.
 
 ## The team
@@ -73,10 +74,10 @@ The order is fixed, and it has a reason:
 
 1. `architect` first, alone, because every other decision depends on the system's shape.
 2. `infra` and `frontend` next, in parallel, each reading `architecture.md`.
-   Both always run when the team runs.
+   Both run for a first decision, with the revision rules below for later rounds.
    A task with nothing to host, or with no user interface, still gets that member's decision file, which says so in a few lines; you do not decide on a specialist's behalf that it has no subject.
 3. `threat-modeler` last, because it needs the whole design and your draft criteria to model.
-   It runs whenever the team runs, and alone for the `security` flag at tier S or M.
+   It runs for a fresh threat model, alone for the `security` flag at tier S or M.
 
 Do not write a specialist's decision yourself, and do not rewrite one after the fact.
 Whether the team beats a single spec lead is measured on the pilot, and a decision you quietly wrote corrupts that measurement.
@@ -168,6 +169,9 @@ Owner feedback outranks a reviewer's finding where they conflict, since the owne
 A finding located in a decision file is fixed by the specialist who wrote it.
 Start that member again with the finding in your message; you still may not edit the file yourself.
 Then carry the consequence into the spec.
+For an unaffected decision listed in `previous.decisions`, record `status: "inherited"` with its file, original round, author session and digest from the brief.
+Read the staged file in `taskDir` and leave it out of your outputs.
+Run the appropriate member for any new or affected decision.
 
 Change only what the feedback and its consequences require; a revision that rewrites untouched sections invites new findings and loses requirements.
 Before finishing, diff each file you wrote against its previous version in `taskDir` and check that every requirement that was there is still there or is deliberately removed and recorded.
@@ -178,7 +182,7 @@ The reviewers read those same diffs, for every file of the set.
 - Every outcome the Task asks for maps to a criterion.
   One you propose to leave out is a blocking open question for the owner, never a quiet non-goal.
 - Every criterion has all four fields and one tag, and its expected result is observable.
-- Every cited path exists at `baseSha`.
+- Each reused path exists at `baseSha` and each proposed creation target is identified in the plan.
 - Every catalog pick is an entry id from a catalog, and every gap is under Open questions.
 - The header tier matches `spec-lead.json`, and the builder and reviewer names come from `routing`.
 - The plan covers every criterion.

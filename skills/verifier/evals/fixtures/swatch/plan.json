@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-swatch",
+  "round": 1,
+  "baseSha": "0000000000000000000000000000000000000000",
+  "headSha": "1111111111111111111111111111111111111111",
+  "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "criteria": [
+    {
+      "acId": "AC-1",
+      "tag": "browser",
+      "method": "capture",
+      "captures": [
+        {
+          "id": "c1",
+          "name": "swatch",
+          "route": "/swatch",
+          "fixture": "green",
+          "viewports": [
+            "desktop",
+            "mobile"
+          ],
+          "sides": [
+            "head"
+          ],
+          "expect": {
+            "headText": [],
+            "headTextAbsent": [],
+            "headTextInOrder": [],
+            "differsFromBase": null,
+            "allowedConsoleErrors": [],
+            "visible": "The entire viewport is green."
+          }
+        }
+      ]
+    }
+  ]
+}

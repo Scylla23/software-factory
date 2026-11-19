@@ -164,6 +164,7 @@
             {"id": "schema", "kind": "deterministic", "check": "verdicts/spec-reviewer.json validates against _shared/verdict.schema.json"},
             {"id": "verdict", "kind": "deterministic", "check": "verdict == \"approve\" && no finding has blocking == true"},
             {"id": "not-missing", "kind": "deterministic", "check": "checks.grounding.missingPaths is empty and no finding has category \"grounding\""},
+            {"id": "accepted", "kind": "deterministic", "check": "the collector accepts the authenticated approve verdict against the staged spec and base checkout with the creation target absent"},
             {"id": "new-path", "kind": "deterministic", "check": "checks.grounding.newPaths contains \"src/api/task-by-id.test.ts\""},
             {"id": "tier", "kind": "deterministic", "check": "checks.tier.specTier == \"M\" && checks.tier.assessedTier == \"M\""},
             {"id": "restraint", "kind": "deterministic", "check": "findings has at most 3 entries"}

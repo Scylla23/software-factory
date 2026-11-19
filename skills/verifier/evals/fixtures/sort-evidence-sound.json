@@ -59,7 +59,7 @@
           "status": "pass"
         }
       ],
-      "logTail": " 8 pass\n 0 fail\n"
+      "logTail": "[withheld]"
     },
     {
       "side": "base-with-head-tests",

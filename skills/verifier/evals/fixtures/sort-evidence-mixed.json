@@ -74,5 +74,5 @@
     }
   ],
   "captures": [],
-  "notExecuted": []
+  "notExecuted": [{"planId": "t3", "side": "head", "reason": "No result for the planned test in the runner report."}]
 }

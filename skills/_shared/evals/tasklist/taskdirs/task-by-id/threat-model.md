@@ -1,5 +1,8 @@
 # Threat model: read and update one task by id
 
+Task: eval-tasklist-task-by-id
+Author: threat-modeler
+
 ## Decision
 
 The change adds two routes that address a task by its id, so the main risk is one signed-in user reaching another user's task.

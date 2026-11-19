@@ -61,7 +61,7 @@ A documented fact that the factory's safety rests on is tested as well, since do
 | 5 | Claude: a subagent receives only its own system prompt and basic environment details, not the main session's system prompt. | Claude Code subagent docs | D3 |
 | 6a | Claude: a session whose tool list has no `Agent` tool cannot start a subagent. The factory's list for every role but the spec lead (`Bash,Read,Edit,Write,Glob,Grep`) has none. | Claude Code subagent docs, `src/dispatch/claude.ts` | A1 |
 | 6b | Claude: a session started with `--agent <name>` runs that definition as the main thread, and `Agent(<a>, <b>)` in its `tools` is an allowlist of the subagent types it can start, applied when the session is built. | Claude Code subagent docs. Unverified for a definition supplied through `--agents` JSON. | A2 |
-| 6c | Claude: a subagent cannot start a subagent, and `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` states that limit explicitly. A definition whose `tools` omits `Agent` has no way to try. | Claude Code subagent docs. Unverified. | A3 |
+| 6c | Claude: the configured member tool list without `Agent` and `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` prevent a grandchild start. | Claude Code subagent docs. Unverified. | A3 |
 | 7 | Claude: project subagents are discovered from `.claude/agents/` between the working directory and the repository root. Whether `--restricted` stops that is unverified. | Claude Code subagent docs | S5 |
 | 8 | Codex: skill discovery reads `.agents/skills` from the working directory up to the repository root, `$HOME/.agents/skills`, `/etc/codex/skills`, and the bundled skills. `$HOME` is the account home, not `CODEX_HOME`. | Codex skills docs, spike 01 | S1 to S3 |
 | 9 | Codex: there is no flag for an extra skills directory, and skills can only be disabled one by one (`[[skills.config]]`), not allowlisted. | Codex config reference | None; it is why option C is rejected. |
@@ -210,13 +210,15 @@ The mechanism differs by harness, and where a harness cannot enforce the rule be
 | Run | Claude Code | Codex |
 |---|---|---|
 | Any role but the spec lead | The tool list has no `Agent` tool (fact 6a). | `-c agents.enabled=false` (fact 15). |
-| Spec lead | Runs as `--agent spec-lead`, whose definition lists `Agent(architect, infra, frontend, threat-modeler)` in `tools` (fact 6b). | Refused when the task needs the team, because no type allowlist exists (fact 16). A spec lead with no team to run is dispatched with `agents.enabled=false`. |
+| Team-disabled lead | Lead instructions with no `Agent` tool. | `agents.enabled=false`. |
+| Team-enabled lead | After A1-A3 pass, runs as `--agent spec-lead`, whose definition lists `Agent(architect, infra, frontend, threat-modeler)` in `tools` (fact 6b). | Refused pending a proven type allowlist (fact 16). |
 | A team member | Its definition's `tools` has no `Agent`, and `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` is set (fact 6c). | Not applicable while the lead with a team is refused. |
 
 Fail closed means:
 
 - If test A1 fails for a harness, that harness is not dispatched for any role until it passes.
-- If test A2 or A3 fails, a spec lead whose task needs the team is not dispatched on Claude Code either, and the task escalates to the owner at the spec stage.
+- Without passing A2 and A3, Claude launches a lead only with `Agent` removed and only when a fresh specialist is not yet required.
+- Apply the section 4 handoff before accepting any spec whose confirmed triggers exceed its dispatch capabilities.
 - A Codex spec lead with a team stays refused until step 4b finds a control that acts before a child starts and adds a passing test A4 for it.
   The design routes the spec lead to a Claude model, so v1 does not depend on that.
 
@@ -225,7 +227,7 @@ Neither is the control.
 
 ### Claude Code
 
-Main agent, every role but the spec lead:
+Main agent, including a team-disabled lead with its lead skill and no `Agent` tool:
 
 ```text
 claude -p ... --restricted --disable-slash-commands --strict-mcp-config   (unchanged)
@@ -240,7 +242,7 @@ It would also load `.claude/skills`, `.claude/commands`, and `.claude/agents` fr
 The bundle cannot contain a dot-directory, `task/` is staged by the factory from validated files only, and `out/` and `scratch/` start empty; test S4 covers an agent that writes one there mid-run.
 For a role other than the builder the working directory is `snapshot/`, which is read-only; if the harness cannot start there, it starts in `scratch/` and the brief's absolute paths are unchanged.
 
-Spec lead:
+Team-enabled spec lead:
 
 ```text
   --agents <attempt>/agents/claude.json
@@ -276,8 +278,8 @@ Spec lead:
 - Each member's prompt carries the whole instruction text, because a Claude subagent sees nothing of the main session's system prompt (fact 5).
 - Each member's prompt also carries its child run brief (factory contract, section 4): the task id, its role, the same directories as the lead's, the files it reads, and the one file in `out/` it may write.
   The lead cannot read or change it; `agents/` is read-denied to the lead's tools.
-- All four member definitions are generated for every spec lead run, because the lead confirms the tier inside the run and a promotion to L needs the whole team at once.
-  Which members were supposed to run, and whether they did, is verified afterwards from the harness's records (step 7).
+- Only a proven team-enabled launch receives the member definitions and the restricted spawn tool.
+  Step 7 verifies fresh and inherited decisions against the confirmed triggers and archived provenance.
 - The members get no Bash and no Agent tool: a specialist reads, decides, and writes one file.
   Claude Code has no per-subagent sandbox, so the member's write is limited to `out/` and `scratch/` by the session's policy, and to its one file by the factory's check of which session wrote which file.
 
@@ -349,15 +351,24 @@ They are end-to-end runs against the real harnesses with throwaway probe skills,
 - **Three markers per canary.**
   Every canary definition has a unique listing name (`fc-<source>-<random>`), a unique phrase in its description, and a unique codeword in its body.
   A harness that lists a definition without loading it shows the name or the description; a harness that loads it shows the body.
-  All three must be absent.
-- **Where absence is checked.**
-  In the final answer, in the full event stream or session rollout of the main session, and in the transcript of every child session, which includes system prompts, tool listings, and tool results.
+  Score discovery, loading and execution independently.
+- **Discovery.**
+  Inspect harness-generated skill and agent listings in main and child sessions for the name and description.
+- **Loaded instructions.**
+  Inspect effective instructions and automatic skill-load events for the body marker.
+  Require observable listing and load surfaces in the positive arm before making an absence claim.
+- **Actual starts.**
+  Inspect authoritative parent-child session records and the child instruction body.
+  A requested or denied call is distinct from a child start.
+  Probe prompts, setup writes, echoed tool arguments, refusals and ordinary reads may legitimately contain markers and are excluded from discovery and load assertions.
 - **Observed tool reads.**
-  A claim that an agent read a file is established from a tool call in the transcript whose path is the file and whose result holds the codeword, never from the agent saying the word.
+  Match the read call, path and returned codeword when a test specifically requires an explicit read.
 - **Source-specific positive controls.**
-  For every canary there is a control run that lifts the one suppression that hides that source, changes nothing else, and must show that canary's listing name in the place the harness lists such things.
-  A control that does not show its canary makes the matching absence assertion unproven, and the test fails; it does not pass by default.
-  If no configuration of a harness loads a source at all, the test records the source as not loadable, with the control's transcript as evidence, instead of a pass.
+  For each harness, directory, definition type and planting time under test, require the same source to be discovered, loaded or started in the corresponding enabled arm for each claimed observation.
+  Permit the canary type and explicitly request a load or start when testing that observation.
+  A control from another directory or a later session cannot prove same-session discovery.
+  If the source cannot be observed under the enabled configuration, report that specific claim as unverified.
+
 - **One fact per test.**
   A test fails for one reason.
 
@@ -375,21 +386,25 @@ They are end-to-end runs against the real harnesses with throwaway probe skills,
 ### Discovery sources
 
 One test per source.
-Each plants a canary with the three markers, asserts all three absent under the factory's flags, and runs the control named in the last column.
+Each plants a marked definition and scores the corresponding discovery, load and child-start observations against its own enabled control.
 
 | Test | Source | Harness | Control: the same run, except |
 |---|---|---|---|
 | S1 | User skills: `$CLAUDE_CONFIG_DIR/skills`, `$HOME/.claude/skills`, `$HOME/.agents/skills` | Both | Listings on, and the canary placed in the home the harness is pointed at. Claude: without `--disable-slash-commands`, the name is in `system/init` `skills`. Codex: without the two `skills.*` overrides, the name is in the rollout's skill listing. |
 | S2 | Worktree skills: `.claude/skills`, `.agents/skills`, committed in the test repository | Both | Listings on as in S1; Claude also without `--restricted`. |
-| S3 | Bundled and system skills | Both | Listings on; a known built-in name is listed. |
-| S4 | `.claude/skills` and `.claude/agents` inside each `--add-dir` directory, both planted before launch in `task/` and written by the agent mid-run in `out/` and `scratch/` | Claude | Listings on and without `--restricted`; the name planted before launch is listed. |
-| S5 | Worktree agents: `.claude/agents/<name>.md` (fact 7) | Claude | Without `--restricted`: the name is in `system/init` `agents`, and an Agent call naming it starts it. Under the factory's flags the same call is refused before a child starts, and no child transcript exists. |
+| S3 | Bundled and system skills | Both | With listings enabled, observe a known bundled name for that bundle and separately observe the canary from the exact disposable system source under test. |
+| S4 | Skills, commands and agent definitions in each Claude `--add-dir` location | Claude | Enable the same directory source and permit the probe type for an explicit load or start. |
+| S5 | Worktree agents under `.claude/agents/` (fact 7) | Claude | Lift `--restricted`, allow the canary by name in the lead's type list, and require discovery and a real child with the marked instructions. |
 | S6 | Worktree agents: `.codex/agents/<name>.toml` (fact 13b) | Codex | The same TOML in the disposable `CODEX_HOME/agents/` with user config read: a spawn naming it starts a child whose transcript holds the body codeword. That shows the file is a valid definition; then, if some flag set loads the worktree copy, that run is the source's own control. |
 | S7 | A child's skill listing (fact 14) | Codex, once A4 allows a child at all | With listings on in the parent, the child's transcript lists the S1 canary name; with the factory's flags it lists none. |
 | S8 | User agents: `$CLAUDE_CONFIG_DIR/agents`, `$HOME/.claude/agents`, `$CODEX_HOME/agents` | Both | Claude: without `--restricted`, the name is in `system/init` `agents`. Codex: with user config read, a spawn naming it starts a child. |
 
-S5 and S6 start from the listing name, not the body: the assertion is that the name is absent from every agent-type listing and that a call naming it starts nothing.
-The body codeword is asserted absent as well, which is all the first draft checked.
+Under production flags require no canary listing, loaded body or matching child start on the relevant observation surface.
+For S4, plant skills, commands and agents before launch in each added directory using a disposable probe bundle and inputs.
+Also create each type after launch in each writable added directory (`out/` and `scratch/`) through a recorded tool call.
+For every mid-run pair compare the next discovery or explicit load/start opportunity in that same session with an enabled run that writes at the same point.
+For S5 and S6, issue the same named start request in both arms and inspect the actual child inventory and effective instructions.
+The source-specific positive arm must start the child from the worktree definition.
 
 ### Agent types
 
@@ -408,7 +423,13 @@ The write-root tests are listed in the factory contract's section 1, per harness
 |---|---|---|
 | R1 | Reads are closed by default (fact 17 no longer holds for the factory's profile). | A canary file in a directory that is on no deny-list and under no allowed root is unreadable by the shell and by the file tools, each tried separately. Control: under the step 1 profile the same read succeeds on Codex. |
 | R2 | An agent can still do its work. | In the same sandbox, `bun test` passes in `scratch/repo/`, `git diff` and `git show` work in the snapshot, and a read under `skills/` succeeds. |
-| R3 | A test run cannot change what is reviewed. | A project test that tries to rewrite a source file in the snapshot, a file in `task/`, and the agent's earlier output is run in `scratch/repo/`; the snapshot's tree hash and the staged files are unchanged afterwards. |
+| R3 | Accepted verdict bytes belong to the reviewer session. | With genuine green head checks, archive the reviewer's authentic schema-valid `changes` verdict as the positive control. |
+
+Use the tasklist `sort-fix-skips-ac3.patch` checkout, its archived `sort-skips-ac3-review.json`, and the well-formed `review-approve` mutation base, binding both verdicts to that checkout.
+In R3's substitution arm the same passing project command replaces that verdict with a schema-valid `approve` for the same task, ACs, spec and SHAs after the reviewer's final write.
+Also have that command attempt to modify the snapshot and staged task inputs.
+After process cleanup, assert the snapshot and inputs retain their hashes, the collector rejects the attempt, and neither a verdict nor approval reaches the store.
+Repeat the authorship control for a specialist decision replaced by the lead after its child wrote it.
 
 ### Unit tests
 
@@ -417,7 +438,12 @@ In the existing `bun test` setup, with no model calls:
 - The bundle materializer refuses a symlink, a dot-directory, an oversize file, and a source under an agent-readable root; excludes every `evals/` folder; reads the pinned commit and not a later commit or a working-tree edit.
 - The instruction composer orders skill, contract, and project instructions, strips the frontmatter, and refuses text over the byte limit.
 - The policy builder produces the role table of the run contract: a writable worktree for the builder only, `out/` and `scratch/` writable for all, the run root otherwise write-denied, `agents/` read-denied.
-- `claudeArgs` emits `--agent`, `--agents`, the spawn depth variable, and the deny rules for the spec lead only; for every other role the tool list has no `Agent`.
+- Only a proven team-enabled lead receives the allowlisted `Agent` and member definitions.
+  Inspect actual launch arguments and effective tools for a team-disabled lead on each harness.
+- Start with a team-disabled provisional S/M lead and exercise an L promotion and a newly confirmed S/M security flag separately.
+  Require zero child starts and zero accepted spec outputs from that attempt.
+  The fresh proven launch must run all four members for L or only the threat modeler for S/M security.
+  With no eligible harness, assert escalation and a closed gate 1.
 - `codexArgs` emits `agents.enabled=false` for every role, and the dispatcher refuses a Codex spec lead whose task needs the team.
 - The generated definitions match `team.json` and `factory.config.ts`: the lead's allowlist is exactly the member names, every member is present with the tool list as declared and no `Agent`, model and effort come from config, and each member's prompt holds a child brief whose `writes` is its own file.
 - The output collector takes only expected file names from `out/`, refuses a symlink and an oversize file, and never reads `scratch/`.
@@ -437,18 +463,11 @@ In the existing `bun test` setup, with no model calls:
 
 Steps 5, 6, and 7 own the rest of the factory contract: verification joins, test integrity, and install (5); the spec file set, the review loop, gate 1, and repair (6); routing, team verification, and the decision-file copy (7).
 
-## Design sentences to update
+## Design decisions
 
-The owner's decisions and this revision change what four sentences of the design say.
-They are listed here because step 4a may not edit the design.
-The second and third are on the step 2 branch (`Scylla23/factory-step2-verify`), which has not merged yet.
-
-| Where | Says | Should say |
-|---|---|---|
-| `docs/design.md` line 92 | "The base branch is checked for drift before verification; the builder rebases once, and a conflict escalates." | The factory rebases once, and a conflict escalates. The builder never changes git state. |
-| `docs/design.md` line 194 on the step 2 branch | "Screenshots, logs, and full records stay on the factory host, in `~/.software-factory/evidence/<attempt>`, and are kept until the owner removes them." | Per Q56, the verifier may be given screenshots and redacted text, and the publisher may attach evidence to the pull request of a private repository; raw logs stay on the host and are never given to an agent. |
-| `docs/design.md` line 259 on the step 2 branch | "Verification evidence never leaves the factory host; the PR gets redacted text only." | Per Q56, verification evidence may be sent to the hosted models that judge it and published to the pull request by the publisher; screenshot publishing returns in plan step 5. |
-| `docs/design.md` line 160 | The builder works "under the harness sandbox (a Codex permission profile extending `:workspace` with deny entries ...". | Per Q57, every agent sandbox is closed by default for reads, like the project commands of line 165 on the step 2 branch, and only the builder has a writable worktree. |
+The step 2 branch (`Scylla23/factory-step2-verify`) originally kept verification evidence on the factory host.
+Main includes the owner's Q56 publication decision and Q57 sandbox decision from PR #14.
+Section 10 of the factory contract assigns the rebase to the factory because agents cannot write git state.
 
 ## Open risks
 

@@ -9,7 +9,7 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "taskId": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "attemptId": { "description": "The verification attempt, which names the factory's local evidence store.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "attemptId": { "description": "The capture attempt naming the immutable evidence store, reused on judge retries.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
     "baseSha": { "$ref": "#/$defs/sha" },
     "headSha": { "$ref": "#/$defs/sha" },
     "planSha256": { "description": "SHA-256 of the plan.json that was executed.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -59,7 +59,7 @@
               }
             ]
           },
-          "logTail": { "description": "The end of the command's output, redacted. Untrusted.", "type": "string", "maxLength": 8000 }
+          "logTail": { "description": "Redacted log tail, or the literal [withheld] when safe redaction is impossible.", "type": "string", "maxLength": 8000 }
         }
       }
     },
@@ -103,7 +103,7 @@
               }
             }
           },
-          "pageText": { "description": "The page as Markdown, redacted. Untrusted.", "type": "string" },
+          "pageText": { "description": "Redacted page text, or the literal [withheld] with truncated.pageText true when safe redaction is impossible.", "type": "string" },
           "truncated": {
             "type": "object",
             "required": ["console", "network", "pageText"],

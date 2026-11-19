@@ -45,6 +45,7 @@ Each names what makes a finding blocking; anything short of that is non-blocking
      It is supposed to be absent at `baseSha`, so its absence is never a finding.
      Check instead that it does not already exist, and that it sits where the project puts such files and follows their naming.
      Blocking only when it already exists, or when the step that names it does not say it is new and nothing else in the spec does.
+   Locate a missing reuse finding at the line in the staged spec that claims reuse.
    Record what you looked up in `checks.grounding`: `missingPaths` holds only claimed-reuse paths that are absent, and `newPaths` holds the creation targets.
 3. **Testability** (`untestable`).
    For each criterion, ask whether its tag can actually observe its Expected line.

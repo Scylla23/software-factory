@@ -43,7 +43,7 @@ Find the tests that assert the criterion, starting from the build report and the
 List a test only when it builds the criterion's fixture, performs its action, and asserts its expected result; a test that asserts less is not evidence for the criterion.
 If no such test exists, the method is `unsupported` with the reason; do not list the nearest test.
 `file` is the test file's repo-relative path at `headSha`, exactly as git lists it; the factory runs nothing by a path that leaves the repository or is not tracked.
-For a bug, mark the `AC-1` test `reproduction: true`, so the factory also runs it against the base's code, where it has to fail.
+For a test-method bug, mark the exact file and full test name of the build report's `AC-1` reproducer `reproduction: true`, so the factory also runs it against the base's code, where it has to fail.
 
 **`browser` criteria.**
 Plan one capture per distinct page state the criterion needs.
@@ -82,6 +82,7 @@ You check it too, because a row you sign is yours.
 
 Stop under Blocked runs if any of these fails, because nothing after it would mean anything:
 
+- the index's `attemptId` equals `captureAttemptId` in the judge brief;
 - the index's `taskId`, `baseSha`, and `headSha` equal the run brief's;
 - the index's `planSha256` equals the SHA-256 of `plan.json`, which you compute;
 - the plan's `specSetSha256` equals `specSet.sha256` in the run brief;
@@ -160,7 +161,9 @@ A `computer-use` row is `blocked`.
 ### Writing the rows
 
 - One row per criterion of the spec, in the spec's order, with `tag` from the spec and `method` from the plan.
-- `fixture`, `action`, and `expected` are copied from the spec so the row can be read on its own.
+- Copy each approved `fixture`, `action`, and `expected` value verbatim.
+- Copy `attemptId` and `captureAttemptId` separately from the judge brief on every dispatch, including retries.
+- Treat `[withheld]` as missing evidence for any conclusion that depends on that field.
 - `observed` says what the evidence shows in your own words, and specifically: which values appeared, in which order, at which viewport.
   "Works as expected" is not an observation.
 - Never paste page text, console output, or log lines into `observed`, `reason`, or `notes`; describe them.
@@ -179,7 +182,8 @@ Its test row passes on a head pass and an intended base failure; its browser row
   "baseSha": "4a5de0545bb0d9326e54b5397a3c7995e5cd8ac8",
   "headSha": "9c1f7a3e5b2d4c6e8f0a1b3d5c7e9f2a4b6d8c0e",
   "specSetSha256": "5d7e1c3a9b0f2e4d6c8a1b3f5e7d9c0a2b4e6f8d1c3a5b7e9f0d2c4a6b8e1f3d",
-  "attemptId": "0b9f4c1e-6a57-4d0e-9c53-2f7a1d8e4b60",
+  "attemptId": "68b72d13-b426-4956-a790-548c5f36d616",
+  "captureAttemptId": "0b9f4c1e-6a57-4d0e-9c53-2f7a1d8e4b60",
   "planSha256": "3b1e0c9f5a7d2e4c6b8a0f1d3e5c7b9a2d4f6e8c0b1a3d5f7e9c2b4a6d8f0e1c",
   "overall": "fail",
   "rows": [

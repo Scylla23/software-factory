@@ -53,7 +53,7 @@
     },
     "retiredCriteria": { "description": "Ids removed in any round. Never reused.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/acId" } },
     "team": {
-      "description": "One entry per team member the task triggers: all four for a new project or a confirmed tier L, the threat modeler alone for the security flag at tier S or M, and none otherwise. A triggered member always runs; there is no skipped status.",
+      "description": "One entry per team member the task triggers: all four for a new project or a confirmed tier L, the threat modeler alone for the security flag at tier S or M, and none otherwise. A new or affected decision requires a fresh session. An unaffected decision on a revision can identify its archived author and bytes.",
       "type": "array",
       "items": {
         "type": "object",
@@ -61,13 +61,18 @@
         "required": ["member", "status"],
         "properties": {
           "member": { "enum": ["architect", "infra", "frontend", "threat-modeler"] },
-          "status": { "enum": ["ran", "failed"] },
+          "status": { "enum": ["ran", "failed", "inherited"] },
           "file": { "enum": ["architecture.md", "infra.md", "frontend.md", "threat-model.md"] },
+          "originalRound": { "type": "integer", "minimum": 1 },
+          "authorSession": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
           "reason": { "type": "string", "minLength": 1, "maxLength": 400 }
         },
         "allOf": [
-          { "if": { "properties": { "status": { "const": "ran" } } }, "then": { "required": ["file", "attempts"] }, "else": { "required": ["reason"] } }
+          { "if": { "properties": { "status": { "const": "ran" } } }, "then": { "required": ["file", "attempts"] } },
+          { "if": { "properties": { "status": { "const": "failed" } } }, "then": { "required": ["reason"] } },
+          { "if": { "properties": { "status": { "const": "inherited" } } }, "then": { "required": ["file", "originalRound", "authorSession", "sha256"], "not": { "required": ["attempts"] } }, "else": { "not": { "anyOf": [{ "required": ["originalRound"] }, { "required": ["authorSession"] }, { "required": ["sha256"] }] } } }
         ]
       }
     },
