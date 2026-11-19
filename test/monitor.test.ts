@@ -104,7 +104,7 @@ describe("monitorCommand", () => {
 });
 
 const ATTEMPT = "11111111-2222-4333-8444-555555555555";
-const monitor = (extra: { timeoutMs?: number } = {}) =>
+const monitor = (extra: { openTimeoutMs?: number; cleanupTimeoutMs?: number } = {}) =>
   openRunMonitor({ orcaPath: sb.config.executables.orca, worktreePath: sb.worktree, title: `factory: builder ${ATTEMPT}`, attemptId: ATTEMPT, logPath: "/l", ...extra });
 
 describe("run monitor", () => {
@@ -144,7 +144,7 @@ describe("run monitor", () => {
   test("a hung orca is bounded and only reported", async () => {
     setMode("hang");
     const started = Date.now();
-    const problems = await monitor({ timeoutMs: 300 }).close();
+    const problems = await monitor({ openTimeoutMs: 300, cleanupTimeoutMs: 300 }).close();
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(problems).toEqual([expect.stringContaining("no answer within 300ms"), expect.stringMatching(/^reconcile failed: .*no answer within 300ms/)]);
   });
@@ -165,7 +165,7 @@ describe("run monitor", () => {
       { handle: "term_other", title: `factory: builder ${crypto.randomUUID()}` },
       { handle: "term_owner", title: "zsh" },
     ] } }));
-    const problems = await monitor({ timeoutMs: 300 }).close();
+    const problems = await monitor({ openTimeoutMs: 300 }).close();
     const closed = calls().filter((c) => c[1] === "close").map((c) => c[3]);
     expect(closed).toEqual(["term_title", "term_pane"]);
     expect(problems).toEqual([
@@ -173,6 +173,14 @@ describe("run monitor", () => {
       "reconcile: closed term_title, opened by the failed create",
       "reconcile: closed term_pane, opened by the failed create",
     ]);
+  });
+
+  test("the reconcile after a timed-out create is not bounded by the create's timeout", async () => {
+    setMode("hang-create");
+    writeFileSync(join(sb.bin, "orca-delay"), "0.6");
+    writeFileSync(join(sb.bin, "orca-list"), JSON.stringify({ ok: true, result: { terminals: [{ handle: "term_title", title: `factory: builder ${ATTEMPT}` }] } }));
+    const problems = await monitor({ openTimeoutMs: 300 }).close();
+    expect(problems).toEqual([expect.stringContaining("no answer within 300ms"), "reconcile: closed term_title, opened by the failed create"]);
   });
 
   test("a clean ok:false refusal needs no reconciliation", async () => {
