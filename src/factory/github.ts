@@ -161,7 +161,7 @@ export class Publisher {
       head: this.branch(task),
       base: pilot.base,
       title: task.issue.title,
-      body: `${marker}\nTracks ${task.issue.url}.`,
+      body: `${marker}\nFixes #${task.issue.number}.`,
     });
     const remote = await this.read.request<{ body: string; user: { login: string } }>(
       "GET",
