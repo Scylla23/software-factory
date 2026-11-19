@@ -435,7 +435,7 @@ describe("bounded reads", () => {
     }
   });
 
-  it("tail reads only the end of a log, even one far larger than memory allows reading whole", () => {
+  it("tail reads only the end of a log, even one far larger than memory allows reading whole, from a line start", () => {
     const dir = join(env.stateRoot, "tail");
     mkdirSync(dir);
     const path = join(dir, "big.log");
@@ -446,6 +446,10 @@ describe("bounded reads", () => {
     expect(tail(path, 50)).toEndWith("the last line\n");
     expect(tail(path, 50).length).toBe(50);
     expect(tail(join(dir, "missing.log"))).toBe("");
+    // A read that starts mid-line begins at the next whole line.
+    writeFileSync(join(dir, "lines.log"), "DENIED /Users/someone/.ssh/config\nDENIED /x\nRESULT PASS\n");
+    expect(tail(join(dir, "lines.log"), 30)).toBe("DENIED /x\nRESULT PASS\n");
+    expect(tail(join(dir, "lines.log"), 1_000)).toBe("DENIED /Users/someone/.ssh/config\nDENIED /x\nRESULT PASS\n");
   });
 
   it("copyCapped keeps the first bytes, counts the rest, and closes the log when every pipe has closed", async () => {
