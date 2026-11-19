@@ -194,8 +194,9 @@ export async function dispatchWorker(
     await Bun.sleep(150);
   }
   const reply: { output?: WorkerOutput; error?: string; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
-  if (reply.escalated) return interrupted(new Uncertain(reply.error ?? "worker requires inspection"));
-  if (!reply.output) return interrupted(new AgentFailed(reply.error ?? "missing worker result"));
+  if (reply.escalated || !reply.output) await recordInterrupted(store.db, task, snapshot(), dir, stateRoot);
+  if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
+  if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;
   if (result.runId !== attempt.id) throw new Uncertain("worker receipt belongs to another attempt");
   await recordUsage(store.db, task, snapshot(), result, stateRoot);
