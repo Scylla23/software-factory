@@ -80,9 +80,9 @@ export function makeRepo(parent: string, name: string, commits: readonly Record<
 }
 
 /** A minimal app: `/health` answers with HEALTH_STATUS (default 200); the page says `marker`. */
-export function serverSource(marker: string, opts: { healthStatus?: number; exitCode?: number } = {}): string {
+export function serverSource(marker: string, opts: { healthStatus?: number; exitCode?: number; exitAfterMs?: number } = {}): string {
   if (opts.exitCode !== undefined) return `process.exit(${opts.exitCode});\n`;
-  return `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch(req) {
+  return `${opts.exitAfterMs ? `setTimeout(() => process.exit(0), ${opts.exitAfterMs});\n` : ""}Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch(req) {
   const { pathname } = new URL(req.url);
   if (pathname === "/health") return new Response("ok", { status: ${opts.healthStatus ?? 200} });
   return new Response(${JSON.stringify(marker)});

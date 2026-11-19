@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listenerOwnership, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, toolchainRoots } from "../src/verify/preview";
 import { gone } from "./helpers";
@@ -165,6 +165,61 @@ describe("startPreview", () => {
     const p = await start(spec(repo.path, repo.shas[0]!));
     await expect(p.run(["/usr/bin/true"], { network: "proxy" as never, name: "sneaky", timeoutMs: 5_000 })).rejects.toThrow("may not have network");
     await expect(p.run(["/usr/bin/true"], { network: "outbound" as never, name: "sneaky", timeoutMs: 5_000 })).rejects.toThrow("may not have network");
+  });
+
+  test("the maximum lifetime tears the whole preview down, not just its server, with the report stop() returns", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start({ ...spec(repo.path, repo.shas[0]!), maxLifetimeMs: 1_500 });
+    for (let i = 0; i < 100 && existsSync(join(previews(), p.id)); i++) await Bun.sleep(100);
+    expect(existsSync(join(previews(), p.id))).toBe(false);
+    const report = await p.stop();
+    expect(report).toMatchObject({ noKnownSurvivors: true, removed: true });
+    expect(report.cleanup).not.toBeNull(); // the server was stopped at the bound
+    await expect(p.run(["/usr/bin/true"], { network: "none", name: "late", timeoutMs: 5_000 })).rejects.toThrow("preview was stopped");
+  });
+
+  test("a server that exits after it was ready ends the preview the same way", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up", { exitAfterMs: 1_000 }) }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    for (let i = 0; i < 100 && existsSync(join(previews(), p.id)); i++) await Bun.sleep(100);
+    expect(existsSync(join(previews(), p.id))).toBe(false);
+    expect(await p.stop()).toMatchObject({ cleanup: null, noKnownSurvivors: true, removed: true });
+  });
+
+  test("stop cancels a running check before it sweeps, and refuses new ones", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    const long = p.run(["/bin/sleep", "300"], { network: "none", name: "long", timeoutMs: 600_000 });
+    const queued = p.run(["/usr/bin/true"], { network: "none", name: "queued", timeoutMs: 5_000 });
+    await Bun.sleep(300);
+    const report = await p.stop();
+    expect(await long).toMatchObject({ stopped: "cancelled", quarantineReasons: [] });
+    await expect(queued).rejects.toThrow("preview was stopped");
+    expect(report).toMatchObject({ noKnownSurvivors: true, quarantineReasons: [], removed: true });
+    expect(Bun.spawnSync(["/usr/bin/pgrep", "-fx", "/bin/sleep 300"], { timeout: 5_000 }).stdout.toString().trim()).toBe("");
+    await expect(p.run(["/usr/bin/true"], { network: "none", name: "after", timeoutMs: 5_000 })).rejects.toThrow("preview was stopped");
+  });
+
+  test("a removal that fails is reported as a quarantine reason instead of rejecting stop", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    const stray = join(previews(), p.id, "stray");
+    writeFileSync(stray, "");
+    const report = await p.stop();
+    expect(report.removed).toBe(false);
+    expect(report.quarantineReasons.join(" ")).toContain("cleanup failed");
+    rmSync(join(previews(), p.id), { recursive: true, force: true });
+  });
+
+  test("concurrent checks run one at a time, so one check's sweep never kills another's process", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("up") }]);
+    const p = await start(spec(repo.path, repo.shas[0]!));
+    const [a, b] = await Promise.all([
+      p.run(["/bin/sh", "-c", "sleep 0.3; echo A"], { network: "none", name: "check-a", timeoutMs: 10_000 }),
+      p.run(["/bin/sh", "-c", "sleep 0.6; echo B"], { network: "none", name: "check-b", timeoutMs: 10_000 }),
+    ]);
+    expect([a.exitCode, a.quarantineReasons, b.exitCode, b.quarantineReasons]).toEqual([0, [], 0, []]);
+    expect(readFileSync(b.logPath, "utf8")).toBe("B\n");
   });
 
   test("a failing setup command stops everything and removes the worktree", async () => {

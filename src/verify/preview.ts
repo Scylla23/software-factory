@@ -238,9 +238,18 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
   const logs: string[] = [];
   let preview: SandboxedRun | null = null;
   let report: Promise<TeardownReport> | null = null;
+  // Commands run one at a time, so one command's sweep can never kill another's processes, and every running command
+  // is known, so teardown can stop it before sweeping.
+  let stopping = false;
+  const active = new Set<AbortController>();
+  let queue: Promise<unknown> = Promise.resolve();
 
+  /** The one teardown: explicit stop, the maximum lifetime, and the server exiting all end here, with one report. */
   const teardown = (): Promise<TeardownReport> => {
     report ??= (async () => {
+      stopping = true;
+      for (const a of active) a.abort();
+      await queue;
       let cleanup: TerminationReport | null = null;
       let unverified: string[] = [];
       if (preview) {
@@ -251,11 +260,16 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       }
       const roots = [...(wt ? [wt.path] : []), ...(homeMade ? [home] : [])];
       const { noKnownSurvivors, quarantineReasons } = await settle(config, unverified, roots);
-      const removed = quarantineReasons.length === 0;
+      let removed = quarantineReasons.length === 0;
       if (removed) {
-        if (wt) removeMaterialized(config.executables.git, wt);
-        if (homeMade) rmSync(home, { recursive: true, force: true });
-        rmdirSync(attempt);
+        try {
+          if (wt) removeMaterialized(config.executables.git, wt);
+          if (homeMade) rmSync(home, { recursive: true, force: true });
+          rmdirSync(attempt);
+        } catch (err) {
+          removed = false;
+          quarantineReasons.push(`cleanup failed: ${(err as Error).message}`);
+        }
       }
       return { cleanup, noKnownSurvivors, quarantineReasons, removed };
     })();
@@ -289,9 +303,15 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     let port: number | null = null;
     const env = (extra: { port?: number; proxy?: string }) => projectEnv({ home: base.writable[1]!, path: config.toolPath, user, declared: spec.project.env, ...extra });
 
-    const runCommand = async (argv: readonly string[], opts: { network: NetworkMode; name: string; timeoutMs: number; proxy?: string }): Promise<CommandResult> => {
+    type RunOptions = { network: NetworkMode; name: string; timeoutMs: number; proxy?: string };
+    const runCommand = (argv: readonly string[], opts: RunOptions): Promise<CommandResult> => {
+      const next = queue.then(() => runOne(argv, opts));
+      queue = next.catch(() => undefined);
+      return next;
+    };
+    const runOne = async (argv: readonly string[], opts: RunOptions): Promise<CommandResult> => {
       if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(opts.name)) throw new Error(`command name must be [a-z0-9-]: ${opts.name}`);
-      if (report) throw new Error("preview was stopped");
+      if (stopping) throw new Error("preview was stopped");
       // The sweep after the command spares the live preview by identity; without one it could not tell them apart.
       if (preview && preview.proc.exitedAt() === null && !preview.proc.identity) throw new Error("the running preview has no recorded identity, so a command beside it cannot be swept safely");
       const log = openLog(config, spec.logDir, `${spec.id}.${opts.name}.log`);
@@ -303,7 +323,13 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       } finally {
         closeSync(log.fd);
       }
-      const s = await r.supervised;
+      active.add(r.abort);
+      let s: Supervised;
+      try {
+        s = await r.supervised;
+      } finally {
+        active.delete(r.abort);
+      }
       const live = preview && preview.proc.exitedAt() === null && preview.proc.identity ? [preview.proc.identity] : [];
       const settled = await settle(config, s.unverified, [worktree, home], live);
       const reasons = [...settled.quarantineReasons, ...(s.status?.error ? [`spawn failed: ${s.status.error}`] : [])];
@@ -347,6 +373,8 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     } finally {
       closeSync(log.fd);
     }
+    // The server ending, by itself or at the maximum lifetime, ends the preview: worktree and home go with it.
+    void preview.supervised.then(() => teardown());
     const started = Date.now();
     const ready = await waitReady(`${origin}${spec.project.readyPath}`, spec.readyTimeoutMs, preview.proc.exited);
     if (!ready.ok) return await fail(`preview not ready: ${ready.reason}`, log.path);
