@@ -75,13 +75,25 @@ export function assertRecordIds(acId: string | null, name: string): void {
   if (!NAME.test(name)) throw new Error(`evidence name must match ${NAME}: ${JSON.stringify(name)}`);
 }
 
+/**
+ * `text` cut to at most `max` characters at a whitespace break, never inside a token: a path or value cut in half could
+ * no longer be recognized by redaction (src/github/summary.ts), so part of it would be published. Text with no break
+ * before `max` is replaced by a note.
+ */
+export function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max + 1);
+  const cut = Math.max(head.lastIndexOf(" "), head.lastIndexOf("\n"), head.lastIndexOf("\t"));
+  return cut > 0 ? text.slice(0, cut) : `[factory: ${text.length} characters without a break, omitted]`;
+}
+
 /** Console entries at level error, as Orca's `console --json` lists them, bounded in count and length. */
 export function consoleErrors(entries: unknown): string[] {
   if (!Array.isArray(entries)) throw new Error("console entries are not a list");
   return entries
     .filter((e) => isRecord(e) && e.level === "error")
     .slice(0, MAX_CONSOLE_ERRORS)
-    .map((e) => String((e as Record<string, unknown>).text ?? "").slice(0, MAX_ENTRY_CHARS));
+    .map((e) => clip(String((e as Record<string, unknown>).text ?? ""), MAX_ENTRY_CHARS));
 }
 
 /** Origins in Orca's network log other than `origin`, sorted and unique. */

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { RepoClient } from "../src/github/api";
 import { InstallationToken, TokenSource } from "../src/github/app";
-import { EvidenceGateError, publishSummary } from "../src/github/summary";
+import { EvidenceGateError, publishSummary, summaryComment } from "../src/github/summary";
 import { captureChecks, commandCheck, teardownCheck } from "../src/verify/checks";
 import { type EvidenceRecord, VIEWPORTS } from "../src/verify/evidence";
 import type { CommandResult, TeardownReport } from "../src/verify/preview";
@@ -45,6 +45,33 @@ describe("probe checks", () => {
     const left = commandCheck("git-write probe", result({ quarantineReasons: ["pid 7 survived"] }));
     expect(left.pass).toBe(false);
     expect(left.detail.startsWith("exit 0; left behind: pid 7 survived\n")).toBe(true);
+  });
+
+  test("a probe log published as a check never shows part of the account name, wherever its excerpt starts", () => {
+    const home = homedir();
+    const user = userInfo().username;
+    const min = Math.min(5, user.length);
+    const fragments: string[] = [];
+    for (let i = 0; i + min <= user.length; i++) for (let j = i + min; j <= user.length; j++) fragments.push(user.slice(i, j));
+    const publish = (log: string) => {
+      const c = commandCheck("canary probe (serve)", { exitCode: 0, stopped: null, quarantineReasons: [], logPath: log });
+      return { detail: c.detail, body: summaryComment({ pr: 2, attemptId: crypto.randomUUID(), base: "8".repeat(40), head: "9".repeat(40), checks: [c], captures: [record("after-desktop", { commitSha: "9".repeat(40) })], evidenceDir: "/x" }) };
+    };
+    const log = join(dir, "canary.log");
+    // The excerpt's window starts at every offset across lines naming paths under the home, as in the leaked comment.
+    const paths = Array.from({ length: 30 }, (_, i) => `DENIED ${home}/.codex/file-${i}.json`).join("\n");
+    for (let pad = 0; pad < 80; pad++) {
+      writeFileSync(log, `${paths}\n${"p".repeat(pad)}\nRESULT PASS\n`);
+      const { detail, body } = publish(log);
+      expect(detail).toContain("DENIED");
+      for (const f of fragments) expect(body).not.toContain(f);
+    }
+    // A last line longer than the excerpt is never cut into.
+    // Sized so the 800-byte window would start in the middle of the home path.
+    writeFileSync(log, `ok\nDENIED ${home}/${"x".repeat(800 - Math.floor(home.length / 2))}\n`);
+    const long = publish(log);
+    expect(long.detail).toContain("last line longer than");
+    for (const f of fragments) expect(long.body).not.toContain(f);
   });
 
   test("a teardown passes only when it removed everything and nothing may still run", () => {

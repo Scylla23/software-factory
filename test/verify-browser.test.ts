@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrowserCleanupError, parseStabilize, withVerificationProfile } from "../src/verify/browser";
-import { consoleErrors, externalOrigins, networkFailures, VIEWPORTS } from "../src/verify/evidence";
+import { clip, consoleErrors, externalOrigins, MAX_ENTRY_CHARS, networkFailures, VIEWPORTS } from "../src/verify/evidence";
 import { openEvidenceStore } from "../src/verify/store";
 
 /**
@@ -254,13 +254,25 @@ describe("capture", () => {
 describe("parsers", () => {
   test("consoleErrors keeps level error only, bounded; networkFailures keeps 4xx, 5xx, and no-response", () => {
     expect(consoleErrors([{ level: "warning", text: "w" }, { level: "error", text: "e" }, null])).toEqual(["e"]);
-    expect(consoleErrors(Array.from({ length: 300 }, () => ({ level: "error", text: "x".repeat(5000) }))).map((e) => e.length)).toEqual(Array(200).fill(2000));
+    expect(consoleErrors(Array.from({ length: 300 }, () => ({ level: "error", text: "word ".repeat(1000) }))).map((e) => e.length)).toEqual(Array(200).fill(1999));
     expect(networkFailures([{ url: "a", status: 200 }, { url: "b", status: 304 }, { url: "c", status: 500, method: "PUT" }, { url: "d", status: 0 }, { status: 404 }])).toEqual([
       { url: "c", method: "PUT", status: 500 },
       { url: "d", method: "GET", status: null },
     ]);
     expect(externalOrigins([{ url: `${ORIGIN}/a` }, { url: "https://x.example/b?q=1" }, { url: "https://x.example/c" }, { url: "not a url" }, { url: "data:," }], ORIGIN)).toEqual(["https://x.example"]);
     expect(() => consoleErrors({})).toThrow();
+  });
+
+  test("text is cut only at a break, so a path is never split where redaction cannot recognize it", () => {
+    const home = homedir();
+    const line = `${"a ".repeat(990)}${home}/.codex/AGENTS.md is denied`;
+    expect(line.indexOf(home)).toBeLessThan(MAX_ENTRY_CHARS);
+    expect(line.indexOf(home) + home.length).toBeGreaterThan(MAX_ENTRY_CHARS - 20);
+    const [kept] = consoleErrors([{ level: "error", text: `${line}${" b".repeat(1000)}` }]);
+    expect(kept).toBe("a ".repeat(990).trimEnd());
+    expect(clip("x".repeat(50), 10)).toBe("[factory: 50 characters without a break, omitted]");
+    expect(clip("short", 10)).toBe("short");
+    expect(clip("one two\nthree", 9)).toBe("one two");
   });
 
   test("parseStabilize refuses anything but the script's own report", () => {

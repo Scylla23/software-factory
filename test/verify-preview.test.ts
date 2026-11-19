@@ -441,15 +441,19 @@ describe("bounded reads", () => {
     const path = join(dir, "big.log");
     const fd = openSync(path, "w", 0o600);
     ftruncateSync(fd, 3 * 1024 ** 3); // sparse: no disk used
-    writeSync(fd, "the last line\n", 3 * 1024 ** 3);
+    writeSync(fd, "\nthe last line\n", 3 * 1024 ** 3);
     closeSync(fd);
-    expect(tail(path, 50)).toEndWith("the last line\n");
-    expect(tail(path, 50).length).toBe(50);
+    expect(tail(path, 50)).toBe("the last line\n");
     expect(tail(join(dir, "missing.log"))).toBe("");
     // A read that starts mid-line begins at the next whole line.
     writeFileSync(join(dir, "lines.log"), "DENIED /Users/someone/.ssh/config\nDENIED /x\nRESULT PASS\n");
     expect(tail(join(dir, "lines.log"), 30)).toBe("DENIED /x\nRESULT PASS\n");
     expect(tail(join(dir, "lines.log"), 1_000)).toBe("DENIED /Users/someone/.ssh/config\nDENIED /x\nRESULT PASS\n");
+    // A last line longer than the window is never cut into: it is replaced by a note.
+    writeFileSync(join(dir, "long.log"), `ok\n${"x".repeat(100)} /Users/someone/.codex/AGENTS.md\n`);
+    expect(tail(join(dir, "long.log"), 30)).toBe("[factory: last line longer than 30 bytes, omitted]\n");
+    writeFileSync(join(dir, "unended.log"), `ok\n${"x".repeat(100)} /Users/someone/.codex/AGENTS.md`);
+    expect(tail(join(dir, "unended.log"), 30)).toBe("[factory: last line longer than 30 bytes, omitted]\n");
   });
 
   it("copyCapped keeps the first bytes, counts the rest, and closes the log when every pipe has closed", async () => {

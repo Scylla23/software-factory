@@ -315,6 +315,8 @@ describe("evidence summary comment", () => {
     expect(redact("plain words stay")).toBe("plain words stay");
     const home = require("node:os").homedir();
     expect(redact(`DENIED ${home}/Library/Keychains/login.keychain-db`)).toBe("DENIED ~/Library/Keychains/login.keychain-db");
+    const user = require("node:os").userInfo().username;
+    expect(redact(`-rw------- 1 ${user} staff 12 x; ${user}.bak; me${user}`)).toBe("-rw------- 1 [user] staff 12 x; [user].bak; me[user]");
     expect(redact("ab ".repeat(100), 10)).toBe("ab ab ab a [... 290 more characters]");
   });
 

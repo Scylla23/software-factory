@@ -7,7 +7,7 @@
  * images, or HTML. The body starts with a marker naming the PR, the attempt, and the revisions it was captured at, so a
  * retry of the same attempt updates the App's own comment instead of adding another.
  */
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import type { EvidenceRecord } from "../verify/evidence";
 import { type Check, verdict } from "../verify/verdict";
 import type { RepoClient } from "./api";
@@ -51,7 +51,7 @@ const SECRET_PATTERNS: RegExp[] = [
 
 /**
  * Untrusted text made fit for the PR: URLs lose their query and fragment, token-like values and emails are replaced,
- * the account's home becomes `~`, control characters go, and the result is capped.
+ * the account's home becomes `~` and its user name `[user]`, control characters go, and the result is capped.
  */
 export function redact(text: string, cap = EXCERPT_CHARS): string {
   let t = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ");
@@ -66,6 +66,9 @@ export function redact(text: string, cap = EXCERPT_CHARS): string {
   // The home first: a path under it is then short enough to survive the long-run pattern, and no longer names the account.
   const home = homedir();
   if (home.length > 1) t = t.split(home).join("~");
+  // The account name anywhere else too, even inside a longer word, as in `ls -l` output or an error naming the user.
+  const user = userInfo().username;
+  if (user.length >= 3) t = t.split(user).join("[user]");
   for (const p of SECRET_PATTERNS) t = t.replace(p, "[redacted]");
   t = t.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
   return t.length > cap ? `${t.slice(0, cap)} [... ${t.length - cap} more characters]` : t;

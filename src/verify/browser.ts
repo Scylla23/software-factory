@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isRecord, str } from "../dispatch/jsonl";
 import { OrcaError, orcaJson } from "../orca/cli";
-import { assertRecordIds, consoleErrors, type EvidenceRecord, externalOrigins, MAX_PAGE_TEXT_CHARS, networkFailures, type Viewport } from "./evidence";
+import { assertRecordIds, clip, consoleErrors, type EvidenceRecord, externalOrigins, MAX_PAGE_TEXT_CHARS, networkFailures, type Viewport } from "./evidence";
 import type { EvidenceStore } from "./store";
 
 /**
@@ -302,7 +302,7 @@ export async function withVerificationProfile<T>(opts: ProfileOptions, use: (bro
           screenshotBytes: stored.bytes,
           consoleErrors: consoleErrors(con.entries),
           networkFailures: networkFailures(net.entries),
-          pageText: pageText.slice(0, MAX_PAGE_TEXT_CHARS),
+          pageText: clip(pageText, MAX_PAGE_TEXT_CHARS),
           truncated: { console: con.truncated === true, network: net.truncated === true, pageText: read.truncated === true || pageText.length > MAX_PAGE_TEXT_CHARS },
           stabilized,
           capturedAt: new Date().toISOString(),

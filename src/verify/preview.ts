@@ -163,8 +163,9 @@ function openLog(config: VerifyConfig, logDir: string, name: string): { path: st
 }
 
 /**
- * The last `bytes` of a log, read in place: a log is never read whole. A read that starts mid-line drops that partial
- * line when whole lines follow it, so a fragment of a path or value never leads the tail where redaction cannot see it.
+ * The last `bytes` of a log, read in place: a log is never read whole. It holds whole lines only: a read that starts
+ * mid-line drops that partial line, and a last line longer than the window is replaced by a note, so the tail never
+ * starts inside a path or value, where redaction could not recognize it (a cut home path left part of the account name).
  */
 export function tail(path: string, bytes = 2_000): string {
   let fd: number;
@@ -180,7 +181,8 @@ export function tail(path: string, bytes = 2_000): string {
     let text = buf.subarray(0, n);
     if (buf.length < size) {
       const nl = text.indexOf(0x0a);
-      if (nl !== -1 && nl < text.length - 1) text = text.subarray(nl + 1);
+      if (nl === -1 || nl === text.length - 1) return `[factory: last line longer than ${buf.length} bytes, omitted]\n`;
+      text = text.subarray(nl + 1);
     }
     return text.toString("utf8");
   } catch {
