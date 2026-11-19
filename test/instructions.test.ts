@@ -5,7 +5,7 @@ import { runAgent, type RunSpec } from "../src/dispatch";
 import { claudeArgs } from "../src/dispatch/claude";
 import { codexArgs, tomlString } from "../src/dispatch/codex";
 import { buildProjectInstructions, type InstructionSource, MAX_INSTRUCTIONS_BYTES, PROJECT_INSTRUCTION_PATHS } from "../src/dispatch/instructions";
-import { makeSandbox, type Sandbox } from "./helpers";
+import { makeSandbox, openFileDescriptors, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
 /** A factory-controlled git checkout of the project, outside every agent-writable root. */
@@ -215,9 +215,9 @@ describe("runAgent with project instructions", () => {
     const s = spec("claude", { instructions: source(commit()) });
     const planted = join(sb.logDir, `${s.runId}.instructions.md`);
     mkdirSync(planted);
-    const before = readdirSync("/dev/fd").length;
+    const before = openFileDescriptors();
     await expect(runAgent(s, sb.config)).rejects.toThrow();
-    expect(readdirSync("/dev/fd").length).toBe(before);
+    expect([...openFileDescriptors()].filter(fd => !before.has(fd))).toEqual([]);
     expect(readdirSync(sb.logDir)).toEqual([`${s.runId}.instructions.md`]);
     rmSync(planted, { recursive: true });
     expect((await runAgent(s, sb.config)).outcome).toBe("completed");

@@ -1,9 +1,24 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, fstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DispatchConfig } from "../src/dispatch/config";
 
 export const FIXTURES = join(import.meta.dir, "fixtures");
+
+/** Identify regular-file descriptors even when a failed reservation has unlinked the file. */
+export function openFileDescriptors(): Set<string> {
+  const files = new Set<string>();
+  for (const fd of readdirSync("/dev/fd")) {
+    try {
+      const file = fstatSync(Number(fd), { bigint: true });
+      if (file.isFile()) files.add(`${fd}:${file.dev}:${file.ino}`);
+    } catch (error) {
+      // Reading /dev/fd may list the directory descriptor that readdirSync itself just closed.
+      if ((error as NodeJS.ErrnoException).code !== "EBADF") throw error;
+    }
+  }
+  return files;
+}
 
 /**
  * Where tests keep state that must be outside the temp roots: `test/.state`, or the run's own directory when the

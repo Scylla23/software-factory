@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertPrivateDir, assertTrustedExecutable, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots, trustedAgentPath } from "../src/dispatch/config";
-import { makeSandbox, type Sandbox } from "./helpers";
+import { makeSandbox, openFileDescriptors, type Sandbox } from "./helpers";
 
 let sb: Sandbox;
 beforeEach(() => {
@@ -99,8 +99,6 @@ describe("managedSettingsProblems", () => {
 });
 
 describe("planRunFiles and reserveRunFiles", () => {
-  const openFds = () => readdirSync("/dev/fd").length;
-
   test("creates private, exclusive log files under the state root", () => {
     const files = planRunFiles(sb.config, sb.logDir, RUN, [sb.worktree, ...tempRoots()]);
     expect(files.stdoutPath).toBe(join(sb.logDir, `${RUN}.stdout.jsonl`));
@@ -139,9 +137,9 @@ describe("planRunFiles and reserveRunFiles", () => {
   test("a reservation that fails part way closes and removes what it created", () => {
     const files = planRunFiles(sb.config, sb.logDir, RUN, []);
     symlinkSync(join(sb.worktree, "x"), files.instructionsPath); // planted after the plan
-    const before = openFds();
+    const before = openFileDescriptors();
     expect(() => reserveRunFiles(files, "text")).toThrow("single-use");
-    expect(openFds()).toBe(before);
+    expect([...openFileDescriptors()].filter(fd => !before.has(fd))).toEqual([]);
     expect(existsSync(files.stdoutPath) || existsSync(files.stderrPath)).toBe(false);
     unlinkSync(files.instructionsPath);
     const logs = reserveRunFiles(planRunFiles(sb.config, sb.logDir, RUN, []), "text");
