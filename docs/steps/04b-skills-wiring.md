@@ -1,5 +1,10 @@
 # Step 4b skills wiring
 
+Step 4b finished on the local branch `Scylla23/factory-step4b-wiring`.
+Factory task 5 completed both owner gates for pilot issue #11, with 24 passing checks and six captures on head `89666f0cca238004efa35ada87b31cd732217bcd`.
+The verified PR remains open against the pilot seed. [PR #12](https://github.com/Scylla23/factory-pilot/pull/12)
+The [final eval table](#final-eval-results) covers all 44 variants, and the [pilot results](#live-pilot-completion) reconcile the live and rehearsal receipts.
+
 ## Factory-home decision and observations
 
 The owner replaced disposable-login S1, system-source S3, S7 and S8 with a factory-home preflight and a negative-only personal-source probe.
@@ -37,7 +42,7 @@ The definition-present arm `7afbbb77-87b8-4d44-8bc4-b44344b0e3b5` observed Haiku
 Production and evaluation required the applicable native controls and R3 during the initial batches.
 
 
-Step 4b remains incomplete on branch `Scylla23/factory-step4b-wiring`, rebased onto step 8 at `d88d164`.
+The original handover was based on step 8 at `d88d164`.
 
 ## Testing rule applied
 
@@ -408,7 +413,7 @@ The evaluation ledger verifies both the unchanged breakdown and the matching per
 A mismatch leaves the reservation unsettled and prevents another launch.
 A separate qualification of multi-result completion, author identity and output submission is required before changing the dispatcher's acceptance rule.
 
-## Open issues
+## Issue dispositions
 
 | Issue | Status |
 | --- | --- |
@@ -424,6 +429,10 @@ A separate qualification of multi-result completion, author identity and output 
 | #45 | Open for R3 project-command substitution and other hostile-project controls before admitting untrusted repositories |
 | #46 | Open for non-gating harness delivery and discovery proofs |
 | #47 | Open for native spec-team handoff and completion failures recorded in batch 2 |
+| #49 | Open for the 13 unrun variants if real use warrants testing after the weekly reset |
+| #50 | Open for the frontend skill's repeated route and state coverage failures |
+| #51 | Open pending integration of the triage enum and retry-feedback fix on this branch |
+| #34 | Verification recovery implemented on this branch, with recovery in earlier stages still open for step 5 |
 
 ## Contract findings
 
@@ -623,7 +632,8 @@ The corrected solo lead, spec-reviewer creation target and revision fixtures use
 | threat-modeler-02-mitigation-changes-criteria | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
 | threat-modeler-03-small-flagged-task | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
 
-The two batch reports reconcile to $39.34819 across both vendors, approximately $22.59634 Claude and $16.75184 Codex.
+The rounded line items sum to $22.59633 Claude and $16.75185 Codex.
+The two underlying batch reports reconcile to $39.34819 across both vendors, approximately $22.59634 Claude and $16.75184 Codex.
 The original handover had already spent about $18.93 on Claude.
 Of the additional $5.00, the cleanup used $2.524338 and the resumed run used $1.138184, leaving $1.337478 under the ledger's conservative rounding.
 The first paid session in this dispatch reserved $0.15 for a Sonnet-low judgment.
@@ -720,3 +730,64 @@ The three Haiku receipts cost $0.01250205, $0.01216682 and $0.01194391, for $0.0
 The live cap deducts 36,614 microdollars for these sessions after rounding up each receipt.
 The owner-account intake for issue #11 uses the original seed and brings no earlier task out of escalation.
 The combined Claude spend before #11 is $1.00420118, leaving $1.99579882 before conservative rounding. [Pilot issue #11](https://github.com/Scylla23/factory-pilot/issues/11)
+
+
+### Live pilot completion
+
+The owner labeled issue #11, and the factory opened PR #12 against the isolated seed.
+The owner authorized spec `443a2db2462521d253ea6eae05d7f05e8251193a` in comment `7035471323`.
+The Codex builder fixed the heading and added `repro-issue-11.test.ts`.
+The factory proved AC-1 failed on the seed and passed on head `89666f0cca238004efa35ada87b31cd732217bcd`, then ran the project tests, lint and typecheck.
+The Opus 5.5 reviewer approved the same head. [Pilot issue #11](https://github.com/Scylla23/factory-pilot/issues/11) [Spec approval](https://github.com/Scylla23/factory-pilot/pull/12#issuecomment-7035471323)
+
+The first browser verification stopped before capture when the install exceeded 120 seconds.
+Receipt `67c85c94-328d-4576-a355-5772bbbb21c3` recorded seven allowed registry connections and zero denied.
+A fresh diagnostic on the same seed started successfully and verified clean teardown.
+Commit `4f42516` raised the verification install timeout to 300 seconds and added one automatic retry for a verification infrastructure failure after checking the attempt's previews and leases.
+Both attempts have separate durable receipts and leave the repair count intact.
+The owner can request another verification on the same reviewed head after a repeated failure.
+The original timeout remained recorded, and the App announced the available owner command. [App announcement](https://github.com/Scylla23/factory-pilot/pull/12#issuecomment-7035809179) [Remaining recovery work, #34](https://github.com/Scylla23/software-factory/issues/34)
+
+The owner issued `/reverify 89666f0cca238004efa35ada87b31cd732217bcd` in comment `7036883579`.
+Fresh verification `fd4eac39-276c-4d33-a94a-ea51f9f8ab8b` passed all 24 checks on its first attempt.
+Its six captures cover desktop, mobile and the inventory API on both seed and head.
+The App published the evidence and marked the PR ready at 10:13:53 UTC on November 20, 2026. [Owner command](https://github.com/Scylla23/factory-pilot/pull/12#issuecomment-7036883579) [Verification evidence](https://github.com/Scylla23/factory-pilot/pull/12#issuecomment-7036920328)
+
+Owner `Scylla23` (89606989) submitted two approving reviews on that head after readiness, `5991031114` at 10:15:46 UTC and `5991161602` at 10:26:19 UTC.
+The factory consumed the latest qualifying review once and recorded a single accepted gate 2 event.
+Task 5 is `done` with zero repairs, and PR #12 remains open against `factory/pilot-4b-heading-base`. [First review](https://github.com/Scylla23/factory-pilot/pull/12#pullrequestreview-5991031114) [Consumed review](https://github.com/Scylla23/factory-pilot/pull/12#pullrequestreview-5991161602)
+
+| Pilot run | Outcome | Claude USD | Codex USD |
+| --- | --- | ---: | ---: |
+| #6 | Escalated at triage after the enum validation retry | 0.09418860 | 0 |
+| #7 | Escalated after builder tooling failed | 0.45993550 | 0.2861252 (partial) |
+| #9 | Escalated at the protected-file cleanliness check | 0.41346430 | 0.1783396 |
+| Local rehearsal of PR #10 | Verified local head after correcting the review command label | 0.03661278 | 0.2017524 |
+| #11 | Both owner gates complete on PR #12 | 0.70966470 | 0.1639620 |
+| **Total recorded** | | **1.71386588** | **0.8301792** |
+
+Issue #11's Claude charges comprise $0.0317813 for triage, $0.3155056 for the spec and $0.3623778 for review.
+Across the pilot and rehearsal, $1.28613412 of the $3.00 Claude ceiling remained before per-session rounding.
+The #7 Codex receipt has partial token coverage, so the Codex total is a lower bound.
+The eval and pilot budgets were accounted for separately.
+
+### Commits for review
+
+The resumed work starts after testing-policy commit `4e3d4a4` on `Scylla23/factory-step4b-wiring`.
+The groups below identify the local implementation and evidence commits before the final report.
+
+| Work | Commits |
+| --- | --- |
+| Eval budget, harness, fixtures and report | `f5c131a`, `d842322`, `af2f2f5`, `c22de11`, `1550f63`, `ae70597`, `e7495aa` |
+| Pilot isolation, triage feedback and frozen security rejudgments | `6b5b74b`, `3bb6c26`, `c237d8d`, `26b5089`, `518c437`, `f371a83`, `6d04965` |
+| Builder setup, AC-1 file assignment and #9 evidence | `e2ae5e4`, `0a9d46a`, `12a6918`, `4631ed5`, `3f85e4b`, `8df4708` |
+| Factory Git status, broker feedback, rehearsal accounting and #11 | `4343a96`, `263e196`, `b224b85`, `4549229`, `fb0312c`, `5c5e015` |
+| Verification timeout, retry and owner recovery | `4f42516` |
+
+### Final verification on the factory branch
+
+After gate 2 was recorded, `bash scripts/test-watchdog.sh` passed three consecutive times on the implementation at `4f42516`.
+Each run passed 478 tests across 46 files with 6,982 assertions and zero failures.
+The runs took 116.20, 106.90 and 105.50 seconds.
+`bun run typecheck` exited successfully.
+The existing mutation scripts killed 68/68 step 3 mutants, 79/79 step 4b mutants and 48/48 step 8 mutants, for 195/195 overall.
