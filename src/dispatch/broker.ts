@@ -102,7 +102,7 @@ export async function serveBroker(manifestPath: string) {
       result = {protocolVersion:["2025-11-25","2025-06-18","2025-03-26"].includes(String(version)) ? version : "2025-11-25",
         capabilities:{tools:{}},serverInfo:{name:"factory-project-check",version:"1"}};
     } else if (msg.method === "ping") result = {};
-    else if (ready && msg.method === "tools/list") result = {tools:[{name:"project_check",description:"Run a registered check in the disposable review checkout or inspect its pinned revisions.",
+    else if (ready && msg.method === "tools/list") result = {tools:[{name:"project_check",description:"Run a registered check in the disposable review checkout or inspect its pinned revisions. In the verdict copy the executed command label verbatim from project.commands.",
       inputSchema:{type:"object",properties:{name:{type:"string",enum:checks}},required:["name"],additionalProperties:false}}]};
     else if (ready && msg.method === "tools/call") {
       const params = msg.params;

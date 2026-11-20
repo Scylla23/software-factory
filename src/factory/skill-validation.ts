@@ -166,6 +166,10 @@ export function validateSkillOutput(
   requireJoin(isDeepStrictEqual(resolutions.map(r => r.n).sort((a,b) => a-b), expected) &&
     resolutions.every(r => r.round === prior?.round && (!r.carriedAs || v.findings.some(f => f.n === r.carriedAs))), "previous resolutions");
   requireJoin(isDeepStrictEqual(v.checks.acCoverage.map(c => c.acId), ids), "ordered criterion coverage");
-  requireJoin(v.checks.commands.some(c => c.command === brief.project.commands.test), "project test command");
+  const expectedCommand = brief.project.commands.test;
+  if (!v.checks.commands.some(c => c.command === expectedCommand)) {
+    throw new InvalidSkillOutput("skill output does not match project test command",
+      "In checks.commands record the test command exactly as supplied in project.commands.test: " + JSON.stringify(expectedCommand));
+  }
   if (v.verdict === "approve") requireJoin(testPassed && v.checks.acCoverage.every((row,i) => spec.acceptanceCriteria[i]?.tag === "manual" || row.tested), "independent head check and tested criteria");
 }

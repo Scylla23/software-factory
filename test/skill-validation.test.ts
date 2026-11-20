@@ -121,6 +121,17 @@ test("review stages full approved bytes, computes the contract hash and accepts 
   doc.covers = {baseSha: task.base, headSha: task.head, specSetSha256: digest};
   const check = (v: unknown, independent = true) => validateSkillOutput(input, dirs, new Map([["verdicts/code-reviewer.json", Buffer.from(JSON.stringify(v))]]), [], "/usr/bin/git", independent);
   expect(() => check(doc)).not.toThrow();
+  const command = 'mcp__factory__project_check {"name":"test"}';
+  input.brief.project.commands.test = command;
+  try {
+    check(doc);
+    throw Error("accepted a different command label");
+  } catch (error) {
+    expect(error).toBeInstanceOf(InvalidSkillOutput);
+    expect((error as InvalidSkillOutput).feedback).toContain(JSON.stringify(command));
+  }
+  doc.checks.commands[0]!.command = command;
+  expect(() => check(doc)).not.toThrow();
   expect(() => check(doc, false)).toThrow("independent");
   expect(() => check({...doc, covers: {...doc.covers, headSha: "b".repeat(40)}})).toThrow("coverage");
   expect(() => check({...doc, checks: {...doc.checks, acCoverage: doc.checks.acCoverage.toReversed()}})).toThrow("ordered");
