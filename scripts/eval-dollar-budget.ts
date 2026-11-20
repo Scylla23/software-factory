@@ -48,11 +48,12 @@ export class DollarBudget {
     return this.atomic(() => {
       const total = this.totals();
       if (total.pending) throw new Error("unsettled batch two session");
-      if (this.db.query("SELECT id FROM completion_budget").get()) return this.ceiling() / million;
       const stop = this.db.query<{ reason: string }, []>("SELECT reason FROM batch_stop WHERE id=1").get();
-      if (stop?.reason !== handover) throw new Error("completion budget requires the owner handover stop");
-      this.db.run("INSERT INTO completion_budget VALUES(1,?)", [total.committed]);
-      this.db.run("DELETE FROM batch_stop WHERE id=1");
+      if (!this.db.query("SELECT id FROM completion_budget").get()) {
+        if (stop?.reason !== handover) throw new Error("completion budget requires the owner handover stop");
+        this.db.run("INSERT INTO completion_budget VALUES(1,?)", [total.committed]);
+      }
+      this.db.run("DELETE FROM batch_stop WHERE id=1 AND reason=?", [handover]);
       return this.ceiling() / million;
     });
   }

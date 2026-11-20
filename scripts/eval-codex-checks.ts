@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import Ajv2020 from "ajv/dist/2020";
 import * as ts from "typescript";
@@ -12,6 +13,7 @@ import { readRegularFile } from "../src/dispatch/regular-file";
 import { isRecord, readJsonl } from "../src/dispatch/jsonl";
 import { assertRepoPath } from "../src/github/commit";
 import { evalCheckout } from "./eval-checkout";
+import { reviewChecks } from "./eval-review-checks";
 
 export interface TrialSetup {
   id: string;
@@ -91,6 +93,20 @@ function safeText(dir: string, path: string) {
   assertRepoPath(path);
   return readRegularFile(join(dir, path), 1024 * 1024).toString();
 }
+export async function observedScratchTest(rollout: string, scratchRepo: string) {
+  for await (const record of readJsonl(rollout)) {
+    if (record.kind !== "record") throw new Error("invalid Codex execution history");
+    const event = record.value.payload;
+    if (record.value.type !== "event_msg" || !isRecord(event) || event.type !== "item_completed" || !isRecord(event.item)) continue;
+    const item = event.item;
+    if (item.type !== "CommandExecution" || item.exit_code !== 0 || !Array.isArray(item.command)) continue;
+    const command = item.command.at(-1);
+    if (typeof command !== "string" || !String(item.aggregated_output).includes("(pass)")) continue;
+    if (command.trim() === "bun test" && (item.cwd === scratchRepo || item.cwd === pathToFileURL(scratchRepo).href)) return true;
+    if ([scratchRepo, "'" + scratchRepo + "'", '"' + scratchRepo + '"'].some(path => command.trim() === "cd " + path + " && bun test")) return true;
+  }
+  return false;
+}
 export async function checkCodexOutput(
   dispatch: DispatchConfig,
   factory: string,
@@ -113,6 +129,14 @@ export async function checkCodexOutput(
   if (!valid) return { grade, candidate };
   const previous = (path: string) => JSON.parse(safeText(s.task, path));
   const status = cmd("status", "--porcelain=v1", "-z", "--untracked-files=all").split("\0").filter(Boolean);
+  if (s.role === "security-auditor" && s.stage === "code") {
+    Object.assign(grade, reviewChecks(s.key, d, {
+      role: s.role, taskId: s.brief.taskId, round: s.brief.round, baseSha: s.refs.base,
+      headSha: s.refs.head, specSetSha256: s.brief.specSet!.sha256,
+    }, status.length === 0 && cmd("rev-parse", "HEAD").trim() === s.refs.head,
+    await observedScratchTest(rollout, join(s.root, "runs", s.id, "scratch", "repo"))));
+    return { grade, candidate };
+  }
   if (s.role === "spec-reviewer") {
     const four = s.key.endsWith("/four-defects"), clean = s.key.startsWith("spec-reviewer-02");
     const planned = s.key.endsWith("/plan-creates-a-file"), tier = planned ? "M" : "S";

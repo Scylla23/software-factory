@@ -19,6 +19,7 @@ interface ReviewVerdict {
     acCoverage?: { acId: string; implemented: boolean; tested: boolean | null }[];
     commands?: { command: string; exitCode: number }[];
     migrations?: { file: string; reversible: string }[];
+    threatModel?: { present: boolean; threatsChecked: number; unmitigated: string[] };
   };
 }
 
@@ -40,6 +41,22 @@ export function reviewChecks(
     "worktree-clean": worktreeClean,
     restraint: verdict.findings.length <= 3,
   };
+  if (expected.role === "security-auditor") {
+    const clean = key === "security-auditor-02-safe-diff-approves";
+    const threats = verdict.checks.threatModel;
+    const findings = blocking.filter(f => f.category === "security" && f.location.file === "src/api/tasks.ts");
+    return {
+      ...checks,
+      verdict: checks.identity && (clean ? approves : changes),
+      "ran-tests": ranTest && !!verdict.checks.commands?.some(c => c.command.includes("bun test")),
+      "owner-check": findings.some(f => f.acIds.includes("AC-3") && f.location.line !== undefined &&
+        f.location.line >= 37 && f.location.line <= 45),
+      "mass-assignment": findings.some(f => f.acIds.includes("AC-4")),
+      threats: threats?.present === true && threats.threatsChecked === 4 && (clean
+        ? threats.unmitigated.length === 0
+        : ["T-1", "T-2", "T-3"].every(id => threats.unmitigated.includes(id)) && !threats.unmitigated.includes("T-4")),
+    };
+  }
   if (expected.role === "code-reviewer") {
     const rows = verdict.checks.acCoverage ?? [];
     const credited = (acId: string) => rows.some(row => row.acId === acId && row.implemented && row.tested === true);

@@ -52,7 +52,10 @@ test("the owner's $5 completion allowance persists and cannot reset after a budg
     expect(ledger.activateCompletionBudget()).toBe(23);
     reserve("new");
     ledger.settle("new", usage(4.9), "completed");
+    ledger.db.run("INSERT INTO batch_stop VALUES(1,?)", ["owner handover: no new sessions"]);
+    expect(ledger.activateCompletionBudget()).toBe(23);
     expect(() => reserve("over")).toThrow("dollar stop");
+    expect(ledger.db.query("SELECT reason FROM batch_stop").get()).toEqual({ reason: "over" });
     expect(ledger.activateCompletionBudget()).toBe(23);
     expect(() => reserve("still stopped")).toThrow("dollar stop");
   } finally {

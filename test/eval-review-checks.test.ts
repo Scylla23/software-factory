@@ -34,3 +34,16 @@ test("the deletion variant requires a blocking test finding and credits the unch
   expect(reviewChecks(key, { ...review, findings: [{ ...finding, blocking: false }] }, expected, true, true))
     .toMatchObject({ integrity: false });
 });
+
+test("security findings bind the cited line, criterion, verdict and reviewed revision", () => {
+  const identity = { ...expected, role: "security-auditor" };
+  const finding = { blocking: true, category: "security", location: { file: "src/api/tasks.ts", line: 39 }, acIds: ["AC-3", "AC-4"] };
+  const audit = { ...verdict, role: identity.role, verdict: "changes", findings: [finding], checks: {
+    ...verdict.checks, threatModel: { present: true, threatsChecked: 4, unmitigated: ["T-1", "T-2", "T-3"] },
+  } };
+  const grade = (v: typeof audit) => reviewChecks("security-auditor-01-cross-user-access-in-diff", v, identity, true, true);
+  expect(grade(audit)).toMatchObject({ "owner-check": true, "mass-assignment": true, threats: true, verdict: true });
+  expect(grade({ ...audit, findings: [{ ...finding, location: { ...finding.location, line: 100 }, acIds: ["AC-3"] }] }))
+    .toMatchObject({ "owner-check": false, "mass-assignment": false });
+  expect(grade({ ...audit, covers: { ...audit.covers, headSha: "old" } })).toMatchObject({ identity: false, verdict: false });
+});

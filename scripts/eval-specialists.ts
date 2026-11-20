@@ -35,6 +35,8 @@ const make = (p: string) => {
 };
 const save = (p: string, data: unknown) => writeFileSync(p, JSON.stringify(data), { flag: "wx", mode: 0o600 });
 async function run() {
+  const selected = process.argv[2];
+  if (process.argv.length > 3) throw new Error("expected a single case or variant");
   for (const role of ["architect", "infra", "frontend", "threat-modeler", "verifier"] as const) {
     const verifier = role === "verifier";
     const gate = requiredProofs("claude", verifier ? "verifier" : "spec-lead", verifier ? [] : [role], verifier ? "judge" : "spec", d);
@@ -44,6 +46,7 @@ async function run() {
     for (const row of flattenCases(catalog.cases)) {
       const input = caseInput(git, factory, pin, role, row.id, row.variant);
       const caseKey = row.id + (row.variant ? "/" + row.variant : "");
+      if (selected && selected !== caseKey) continue;
       const planning = row.id === "verifier-01-plan-by-tag",
         ui = row.id === "verifier-03-judge-ui-capture";
       const accepted = ui
