@@ -53,6 +53,20 @@ for (const scenario of ["missing-repro", "edited-test", "infra"]) test("real sta
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("a failed AC capture spends a repair before capturing again", async () => {
+  const root = mkdtempSync(join(tmpdir(), "factory-ac-repair-"));
+  try {
+    expect(await invoke(root, "flaky-ac")).toBe(true);
+    const store = new Store(join(root, "state.sqlite"));
+    try {
+      expect(store.task(1).state).toBe("done");
+      expect(store.task(1).repairCount).toBe(1);
+      expect(store.db.query("SELECT id FROM attempts WHERE action='dispatch-builder'").all()).toHaveLength(2);
+      expect(store.db.query("SELECT id FROM attempts WHERE action='verify-infra-retry'").all()).toHaveLength(0);
+    } finally { store.db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const scenario of ["resume-base", "resume-check", "resume-capture", "reverify"]) test("real stages recover through " + scenario, async () => {
   const root = mkdtempSync(join(tmpdir(), "factory-resume-test-"));
   try {

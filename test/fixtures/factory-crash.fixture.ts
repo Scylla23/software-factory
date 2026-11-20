@@ -147,7 +147,8 @@ try {
     },
     verify: async (t, a, prior) => {
       interruptOnce(a, "resume-capture");
-      const passes = scenario !== "reverify" || !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
+      const passes = scenario === "flaky-ac" ? !!s.db.query("SELECT id FROM attempts WHERE action='verify' AND result IS NOT NULL").get() :
+        scenario !== "reverify" || !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
       const recovered = !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
       const retryable = scenario === "capture-transient" ? a.action === "verify" :
         ["capture-outage","capture-lease"].includes(scenario) && !recovered;
