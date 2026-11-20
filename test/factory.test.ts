@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
 import { config, headingPilot, inventoryFixture, pilotBase } from "../factory.config";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { pilotSessionLimits } from "../src/factory/worker";
 import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, specDecision } from "../src/factory/gates";
 import capturedInventory from "./fixtures/pilot-inventory-captures.json";
 import { issueNumber, readIssue } from "../src/factory/github";
@@ -281,36 +277,6 @@ test("the heading pilot binds its isolated base, column heading and unchanged in
   expect(inventoryMatches(page, "after", f.rows, f.heading)).toBe(false);
   expect(inventoryMatches(page.replace("ItemPrice", "Item | Stock count"), "after", f.rows, f.heading)).toBe(true);
   expect(inventoryMatches(page.replace("tapes0", "tapes1"), "before", f.rows, f.heading)).toBe(false);
-});
-
-test("the pilot stops before an unpriced or unaffordable Claude session including a repair", () => {
-  const store = new Store(":memory:");
-  const root = mkdtempSync(join(tmpdir(), "factory-pilot-limit-"));
-  try {
-    const t = store.intake({ ...issue, number: headingPilot.issues[0] }, old);
-    const prior = store.plan(t, "dispatch-spec", {});
-    const dir = join(root, "jobs", prior.id);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "job.json"), JSON.stringify({ agent: config.agents.spec }));
-    const next = crypto.randomUUID();
-    expect(pilotSessionLimits(store, t, next, "builder", false, root)).toBeUndefined();
-    expect(() => pilotSessionLimits(store, t, next, "reviewer", false, root)).toThrow("reconciliation");
-    store.db.run("INSERT INTO audit(attempt,task,stage,requested_model,effort,base,head,outcome,prompt_revision) VALUES(?,?,?,?,?,?,?,?,?)",
-      [prior.id,t.id,t.state,config.agents.spec.model,"high",old,old,"completed","a".repeat(64)]);
-    const capture = (costUsd: number) => store.db.run("INSERT OR REPLACE INTO usage_captures VALUES(?,?,?)",
-      [prior.id, "match", JSON.stringify({ coverage: "complete", costUsd })]);
-    capture(2.213386);
-    expect(pilotSessionLimits(store, t, next, "reviewer", false, root)?.maxUsd).toBe(0.75);
-    capture(2.213387);
-    const replacement = store.intake({ ...issue, issueId: issue.issueId + 1, number: headingPilot.issues[1] }, old);
-    expect(() => pilotSessionLimits(store, replacement, next, "reviewer", false, root)).toThrow("cap");
-    const third = store.intake({ ...issue, issueId: issue.issueId + 2, number: 11 }, old);
-    expect(() => pilotSessionLimits(store, third, next, "reviewer", false, root)).toThrow("cap");
-    expect(() => pilotSessionLimits(store, t, next, "spec", true, root)).toThrow("cap");
-  } finally {
-    store.db.close();
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 for (const capture of capturedInventory.captures) {

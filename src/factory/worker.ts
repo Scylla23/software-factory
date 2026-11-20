@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { userInfo } from "node:os";
-import { config, headingPilot, pilotBase } from "../../factory.config";
+import { config } from "../../factory.config";
 import { loadDispatchConfig, runAgent, type RunResult } from "../dispatch";
 import { assertPrivateDir } from "../dispatch/config";
 import { isDiscoveryPath } from "../dispatch/discovery";
@@ -206,31 +206,6 @@ function launchSupervisor(dir: string, id: string, stateRoot: string) {
 }
 
 export class WorkerLoginError extends Error {}
-export function pilotSessionLimits(store: Store, task: Task, id: string, role: Role, team: boolean, stateRoot: string) {
-  if (pilotBase(task.issue.number) !== headingPilot.base || config.agents[role].harness !== "claude") return undefined;
-  // Reservations are serialized by the controller lock. An unmetered prior paid job blocks a new one.
-  const prior = store.db.query<{ id: string; capture: string | null }, [number, string, string]>(
-    `SELECT a.id,u.capture FROM attempts a JOIN tasks t ON t.id=a.task
-     LEFT JOIN usage_captures u ON u.attempt=a.id
-     WHERE t.repo_id=? AND json_extract(t.issue,'$.number') IN (SELECT value FROM json_each(?)) AND a.id<>?`,
-  ).all(task.issue.repoId, JSON.stringify(headingPilot.issues), id);
-  let remaining = 3_000_000 - headingPilot.rehearsalClaudeMicros;
-  for (const attempt of prior) {
-    const path = join(jobDir(attempt.id, stateRoot), "job.json");
-    if (!existsSync(path)) continue;
-    const job = JSON.parse(readFileSync(path, "utf8"));
-    if (job.agent.harness !== "claude") continue;
-    const capture = attempt.capture && JSON.parse(attempt.capture);
-    if (capture?.coverage !== "complete" || !Number.isFinite(capture.costUsd) || capture.costUsd < 0) {
-      throw new Uncertain("pilot Claude spend requires reconciliation");
-    }
-    remaining -= Math.ceil(capture.costUsd * 1_000_000);
-  }
-  const estimate = team ? 4_000_000 : role === "triage" ? 150_000 : role === "spec" ? 850_000 : 750_000;
-  if (estimate > remaining) throw new Uncertain("next Claude session exceeds the $3 heading pilot cap");
-  return { maxUsd: estimate / 1_000_000, maxTurns: 32 };
-}
-
 export async function dispatchWorker(
   store: Store,
   task: Task,
@@ -269,7 +244,6 @@ export async function dispatchWorker(
     const testPassed = !!(proof && proof.base === task.base && proof.tested === task.head && proof.head === task.head &&
       proof.checks.some((c: {name: string; pass: boolean; detail: string}) => c.name === "test" && c.pass && c.detail.startsWith("exit 0\n")));
     const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role], input,
-      evaluationLimits: pilotSessionLimits(store, task, attempt.id, role, !!input.members.length, stateRoot),
       factoryCommit: pinFactoryCommit(store.db, task.id, commit), testPassed };
     if (!existsSync(path)) {
       const tmp = join(dir, `job-${process.pid}.tmp`);
@@ -279,7 +253,7 @@ export async function dispatchWorker(
       const published: Job = JSON.parse(readFileSync(path, "utf8"));
       if (published.base !== job.base || published.head !== job.head || published.prompt !== prompt || published.role !== role ||
           published.factoryCommit !== job.factoryCommit || JSON.stringify(published.input) !== JSON.stringify(input) ||
-          JSON.stringify(published.evaluationLimits) !== JSON.stringify(job.evaluationLimits) || published.testPassed !== testPassed)
+          published.testPassed !== testPassed)
         throw new Uncertain("worker job identity changed");
     }
     launcherPid = launch(dir, attempt.id, stateRoot);

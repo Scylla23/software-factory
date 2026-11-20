@@ -55,10 +55,7 @@ export const config = {
 
 export const headingPilot = {
   issues: [6, 7, 9, 11],
-  // Paid rehearsal receipts live in its disposable store, outside the production task query.
-  rehearsalClaudeMicros: 12_503 + 12_167 + 11_944,
   base: "factory/pilot-4b-heading-base",
-  seed: "9739f1f7912605144c17693602080e93ca6f3247",
   heading: { before: "Price", after: "Stock count" },
 } as const;
 
