@@ -217,6 +217,13 @@ After independently verifying both arms, the test owner can atomically publish i
 `qualifiesReviewIntegrity` defines the required fields and `verifiedReviewIntegrity` checks the pinned executable, trusted location and receipt before launch.
 No R3 receipt was issued in batch 2.
 
+### Batch 2 fixture corrections
+
+The spec-reviewer round-two case also used a zero digest in its archived verdict.
+Section 6 binds each verdict to its own round and the shared eval method binds that placeholder to the current round.
+The coordinator approved staging the actual earlier digest `b1d7f5787df8821b7617b99ff3b62fc2aab8c8d717af8c28380a7fab828bcf2b`.
+The test derives it independently from the archived `spec-lead.json` and `spec.md`.
+
 `python3 scripts/mutate-step-04b.py` killed 59 of 59 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions, judge quotations, discovery write denials, lazy reads and specialist model selection.
 The three development suites passed with 331, 342 and 355 tests.
 The third suite ran in 97.37 seconds under the external watchdog.

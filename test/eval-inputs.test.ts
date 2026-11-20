@@ -10,7 +10,7 @@ test("blind staging exposes only declared files, binds the plan and current spec
   const root = realpathSync(mkdtempSync(join(tmpdir(),"stage-case-")));
   try {
     const factory = join(root,"factory"), git = "/usr/bin/git";
-    for (const name of ["verifier/evals","security-auditor/evals","_shared/evals/tasklist"]) {
+    for (const name of ["verifier/evals","security-auditor/evals","spec-reviewer/evals","_shared/evals/tasklist"]) {
       const dest = join(factory,"skills",name);
       mkdirSync(dest,{recursive:true});
       cpSync(join(import.meta.dir,"../skills",name),dest,{recursive:true});
@@ -49,5 +49,14 @@ test("blind staging exposes only declared files, binds the plan and current spec
     expect(revisionFixtureError(id + "/" + variant,dir,hash)).toContain("distinct");
     expect(() => revisionFixtureError(id + "/" + variant,dir,undefined)).toThrow("missing spec-set");
     expect(revisionFixtureError(id + "/lead-dropped-a-mitigation",dir,staged.specSet?.sha256)).toBeNull();
+    const reviewKey="spec-reviewer-03-revision-breaks-something-else", reviewDir=join(root,"review");
+    mkdirSync(reviewDir,{mode:0o700});
+    const review=stageBlindInputs(git,factory,commit,"spec-reviewer",caseInput(git,factory,commit,"spec-reviewer",reviewKey),
+      reviewDir,{base:"a".repeat(40),head:"b".repeat(40)});
+    const priorDir=join(reviewDir,"archive/spec/round-1");
+    const digest=outputDigest(Buffer.from(["spec-lead.json","spec.md"].map(name=>outputDigest(readFileSync(join(priorDir,name)))+"  "+name+"\n").join("")));
+    expect(JSON.parse(readFileSync(join(priorDir,"verdicts/spec-reviewer.json"),"utf8")).covers.specSetSha256).toBe(digest);
+    expect(revisionFixtureError(reviewKey,reviewDir,review.specSet?.sha256)).toBeNull();
+    expect(revisionFixtureError(reviewKey,reviewDir,digest)).toContain("distinct");
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
