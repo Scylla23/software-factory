@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-sort",
+  "mode": "build",
+  "round": 1,
+  "baseSha": "0000000000000000000000000000000000000000",
+  "inputSha": "0000000000000000000000000000000000000000",
+  "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "status": "complete",
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-1: sorting by due date ascending is chronological"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "AC-2",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-2: sorting by due date descending is reverse chronological"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "AC-3",
+      "tag": "test",
+      "implemented": true,
+      "tests": [
+        {
+          "file": "src/task-list/sort.test.ts",
+          "name": "AC-3: tasks without a due date sort last in both directions"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "AC-4",
+      "tag": "browser",
+      "implemented": true,
+      "tests": [],
+      "note": "Verify on the task list."
+    },
+    {
+      "id": "AC-5",
+      "tag": "manual",
+      "implemented": true,
+      "tests": [],
+      "note": "The owner checks their production data."
+    }
+  ],
+  "reproduction": {
+    "acId": "AC-1",
+    "test": {
+      "file": "src/task-list/sort.test.ts",
+      "name": "AC-1: sorting by due date ascending is chronological"
+    },
+    "command": "bun test src/task-list/sort.test.ts",
+    "exitCodeBeforeFix": 1,
+    "failureExcerpt": "expect(received).toEqual(expected): received [\"2026-11-10\", \"2026-11-02\", \"2026-11-20\"]",
+    "exitCodeAfterFix": 0
+  },
+  "commands": [
+    {
+      "command": "bun test",
+      "exitCode": 0,
+      "summary": "8 pass, 0 fail."
+    }
+  ],
+  "filesChanged": [
+    "src/task-list/sort.ts",
+    "src/task-list/sort.test.ts"
+  ],
+  "existingTestsChanged": [],
+  "dependenciesAdded": [],
+  "deviations": [
+    {
+      "planStep": 2,
+      "what": "The due column no longer goes through the comparators map.",
+      "why": "Reversing an ascending sort would put undated tasks first when descending, so the direction is applied inside the due comparison."
+    }
+  ],
+  "findingsAddressed": [],
+  "blockers": [],
+  "notes": ""
+}

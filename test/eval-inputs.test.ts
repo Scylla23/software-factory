@@ -58,5 +58,13 @@ test("blind staging exposes only declared files, binds the plan and current spec
     expect(JSON.parse(readFileSync(join(priorDir,"verdicts/spec-reviewer.json"),"utf8")).covers.specSetSha256).toBe(digest);
     expect(revisionFixtureError(reviewKey,reviewDir,review.specSet?.sha256)).toBeNull();
     expect(revisionFixtureError(reviewKey,reviewDir,digest)).toContain("distinct");
+    for(const key of ["verifier-01-plan-by-tag","verifier-03-judge-ui-capture"]) {
+      const dir=join(root,key);mkdirSync(dir,{mode:0o700});
+      const staged=stageBlindInputs(git,factory,commit,"verifier",caseInput(git,factory,commit,"verifier",key),dir,{base:"a".repeat(40),head:"b".repeat(40)});
+      expect(JSON.parse(readFileSync(join(dir,"spec-lead.json"),"utf8")).acceptanceCriteria.map((ac:{tag:string})=>ac.tag))
+        .toEqual(["test","test","test","browser","manual"]);
+      expect(JSON.parse(readFileSync(join(dir,"build-report.json"),"utf8")).specSetSha256).toBe(staged.specSet!.sha256);
+      expect(readFileSync(join(dir,"spec.md"),"utf8")).toContain("/tasks?sort=due&dir=asc");
+    }
   } finally { rmSync(root,{recursive:true,force:true}); }
 });

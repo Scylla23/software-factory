@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "taskId": "eval-tasklist-sort",
+  "round": 1,
+  "status": "ready-for-review",
+  "tier": {
+    "provisional": "S",
+    "confirmed": "S",
+    "reason": "Only the due comparator in src/task-list/sort.ts changes; no API or schema change."
+  },
+  "riskFlags": {
+    "security": {
+      "value": false,
+      "reason": "No auth, session, or input parsing change."
+    },
+    "migration": {
+      "value": false,
+      "reason": "No persisted shape change."
+    },
+    "newProject": {
+      "value": false,
+      "reason": "project.isNew is false."
+    }
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "tag": "test"
+    },
+    {
+      "id": "AC-2",
+      "tag": "test"
+    },
+    {
+      "id": "AC-3",
+      "tag": "test"
+    },
+    {
+      "id": "AC-4",
+      "tag": "browser"
+    },
+    {
+      "id": "AC-5",
+      "tag": "manual"
+    }
+  ],
+  "retiredCriteria": [],
+  "team": [],
+  "conflicts": [],
+  "escalations": [],
+  "catalogGaps": [],
+  "changes": []
+}

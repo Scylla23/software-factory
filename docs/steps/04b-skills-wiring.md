@@ -224,6 +224,11 @@ Section 6 binds each verdict to its own round and the shared eval method binds t
 The coordinator approved staging the actual earlier digest `b1d7f5787df8821b7617b99ff3b62fc2aab8c8d717af8c28380a7fab828bcf2b`.
 The test derives it independently from the archived `spec-lead.json` and `spec.md`.
 
+Verifier case 01 described a task list but referred to the expense-report example in the spec-lead format reference.
+The coordinator approved an independent five-criterion task-list fixture for verifier cases 01 and 03.
+It stages the existing three named sort tests, visibility of the three seeded dates at both viewports and the owner's production-data check.
+Both cases share the spec, machine-readable criteria and build report.
+
 `python3 scripts/mutate-step-04b.py` killed 59 of 59 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions, judge quotations, discovery write denials, lazy reads and specialist model selection.
 The three development suites passed with 331, 342 and 355 tests.
 The third suite ran in 97.37 seconds under the external watchdog.
