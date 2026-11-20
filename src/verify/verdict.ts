@@ -11,6 +11,14 @@ export interface Check {
   detail: string;
 }
 
+/** Older receipts recorded the install timeout under the generic browser check. */
+export function retryableVerification(checks: readonly Check[]) {
+  const failed = checks.filter(c => !c.pass);
+  return failed.length === 1 && (failed[0]!.name === "verification infrastructure" ||
+    (failed[0]!.name === "complete browser verification" &&
+      /^Error: setup command \d+ \([^()\n]+\) did not succeed: timed_out$/.test(failed[0]!.detail)));
+}
+
 export interface Verdict {
   pass: boolean;
   failed: string[];

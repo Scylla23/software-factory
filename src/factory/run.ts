@@ -6,7 +6,7 @@ import { Publisher, issueNumber } from "./github";
 import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, type Review } from "./gates";
 import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
 import { checkAbandonedPreviews, ProjectChecks, requireHealthyInfrastructure } from "./checks";
-import { verdict, check, type Check } from "../verify/verdict";
+import { retryableVerification, verdict, check, type Check } from "../verify/verdict";
 import { fenced, redact, type EvidenceSummary } from "../github/summary";
 import { collectFeedback } from "../usage/feedback";
 import { verifyPilot } from "./verify";
@@ -188,16 +188,27 @@ async function verify(store: Store, task: Task, services: Services) {
     ...after.checks.map((c) => ({ ...c, name: `head ${c.name}` })),
     check("opposite vendor code review", true, review.rationale),
   ];
-  const evidence = await effect(store, task, "verify", { base: task.base, head: task.head }, (a) =>
-    services.verify(task, a, prior),
-  );
+  const capture = (action: string) => effect(store, task, action, { base: task.base, head: task.head }, async a => {
+    await services.git.boundPull(task);
+    const result = await services.verify(task, a, prior);
+    if (result.attemptId !== a.id || result.base !== task.base || result.head !== task.head || result.pr !== task.pr)
+      throw new Uncertain("verification receipt does not match its attempt");
+    return result;
+  });
+  let evidence = await capture("verify");
+  if (retryableVerification(evidence.checks)) {
+    // An uncleared preview leaves the failed receipt available for an owner-authorized retry after cleanup.
+    try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }
+    catch { return afterVerification(store, task, evidence); }
+    evidence = await capture("verify-infra-retry");
+  }
   return afterVerification(store, task, evidence);
 }
 
 async function gateTwo(store: Store, git: StagePublisher, task: Task) {
   await git.boundPull(task);
-  const evidence = latest<EvidenceSummary>(store, task, "verify");
-  if (evidence.base !== task.base || evidence.head !== task.head || !verdict(evidence.checks).pass)
+  const evidence = store.verificationReceipt(task, task.visit - 1);
+  if (!evidence || evidence.base !== task.base || evidence.head !== task.head || !verdict(evidence.checks).pass)
     throw new Error("missing verification of current head");
   const comment = await effect(store, task, "publish-evidence", { pr: task.pr, attempt: evidence.attemptId }, () =>
     git.summary(evidence),
@@ -247,6 +258,7 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
     return null;
   }
   await git.boundPull(task);
+  const failed = store.verificationReceipt(task, task.visit - 1)!;
   const command = `/reverify ${task.head}`;
   const id = await effect(
     store,
@@ -257,7 +269,7 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
       git.comment(
         task.pr,
         a.id,
-        `Verification escalated. ${task.reason}. After resolving the cause, the owner may request a fresh capture of this head with \`${command}\`.`,
+        `Verification escalated on this reviewed head.\n\n${fenced(redact(task.reason))}\n\nAfter resolving the cause, the owner may request a fresh capture with \`${command}\`.`,
       ),
   );
   store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [id, task.id]);
@@ -265,7 +277,9 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
   const pull = await git.boundPull(task);
   return store.db.transaction(() => {
     const resolution = pendingReverification(store, task, comments, id, pull.headSha);
-    return resolution ? store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution) : null;
+    if (!resolution) return null;
+    checkAbandonedPreviews(stateRoot, failed.attemptId);
+    return store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution);
   })();
 }
 

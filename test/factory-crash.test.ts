@@ -192,3 +192,30 @@ test("a schema-valid second reviewer attempt supplies the approval used by the f
     } finally { s.db.close(); }
   } finally { rmSync(root, {recursive: true, force: true}); }
 });
+
+test("verification retries infrastructure once, checks leases, and uses the latest receipt for gate two", async () => {
+  for (const scenario of ["capture-transient", "capture-outage", "capture-lease"]) {
+    const root = mkdtempSync(join(tmpdir(), "factory-infra-test-"));
+    try {
+      if (scenario === "capture-lease") {
+        await expect(invoke(root, scenario)).rejects.toThrow("still needs teardown");
+        const saved = new Store(join(root, "state.sqlite"));
+        try {
+          expect(saved.task(1).state).toBe("escalated");
+          expect(saved.db.query("SELECT id FROM attempts WHERE action='verify-infra-retry'").all()).toHaveLength(0);
+        } finally { saved.db.close(); }
+        rmSync(join(root, "ports", "fixture.lease"));
+      }
+      expect(await invoke(root, scenario)).toBe(true);
+      const s = new Store(join(root, "state.sqlite"));
+      try {
+        expect(s.task(1).state).toBe("done");
+        expect(s.task(1).repairCount).toBe(0);
+        const receipts = s.db.query("SELECT id FROM attempts WHERE action LIKE 'verify%' AND result IS NOT NULL").all();
+        expect(receipts.length).toBe(scenario === "capture-outage" ? 3 : 2);
+        const commands = s.db.query("SELECT accepted FROM approvals WHERE reason='owner requested re-verification'").all();
+        expect(commands).toEqual(scenario === "capture-transient" ? [] : [{accepted: 0}]);
+      } finally {s.db.close();}
+    } finally {rmSync(root, {recursive:true, force:true});}
+  }
+});

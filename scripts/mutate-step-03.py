@@ -70,6 +70,14 @@ group("factory/store", "reverification authority", [
     ("persisted.head !== task.head", "false"),
     ("persisted.base !== task.base", "false"),
 ])
+group("factory/store", "reverification authority", [
+    ("receipt.head === task.head", "true"),
+    ("&& retryableVerification(receipt.checks)", "&& true"),
+])
+group("factory/run", "verification retries infrastructure once", [
+    ('    try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }', '    try { }'),
+    ('    checkAbandonedPreviews(stateRoot, failed.attemptId);', ''),
+], "factory-crash")
 group("factory/run", "one failed verification", [
     ("if (task.repairCount) return", "if (false) return"),
     ("evidence.pr !== task.pr || evidence.head !== task.head", "evidence.pr !== task.pr"),

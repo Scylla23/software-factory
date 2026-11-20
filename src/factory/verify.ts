@@ -2,8 +2,10 @@ import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { config, inventoryFixture } from "../../factory.config";
 import type { EvidenceSummary } from "../github/summary";
-import { withVerificationProfile } from "../verify/browser";
-import { commandCheck } from "../verify/checks";
+import { OrcaError } from "../orca/cli";
+import { PreviewError } from "../verify/preview";
+import { CaptureInfrastructureError, withVerificationProfile } from "../verify/browser";
+import { commandCheck, teardownCheck } from "../verify/checks";
 import { VIEWPORTS, type EvidenceRecord } from "../verify/evidence";
 import { type EvidenceStore, openEvidenceStore } from "../verify/store";
 import { check, type Check, verdict } from "../verify/verdict";
@@ -128,7 +130,10 @@ export async function verifyPilot(
       },
     );
   } catch (e) {
-    checks.push(check("complete browser verification", false, String(e)));
+    if (e instanceof PreviewError && e.teardown) checks.push(teardownCheck("preview start teardown", e.teardown));
+    const retryable = e instanceof CaptureInfrastructureError || e instanceof OrcaError ||
+      (e instanceof PreviewError && e.retryableStart);
+    checks.push(check(retryable ? "verification infrastructure" : "complete browser verification", false, String(e)));
   }
   const result = {
     pr: task.pr,

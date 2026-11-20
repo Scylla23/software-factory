@@ -13,6 +13,7 @@ import { afterVerification, reviewVerdict } from "../src/factory/run";
 import { requireHealthyInfrastructure } from "../src/factory/checks";
 import { Uncertain, effect } from "../src/factory/machine";
 import { reproductionFile, Store, type Approval, type Issue, type Task } from "../src/factory/store";
+import { retryableVerification } from "../src/verify/verdict";
 import { inventoryMatches } from "../src/factory/verify";
 
 const old = "a".repeat(40);
@@ -321,6 +322,11 @@ for (const capture of capturedInventory.captures) {
   });
 }
 
+function failedCapture(s: Store, t: Task, name: string, detail = "fixture failed", head = t.head) {
+  const a = s.plan(t, "verify", {});
+  s.finish(a.id, {pr: t.pr, base: t.base, head, attemptId: a.id, checks: [{name, pass: false, detail}]});
+}
+
 test("re-verification requires a fresh owner comment on the same reviewed head after verification escalation", () => {
   const s = new Store(":memory:");
   try {
@@ -332,6 +338,7 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
     const cmd = (id: number, sha = current, actor: number = owner) => ({ ...comment(id, sha, actor), body: `/reverify ${sha}` });
     const valid = cmd(30);
     expect(pendingReverification(s, t, [valid], 20, current)).toBeNull();
+    failedCapture(s, t, "table rows");
     t = s.move(t, "escalated", { reason: "failed verification: table rows" });
     expect(pendingReverification(s, t, [valid], 20, old)).toBeNull();
     s.db.run("INSERT INTO factory_comments VALUES(?,?)", [25, t.id]);
@@ -366,6 +373,7 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
     expect(() => s.move(t, "verifying", { repairCount: 0 }, event)).toThrow();
     t = s.move(t, "verifying", {}, event);
     expect(t.repairCount).toBe(1);
+    failedCapture(s, t, "still failing");
     t = s.move(t, "escalated", { reason: "failed verification: still failing" });
     expect(pendingReverification(s, t, [valid, cmd(31)], 20, current)).toBeNull();
     expect(() => s.move(t, "verifying", {}, event)).toThrow("consumed");
@@ -438,7 +446,7 @@ test("owner resume replaces only the interrupted read-only attempt and preserves
 });
 
 test("reverification authority requires the persisted escalation and a matching approved code review", () => {
-  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review"]) {
+  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review", "missing-receipt", "stale-receipt", "non-infra", "infra"]) {
     const s = new Store(":memory:");
     try {
       let t = s.move(spec(s), "building", {}, approved);
@@ -449,14 +457,26 @@ test("reverification authority requires the persisted escalation and a matching 
           base: variation === "review-base" ? current : t.base, head: variation === "review-head" ? old : t.head });
       }
       if (variation !== "previous") t = s.move(t, "verifying");
-      t = s.move(t, "escalated", { reason: variation === "reason" ? "worker disappeared" : "failed verification: AC-1" });
+      const infra = variation === "infra" || variation === "non-infra";
+      if (variation !== "missing-receipt") failedCapture(s, t, variation === "infra" ? "verification infrastructure" : "AC-1",
+        "fixture failed", variation === "stale-receipt" ? old : t.head);
+      t = s.move(t, "escalated", { reason: infra ? "factory infrastructure failed during verification infrastructure: fixture failed" :
+        variation === "reason" ? "worker disappeared" : "failed verification: AC-1" });
       const command = { ...comment(82, current), body: "/reverify " + current };
-      expect(s.canReverify(t)).toBe(variation === "valid");
-      expect(!!pendingReverification(s, t, [command], 65, current)).toBe(variation === "valid");
+      expect(s.canReverify(t)).toBe(variation === "valid" || variation === "infra");
+      expect(!!pendingReverification(s, t, [command], 65, current)).toBe(variation === "valid" || variation === "infra");
       if (variation === "valid") {
         for (const stale of [{ ...t, visit: t.visit - 1 }, { ...t, base: current }, { ...t, head: old }, { ...t, state: "verifying" as const }])
           expect(s.canReverify(stale)).toBe(false);
       }
     } finally { s.db.close(); }
   }
+});
+
+test("a historical setup timeout qualifies only with a clean verification receipt", () => {
+  const timeout = {name: "complete browser verification", pass: false, detail: "Error: setup command 0 (bun) did not succeed: timed_out"};
+  expect(retryableVerification([timeout])).toBe(true);
+  expect(retryableVerification([timeout, {name: "before teardown", pass: false, detail: "survivor"}])).toBe(false);
+  expect(retryableVerification([{...timeout, name: "AC-1 capture"}])).toBe(false);
+  expect(retryableVerification([{...timeout, detail: "the page left the preview origin"}])).toBe(false);
 });

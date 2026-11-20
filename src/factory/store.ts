@@ -1,3 +1,5 @@
+import type { EvidenceSummary } from "../github/summary";
+import { retryableVerification, verdict } from "../verify/verdict";
 import { migrateSkillStore } from "./skill-store";
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
@@ -155,15 +157,25 @@ export class Store {
     return { ...raw, issue: JSON.parse(raw.issue) };
   }
 
+  verificationReceipt(task: Task, visit: number) {
+    const row = this.db.query<{id: string; result: string | null}, [number, number]>(
+      "SELECT id,result FROM attempts WHERE task=? AND visit=? AND action IN ('verify','verify-infra-retry') " +
+      "ORDER BY CASE action WHEN 'verify-infra-retry' THEN 0 ELSE 1 END LIMIT 1").get(task.id, visit);
+    if (!row?.result) return null;
+    const receipt: EvidenceSummary = JSON.parse(row.result);
+    return receipt.attemptId === row.id && receipt.base === task.base && receipt.head === task.head &&
+      receipt.pr === task.pr && Array.isArray(receipt.checks) ? receipt : null;
+  }
+
   canReverify(task: Task): boolean {
     const persisted = this.task(task.id);
     if (
       task.state !== "escalated" ||
       persisted.visit !== task.visit ||
       persisted.state !== "escalated" ||
+      persisted.pr !== task.pr ||
       persisted.head !== task.head ||
-      persisted.base !== task.base ||
-      !persisted.reason.startsWith("failed verification:")
+      persisted.base !== task.base
     )
       return false;
     const previous = this.db
@@ -175,6 +187,10 @@ export class Store {
       )
       .get(task.id);
     if (previous?.previous !== "verifying" || !reviewed) return false;
+    const receipt = this.verificationReceipt(persisted, persisted.visit - 1);
+    if (!receipt || !receipt.checks.length || verdict(receipt.checks).pass) return false;
+    if (!persisted.reason.startsWith("failed verification:") &&
+        !(persisted.reason.startsWith("factory infrastructure failed during ") && retryableVerification(receipt.checks))) return false;
     const result = JSON.parse(reviewed.result);
     return result.base === persisted.base && result.head === persisted.head && result.verdict === "approve";
   }
@@ -188,7 +204,7 @@ export class Store {
       "SELECT a.id,a.action,t.state,t.reason FROM attempts a JOIN transitions t USING(task,visit) " +
       "WHERE a.id=? AND a.task=? AND a.visit=? AND a.result IS NULL").get(match[2]!, task.id, task.visit - 1);
     if (!row) return null;
-    const valid = match[1] === "browser capture" ? row.action === "verify" && row.state === "verifying" :
+    const valid = match[1] === "browser capture" ? (row.action === "verify" || row.action === "verify-infra-retry") && row.state === "verifying" :
       (row.action === "base-reproduction" && row.state === "building") || (row.action === "head-checks" && row.state === "checks");
     return valid ? row : null;
   }

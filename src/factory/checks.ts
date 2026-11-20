@@ -13,7 +13,7 @@ import { Uncertain } from "./machine";
 export function requireHealthyInfrastructure(checks: readonly Check[]) {
   for (const c of checks) {
     if (c.pass) continue;
-    if (/teardown$|^complete browser verification$|verification profile signed out$|install same reproduction/.test(c.name) ||
+    if (/teardown$|^complete browser verification$|^verification infrastructure$|verification profile signed out$|install same reproduction/.test(c.name) ||
         /^(exit (126|127)\b|killed by a signal|timed_out|cancelled)|; left behind:|operation not permitted|permission denied|command not found|sandbox(?:-exec)?:.*deny/i.test(c.detail))
       throw new Uncertain(`factory infrastructure failed during ${c.name}: ${c.detail.slice(0, 800)}`);
   }
@@ -86,7 +86,7 @@ export class ProjectChecks {
         sha: revision,
         logDir,
         project: config.pilot.commands,
-        setupTimeoutMs: 120_000,
+        setupTimeoutMs: config.pilot.verificationInstallTimeoutMs,
         readyTimeoutMs: 30_000,
         maxLifetimeMs: 300_000,
       },

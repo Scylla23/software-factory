@@ -358,9 +358,19 @@ setInterval(() => {}, 1000);
     const s = spec(repo.path, repo.shas[0]!, { setup: [["/bin/sh", "-c", "echo boom >&2; exit 7"]] });
     const err = await startError(s);
     expect(err.message).toContain("setup command 0 (/bin/sh) did not succeed: exit 7");
+    expect(err.retryableStart).toBe(false);
     expect(err.logTail).toContain("boom");
     expect(err.teardown).toMatchObject({ removed: true, quarantineReasons: [] });
     expect(readdirSync(previews())).toEqual([]);
+  });
+
+  it("a setup timeout with a clean teardown allows verification to retry", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
+    const s = spec(repo.path, repo.shas[0]!, {setup: [["/bin/sleep", "20"]]});
+    const err = await startError({...s, setupTimeoutMs: 100});
+    expect(err.message).toContain("timed_out");
+    expect(err.retryableStart).toBe(true);
+    expect(err.teardown).toMatchObject({removed: true, noKnownSurvivors: true});
   });
 
   it("a setup command that leaves a detached process fails the preview, and the process is killed", async () => {
@@ -398,6 +408,7 @@ setInterval(() => {}, 1000);
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x", { exitCode: 3 }) }]);
     const t0 = Date.now();
     const err = await startError({ ...spec(repo.path, repo.shas[0]!), readyTimeoutMs: 10_000 });
+    expect(err.retryableStart).toBe(true);
     expect(err.message).toContain("the preview process exited");
     expect(Date.now() - t0).toBeLessThan(8_000);
   });

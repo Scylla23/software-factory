@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { previewId } from "../../src/factory/checks";
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../factory.config";
 import { InvalidSkillOutput } from "../../src/factory/skill-validation";
@@ -147,7 +148,16 @@ try {
     verify: async (t, a, prior) => {
       interruptOnce(a, "resume-capture");
       const passes = scenario !== "reverify" || !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
-      return remote("verify", { pr: 5, base: t.base, head: t.head, checks: [...prior, { name: "AC-1 capture", pass: passes, detail: "stock" }],
+      const recovered = !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
+      const retryable = scenario === "capture-transient" ? a.action === "verify" :
+        ["capture-outage","capture-lease"].includes(scenario) && !recovered;
+      if (scenario === "capture-lease" && retryable) {
+        mkdirSync(join(root, "ports"), {recursive:true});
+        writeFileSync(join(root, "ports", "fixture.lease"), JSON.stringify({attempt: previewId(a.id, "before")}));
+      }
+      const check = retryable ? {name: "verification infrastructure", pass: false, detail: "preview not ready"} :
+        {name: "AC-1 capture", pass: passes, detail: "stock"};
+      return remote(a.action, { pr: 5, base: t.base, head: t.head, checks: [...prior, check],
         captures: [], attemptId: a.id, evidenceDir: root }, a.id);
     },
   });
