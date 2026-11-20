@@ -1,4 +1,4 @@
-import { BROKER_TOOL } from "../src/dispatch/broker";
+import { BROKER_TOOL, brokerCommands } from "../src/dispatch/broker";
 import { isRecord, readJsonl } from "../src/dispatch/jsonl";
 
 interface Finding {
@@ -48,7 +48,8 @@ export function reviewChecks(
     if (key === "code-reviewer-01-good-fix-approves") return {
       ...checks,
       verdict: approves,
-      "ran-tests": ranTest && !!verdict.checks.commands?.some(c => c.command.includes("bun test") && c.exitCode === 0),
+      "ran-tests": ranTest && !!verdict.checks.commands?.some(c =>
+        (c.command.includes("bun test") || c.command === brokerCommands().test) && c.exitCode === 0),
       coverage: rows.length === 3 && allCredited,
     };
     if (key === "code-reviewer-02-untested-unmet-criterion") return {
