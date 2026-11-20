@@ -5,6 +5,7 @@ import { Database } from "bun:sqlite";
 import { config } from "../factory.config";
 import { loadDispatchConfig } from "../src/dispatch/config";
 import { parseClaudeStream } from "../src/dispatch/claude";
+import { parseCodexEvents } from "../src/dispatch/codex";
 import { readJsonl } from "../src/dispatch/jsonl";
 import { primary } from "../src/usage/capture";
 import { codexMeter, repeatedTeamCharge, sums, type Meter } from "./eval-measurements";
@@ -71,26 +72,37 @@ for (const row of db
   else {
     const r = contestant.report;
     status =
-      r?.session === row.id
-        ? contestant.status === "passed"
-          ? "pass"
-          : "fail - " + (bad(r.checks) || shorten(r.error ?? "team handoff"))
-        : "team handoff";
+      contestant.status === "awaiting-judge"
+        ? "unjudged"
+        : r?.session === row.id
+          ? contestant.status === "passed"
+            ? "pass"
+            : "fail - " +
+              (bad(r.checks) || shorten(parsed.diagnostics.length ? parsed.diagnostics.join(", ") : (r.error ?? "team handoff")))
+          : "team handoff";
     if (r?.session === row.id) outcomes.set(row.trial, status);
   }
   sessions.push({ trial: row.trial, role: row.kind === "judge" ? "Sonnet judge" : row.kind, model: row.model, id: row.id, meter, status });
 }
 for (const [key, t] of trials) {
   const j = t.report?.judge;
-  if (!j) continue;
-  const local = join(root, t.report.session);
-  const meter = await codexMeter(d, join(local, "judge.jsonl"), j.session, "gpt-6.2-astra");
-  const failed = j.grades.filter((g: any) => !t.report.checks[g.id]).map((g: any) => g.id);
+  if (!t.report?.session) continue;
+  const path = join(root, t.report.session, "judge.jsonl");
+  if (!existsSync(path)) {
+    if (j) throw new Error("missing frozen Codex judge receipt");
+    continue;
+  }
+  const parsed = await parseCodexEvents(readJsonl(path));
+  if (!parsed.threadId || (j && parsed.threadId !== j.session)) throw new Error("unjoined Codex judge receipt");
+  const meter = await codexMeter(d, path, parsed.threadId, "gpt-6.2-astra");
+  const failed = j
+    ? j.grades.filter((g: any) => !t.report.checks[g.id]).map((g: any) => g.id)
+    : [shorten(t.report.error ?? "judge did not supply a grade")];
   sessions.push({
     trial: key,
     role: "Codex judge",
     model: "gpt-6.2-astra",
-    id: j.session,
+    id: parsed.threadId,
     meter,
     status: failed.length ? "fail - " + failed.join(", ") : "pass",
   });
@@ -174,7 +186,9 @@ for (const role of [
       why = code
         ? "R3"
         : stop
-          ? "dollar stop"
+          ? stop.reason.startsWith("owner handover")
+            ? "owner handover"
+            : "dollar stop"
           : key === "verifier-03-judge-ui-capture" &&
               ![...trials].some(([k, t]) => k.startsWith("verifier-01-plan-by-tag#") && t.status === "passed")
             ? "requires a passing verifier plan"
@@ -183,6 +197,28 @@ for (const role of [
   }
 }
 console.log("\n## Batch 1 submissions judged in batch 2\n");
+const originalRoot = join(top, "v1-step-4b-batch-1", "codex");
+const judgedCases = new Set(
+  sessions.filter((s) => s.role === "Sonnet judge" && judgeDir.get(s.id)?.includes("/judge-1-")).map((s) => s.trial.split("#")[0]!),
+);
+const priorRates = new Map<string, boolean[]>();
+for (const entry of readdirSync(originalRoot)) {
+  const path = join(originalRoot, entry);
+  if (!existsSync(join(path, "grade-v2.json"))) continue;
+  const c = read(join(path, "contestant.json"));
+  if (!judgedCases.has(c.key)) continue;
+  const grade = read(join(path, "grade-v2.json")),
+    judgment = afterJudges.get(c.session);
+  if (grade.status === "unjudged" && !judgment) throw new Error("unresolved original case: " + c.key);
+  const rates = priorRates.get(c.key) ?? [];
+  rates.push(grade.status === "passed" || (grade.status === "unjudged" && judgment?.passed === true));
+  priorRates.set(c.key, rates);
+}
+console.log("The combined rates include batch 1 deterministic failures and the frozen submissions judged in this batch.\n");
+table(["Case and variant", "Combined pass rate"]);
+table(["---", "---:"]);
+for (const [key, rows] of priorRates) table([key, rows.filter(Boolean).length + "/" + rows.length]);
+console.log("");
 table(["Case", "Trial", "Contestant session", "Result"]);
 table(["---", "---:", "---", "---"]);
 for (const s of sessions.filter((s) => s.role === "Sonnet judge" && judgeDir.get(s.id)?.includes("/judge-1-"))) {

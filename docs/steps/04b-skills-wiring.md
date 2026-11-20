@@ -271,7 +271,7 @@ The [batch 1 report](04b-batch-one.md) records each case, variant, trial, model,
 `bun scripts/run-batch-one.ts --codex-only` resumes Codex contestants and deterministic grading with Claude disabled.
 The twenty-run stability check and the end-to-end pilot remain deferred under the coordinator's stop instruction.
 
-| Skill | Current disposition |
+| Skill | Disposition at the batch 1 stop |
 | --- | --- |
 | Triage | Eight passes from nine trials, with the first case failing its third trial on the tier signal enum |
 | Spec lead | One named solo trial failed the reused-path check despite passing all three judge checks, with eleven trials stopped before launch |
@@ -349,6 +349,46 @@ Actuals come from each final result's per-model totals, counting normal input, c
 | Spec lead with native team | 220,000 | 35,000 | 55 |
 | Sonnet judge | 18,000 | 3,000 | 2 |
 
+## Batch 2 observations
+
+The coordinator set a $25 Claude API-equivalent stop rule for the judges, contestants and native children.
+Each launch reserves the larger of the case estimate and its largest prior measured session.
+Step 8 reconciles the per-model input, cache read, cache write and output buckets with the provider total.
+The eleven previously unjudged batch 1 submissions all passed Sonnet low judgment at a combined $0.47681.
+The first judge parser rejected a fenced JSON array followed by prose.
+The revised parser reads one unambiguous array and still requires an exact quotation from the frozen output for each passing judge check.
+The judge transcripts retain both scores.
+A solo-lead Codex judge returned four separate quotations in an array for `observable`, which fails the single-string quotation rule.
+
+Across both batches the lead passed two of three initial drafts after the approved solo rescore, three of three revisions, zero of three promotions and zero of three conflict cases.
+Four native team sessions included all four requested specialists and account for the team charges.
+
+The architect `cites-code` checker treats backticked dotted identifiers such as `tasks.assignee` and `db.exec` as repository paths.
+The existing-project criterion asks for cited repository paths and allows paths described as new.
+The first existing-project submission also names the runtime SQLite database and introduces a source file with "Add a migration runner at".
+The proposed checker correction is to distinguish source path citations, runtime data, qualified identifiers and explicit creation targets before resolving the cited files at base.
+The recorded score uses the committed checker.
+
+The clean spec-reviewer creation-target fixture calls for a persistent task update, but its AC-2 checks only the PATCH response.
+An implementation that returns the submitted fields and leaves storage unchanged satisfies that check.
+One reviewer accepted the new file path and requested a subsequent GET to verify the edit, which the mandatory approval rubric scored as a failure.
+The proposed fixture correction is an AC-2 readback that observes the persisted title and due date.
+The other two trials of this variant failed authenticated submission before scoring.
+
+Two tier-promotion leads wrote that the confirmed tier is L and supplied the specialists, but the factory handoff recognizer expects a letter directly after the word tier or a separator.
+They failed before team redispatch.
+The spec-lead skill requires the confirmed tier, flags and members and specifies only the blocked-message prefix.
+The proposed contract change is a bounded, machine-readable handoff payload with explicit boolean flags and one confirmed tier, checked identically by the dispatcher and the evaluator.
+The recorded trials keep their original dispositions pending coordinator review.
+
+Some native team sessions emitted successive result records for asynchronous task notifications.
+The dispatcher requires one result event and rejected those submissions.
+For example, session `23754a09-e027-4bf6-bf67-54f4d4fb7b52` emitted three results with the same provider charge of $2.4972265.
+Its zero-index entry contains the complete Opus and Sonnet breakdown, and the two uniquely indexed task-notification entries have empty incremental usage.
+The evaluation ledger verifies both the unchanged breakdown and the matching per-model sum before charging this pattern once.
+A mismatch leaves the reservation unsettled and prevents another launch.
+A separate qualification of multi-result completion, author identity and output submission is required before changing the dispatcher's acceptance rule.
+
 ## Open issues
 
 | Issue | Status |
@@ -357,7 +397,7 @@ Actuals come from each final result's per-model totals, counting normal input, c
 | #16 | Closed after restoring the review validator and reproducing its 221 checks |
 | #17 | Open pending the remaining pinned proof matrix |
 | #18 | Closed after proving Codex R1 separately for shell and native reads and passing Codex R2 in the closed profile |
-| #19 | Open after one named solo trial, pending remaining spec-lead trials and their judges |
+| #19 | Closed after the D1 system-marker proof and all 12 spec-lead contestant trials ran under the named Claude lead launch |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
 | #43 | Open for step 5 to prove the Claude builder command path |
@@ -387,3 +427,115 @@ The broker only serves code-stage reviewer and auditor attempts with a disposabl
 The future Claude builder route still needs a test command execution path.
 The step 3 worker has one immutable GitHub issue revision per task and stages it as numeric revision 1 alongside the stored issue digest.
 The pilot keeps its registered AC-1 base and head checks and stages their fixture and reproduction path as task attachments.
+
+## Handover
+
+The owner transferred step 4b to GPT-6.2-Sol on 20 November 2026.
+All model processes and trial runners stopped before handover.
+The final active contestant was architect case 03 trial 3, session `fd0649c7-6481-4fa9-b621-8c38389ec5c9`.
+It completed for $0.49433 and its authenticated submission, deterministic checks and judge packet are stored in private factory state.
+Its `cites-code` check failed and its Codex judge was held before launch.
+A durable owner stop prevented the next Claude reservation.
+An exclusive judge-directory marker also prevented the already-running worker from starting the free judge after the owner stopped all sessions.
+The earlier failure receipt from that marker is preserved in `owner-handover.json`.
+The reconciled trial has status `awaiting-judge`.
+There are zero unsettled charges and no queued processes.
+
+Claude spent $17.92743 across 32 sessions including all native children, leaving $7.072558 under the ledger's conservative microdollar rounding.
+The 31 Codex sessions cost $9.42755 at API-equivalent rates.
+The session report gives each model, trial, input split, output count, failing check and per-case cost. [Batch 2 measurements](04b-batch-two.md)
+
+### Case dispositions at transfer
+
+USD includes contestants and judges from both vendors during batch 2.
+The four frozen cases show combined pass rates after this batch judged their original submissions.
+All remaining rows count only fresh batch 2 contestants.
+Pending means the contestant finished and its cross-vendor judgment is outstanding.
+
+| Case and variant | Passed / graded | Pending | Unstarted | USD | Disposition |
+| --- | ---: | ---: | ---: | ---: | --- |
+| builder-01-bug-reproduce-first | 2/3 | 0 | 0 | 0.08551 | Frozen judgments complete |
+| builder-02-security-criteria | 3/3 | 0 | 0 | 0.14445 | Frozen judgments complete |
+| builder-03-repair-fix-and-dispute | 3/3 | 0 | 0 | 0.14820 | Frozen judgments complete |
+| security-auditor-03-spec-stage/lead-dropped-a-mitigation | 3/3 | 0 | 0 | 0.09864 | Frozen judgments complete |
+| spec-lead-01-draft-and-revise/bug-reproduce-first | 1/2 | 0 | 0 | 1.26861 | Graded |
+| spec-lead-01-draft-and-revise/revision-answers-both-reviewers | 3/3 | 0 | 0 | 1.70173 | Graded |
+| spec-lead-02-tier-promotion-runs-team | 0/3 | 0 | 0 | 3.09227 | Graded |
+| spec-lead-03-ac-changing-conflict-escalates | 0/3 | 0 | 0 | 8.20707 | Graded |
+| spec-reviewer-01-planted-defects/four-defects | none | 3 | 0 | 1.54108 | Pending judge |
+| spec-reviewer-01-planted-defects/requirement-moved-to-non-goals | none | 3 | 0 | 1.38393 | Pending judge |
+| spec-reviewer-02-clean-spec-approves/bug-spec | none | 3 | 0 | 1.18321 | Pending judge |
+| spec-reviewer-02-clean-spec-approves/plan-creates-a-file | 0/3 | 0 | 0 | 1.38067 | Graded |
+| spec-reviewer-03-revision-breaks-something-else | none | 3 | 0 | 1.33761 | Pending judge |
+| security-auditor-01-cross-user-access-in-diff | none | 0 | 3 | 0.00000 | R3 gate |
+| security-auditor-02-safe-diff-approves | none | 0 | 3 | 0.00000 | R3 gate |
+| security-auditor-03-spec-stage/revision-edits-only-the-threat-model | none | 3 | 0 | 1.36244 | Pending judge |
+| code-reviewer-01-good-fix-approves | none | 0 | 3 | 0.00000 | R3 gate |
+| code-reviewer-02-untested-unmet-criterion | none | 0 | 3 | 0.00000 | R3 gate |
+| code-reviewer-03-test-integrity/undeclared-skip | none | 0 | 3 | 0.00000 | R3 gate |
+| code-reviewer-03-test-integrity/declared-deletion | none | 0 | 3 | 0.00000 | R3 gate |
+| database-auditor-01-unsafe-migration | none | 0 | 3 | 0.00000 | R3 gate |
+| database-auditor-02-safe-migration-approves | none | 0 | 3 | 0.00000 | R3 gate |
+| database-auditor-03-edited-applied-migration | none | 0 | 3 | 0.00000 | R3 gate |
+| architect-01-new-project | 2/3 | 0 | 0 | 1.47024 | Graded |
+| architect-02-split-temptation | 3/3 | 0 | 0 | 1.23334 | Graded |
+| architect-03-existing-project-delta | 0/2 | 1 | 0 | 1.71597 | Pending judge |
+| infra-01-new-project | none | 0 | 3 | 0.00000 | Owner hold |
+| infra-02-catalog-gap | none | 0 | 3 | 0.00000 | Owner hold |
+| infra-03-existing-project-wins | none | 0 | 3 | 0.00000 | Owner hold |
+| frontend-01-new-project | none | 0 | 3 | 0.00000 | Owner hold |
+| frontend-02-palette-and-ai-surface | none | 0 | 3 | 0.00000 | Owner hold |
+| frontend-03-gap-not-substitute | none | 0 | 3 | 0.00000 | Owner hold |
+| threat-modeler-01-per-user-data | none | 0 | 3 | 0.00000 | Owner hold |
+| threat-modeler-02-mitigation-changes-criteria | none | 0 | 3 | 0.00000 | Owner hold |
+| threat-modeler-03-small-flagged-task | none | 0 | 3 | 0.00000 | Owner hold |
+| verifier-01-plan-by-tag | none | 0 | 3 | 0.00000 | Owner hold |
+| verifier-02-judge-test-evidence/missing-and-contrary-evidence | none | 0 | 3 | 0.00000 | Owner hold |
+| verifier-02-judge-test-evidence/stale-evidence | none | 0 | 3 | 0.00000 | Owner hold |
+| verifier-02-judge-test-evidence/base-fails-for-the-wrong-reason | none | 0 | 3 | 0.00000 | Owner hold |
+| verifier-02-judge-test-evidence/sound-evidence | none | 0 | 3 | 0.00000 | Owner hold |
+| verifier-03-judge-ui-capture | none | 0 | 3 | 0.00000 | Owner hold |
+
+### Resume from the transferred checkout
+
+The branch is `Scylla23/factory-step4b-wiring` and includes step 8 at `d88d164`.
+There are no outstanding local code edits or live trials.
+The immutable receipts, archived outputs, judge packets, case pins and usage database are in `~/.software-factory/evaluations/v1-step-4b-batch-2/`.
+Preserve that state and the existing factory homes.
+The queued work is one Codex judgment of the frozen architect submission, 45 unstarted Sonnet-high contestants across four skills, and 15 Sonnet-low judgments of completed Codex contestants.
+The 27 R3-gated code-stage contestants remain separately blocked.
+The owner deferred the end-to-end pilot and the twenty-run stability check.
+
+Reconstruct the current report without a model call using `rtk proxy bun scripts/report-batch-two.ts`.
+When the coordinator authorizes the successor to resume, use the following commands in order.
+
+```sh
+rtk bun scripts/resume-batch-two.ts --release-owner-handover
+rtk bun scripts/eval-specialists.ts
+rtk bun scripts/judge-batch-two.ts 2
+rtk proxy bun scripts/report-batch-two.ts
+```
+
+The first command judges the frozen architect submission and then releases only the named transfer hold.
+Its live resume path has been typechecked and has not been invoked.
+The specialist runner reuses completed case pins and starts at infra case 01.
+The dollar reserve, per-session backstops and recorded spend carry forward.
+Stop when the next session fails the dollar reservation.
+The verifier UI case needs an accepted plan from verifier-01.
+The corrected spec-reviewer revision and security-auditor revision contestants have all run and their pending judges use frozen output.
+The new owner sets the lighter testing schedule.
+
+### Gates and corrections
+
+Issues #15 and #17 remain open.
+The coordinator owns the pending R3 project-command integrity proof documented above.
+All nine Codex native policy profiles are qualified.
+The Claude builder command path remains refused under #43, and the four disposable-login discovery controls remain unproven under #44.
+Issues #16, #18, #19, #20 and #21 are closed.
+Issue #19 covers the named launch and all twelve named lead trials were executed across the two batches.
+
+The approved fixture and rubric commits are `9475c75` for solo-lead reuse citations, `fc4e968` for the archived security-auditor digest, `f7afd2e` for the archived spec-reviewer digest and `659854a` for the verifier task list.
+The lead series retains its original batch 2 skill pin while the corrected cases use their individual pins.
+The additional findings about architect path citations, the clean creation-target spec, the free-text lead handoff and repeated team result records await coordinator review.
+The full suite passed 461 tests, the typecheck passed, the validator passed 226 controls, and the mutation scripts killed 79/79 step 4b mutants and 48/48 step 8 mutants.
+The seeded UI preflight verified the real desktop and mobile evidence independently of a paid verifier trial.
