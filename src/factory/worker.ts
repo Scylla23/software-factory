@@ -102,6 +102,18 @@ export function checkedCheckout(git: string, path: string, intended: string, bui
   return {cleanCheckoutAt: head};
 }
 
+export async function allocateWorkerAttempt(input: Parameters<typeof createAttempt>[0], orca: string, worktreeId?: string) {
+  try {
+    return createAttempt(input);
+  } catch (error) {
+    if (worktreeId) {
+      try { await removeWorktree(orca, worktreeId); }
+      catch (cleanup) { throw new Uncertain(`attempt setup failed: ${error}; worktree ${worktreeId} needs cleanup: ${cleanup}`); }
+    }
+    throw error;
+  }
+}
+
 async function work(id: string) {
   const dir = jobDir(id, config.stateRoot);
   assertPrivateDir(dir, config.stateRoot);
@@ -119,9 +131,9 @@ async function work(id: string) {
     const wt = job.role === "builder"
       ? await createWorktree(dispatch.executables.orca, `factory-${id}`, config.pilot.path, job.input.inputSha) : undefined;
     let output: WorkerOutput;
-    const dirs = createAttempt({ accountHome: dispatch.accountHome, stateRoot: dispatch.stateRoot,
+    const dirs = await allocateWorkerAttempt({ accountHome: dispatch.accountHome, stateRoot: dispatch.stateRoot,
       runRoot: join(dispatch.accountHome, ".software-factory-runs"), project: wt?.path ?? config.pilot.path,
-      attemptId: id, role: job.input.role, stage: job.input.stage });
+      attemptId: id, role: job.input.role, stage: job.input.stage }, dispatch.executables.orca, wt?.id);
     if (!wt) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.worktree);
     if (dirs.scratchRepo) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.scratchRepo);
     const setupCheckout = wt?.path ?? dirs.scratchRepo;

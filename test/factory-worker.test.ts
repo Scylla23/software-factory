@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runGit } from "../src/dispatch/git";
-import { changes, checkedCheckout } from "../src/factory/worker";
+import { allocateWorkerAttempt, changes, checkedCheckout } from "../src/factory/worker";
 import { Uncertain } from "../src/factory/machine";
 
 function withRepo(check: (dir: string) => void) {
@@ -20,6 +20,19 @@ function withRepo(check: (dir: string) => void) {
     check(dir);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
+
+test("attempt creation failure releases only its allocated builder worktree", async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-allocation-")));
+  try {
+    const orca = join(dir, "orca");
+    const calls = join(dir, "calls");
+    writeFileSync(orca, `#!/bin/sh\nprintf '%s\\n' "$@" > "${calls}"\necho '{}'\n`, { mode: 0o700 });
+    const input = {project: dir, stateRoot: dir, accountHome: dir, runRoot: dir, attemptId: "invalid", role: "builder" as const, stage: "build"};
+    await expect(allocateWorkerAttempt(input, orca, "fixture::builder")).rejects.toThrow("invalid attempt id");
+    expect(readFileSync(calls, "utf8")).toContain("id:fixture::builder");
+    await expect(allocateWorkerAttempt(input, "/usr/bin/false", "fixture::builder")).rejects.toThrow("worktree fixture::builder needs cleanup");
+  } finally { rmSync(dir, {recursive: true, force: true}); }
+});
 
 test("deleting a tracked file requests escalation", () => withRepo((dir) => {
   rmSync(join(dir, "app.ts"));
