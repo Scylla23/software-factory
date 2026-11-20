@@ -438,7 +438,7 @@ In the existing `bun test` setup, with no model calls:
 - The bundle materializer refuses a symlink, a dot-directory, an oversize file, and a source under an agent-readable root; excludes every `evals/` folder; reads the pinned commit and not a later commit or a working-tree edit.
 - The instruction composer orders skill, contract, and project instructions, strips the frontmatter, and refuses text over the byte limit.
 - The policy builder produces the role table of the run contract: a writable worktree for the builder only, `out/` and `scratch/` writable for all, the run root otherwise write-denied, `agents/` read-denied.
-- Only a proven team-enabled lead receives the allowlisted `Agent` and member definitions.
+- Only a lead with a selected team receives the allowlisted `Agent` and member definitions.
   Inspect actual launch arguments and effective tools for a team-disabled lead on each harness.
 - Start with a team-disabled provisional S/M lead and exercise an L promotion and a newly confirmed S/M security flag separately.
   Require zero child starts and zero accepted spec outputs from that attempt.
@@ -471,7 +471,8 @@ Section 10 of the factory contract assigns the rebase to the factory because age
 
 ## Open risks
 
-- **Facts 6b, 6c, 7, 13a, 13b, 14, and 15 are unverified.**
+- **Pinned behavior can change with a CLI version.**
+  The [step 4b observations](steps/04b-skills-wiring.md#pinned-harness-results) record the results for facts 6b, 6c, 7, 13a, 13b, 14, and 15.
   The [testing policy](testing-policy.md) defines which proofs gate dispatch and which belong in deferred issues.
 - **A Claude lead started with `--agent` has a different base prompt.**
   Its system prompt is the definition's, not Claude Code's default with text appended, so the lead may behave differently from the other roles in ways the skill did not anticipate.

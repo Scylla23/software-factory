@@ -22,7 +22,6 @@ import { evalCheckout, pinnedFixture } from "./eval-checkout";
 import { plantPilot } from "./eval-pilot";
 import { probePersonalSources } from "./probe-personal-sources";
 import { verifiedPersonalProbe } from "../src/dispatch/home-proof";
-import { runHomeProofs } from "./run-home-proofs";
 import { JudgeQuarantined, runCodexJudge } from "./eval-codex-judge";
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
@@ -67,7 +66,6 @@ async function batchOne() {
   }
   if (!dry && !second) for (const h of ["claude", "codex"] as const) {
     if (!verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(await probePersonalSources(h,dispatch)));
-    if (h === "claude" && verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
   }
 
   if (!dry && !second) {

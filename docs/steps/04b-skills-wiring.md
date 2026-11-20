@@ -34,10 +34,21 @@ Claude Haiku low session `fa2e95a6-e4b2-42a9-9204-e07684742faf` and Codex Luna l
 These are negative-only observations without a personal-home positive control.
 The discriminating D3 definition-absent arm `949a7054-7f2c-4a6b-b9b6-18936534e785` requested the named child and recorded no child start.
 The definition-present arm `7afbbb77-87b8-4d44-8bc4-b44344b0e3b5` observed Haiku low as parent and Sonnet medium as the child, including the delivered brief and specialist system instructions.
-Production and evaluation continue to require the applicable native controls and R3.
+Production and evaluation required the applicable native controls and R3 during the initial batches.
 
 
 Step 4b remains incomplete on branch `Scylla23/factory-step4b-wiring`, rebased onto step 8 at `d88d164`.
+
+## Testing rule applied
+
+The [v1 testing policy](../testing-policy.md) applies to step 4b.
+Launch and eval eligibility drop the R3 project-command substitution receipt. [Hostile-project controls, #45](https://github.com/Scylla23/software-factory/issues/45)
+Team and specialist launch eligibility drop the distinct Claude specialist model and effort receipt (D3), including its automatic refresh by the eval runner. [Additional skill delivery and discovery proofs, #46](https://github.com/Scylla23/software-factory/issues/46)
+Other source-specific discovery observations are follow-up proofs. [Disposable-login discovery, #44](https://github.com/Scylla23/software-factory/issues/44)
+Write-root, deny-read, home-clean, personal-leak, subagent tool, and publishing credential protections remain in scope.
+The Claude builder remains unavailable until it has a usable closed-read command path. [Step 5, #43](https://github.com/Scylla23/software-factory/issues/43)
+The final round runs three consecutive full suites and typecheck.
+The testing cleanup runs one full suite, typecheck, and the existing mutation scripts.
 
 ## Implemented
 
@@ -125,7 +136,7 @@ The coordinator separated this role behavior from the write-policy mechanism and
 The pinned Codex Luna low mechanism controls passed for spec reviewer in `01a1f784-16af-7f20-b6be-3b415be82dc2`, code reviewer in `01a1f782-f28c-7012-9188-58a00865ec6d` and database auditor in `01a1f783-5318-7720-be42-457efcd51d95`.
 The neutral spec reviewer also had one inconclusive attempt with no native call before its passing repeat.
 These role-bound receipts qualify all nine native Codex policy profiles.
-R3 remains a separate requirement for code review.
+R3 was a separate requirement for code review during the initial batches.
 Claude completed native Write and Edit controls for all nine role and stage profiles.
 Triage `2a595adb-7d0c-4295-a9cb-1f4fea7615d6` and database auditor `038f954a-677f-434c-900a-18572c2363c4` confirmed that an external Read refusal can also prevent Edit from resolving its target.
 The harness exposes no native rename or delete operation with Bash removed.
@@ -255,7 +266,15 @@ The mutation scripts killed all 71 step 4b mutants and all 48 step 8 mutants.
 The batch 2 suite passed 461 tests with 6,846 assertions in 111.76 seconds, and the mutation runs killed 79/79 step 4b mutants and 48/48 step 8 mutants.
 After the fixture repairs, the validator passed 226 controls and all 44 variants staged.
 The staged revision preflight also passed its focused regression, including the corrected-digest control.
-The 20 consecutive final runs await completed evals at the coordinator's request.
+The three consecutive final runs await completed evals.
+Run them in sequence under the watchdog, then typecheck.
+
+```sh
+rtk proxy scripts/test-watchdog.sh &&
+  rtk proxy scripts/test-watchdog.sh &&
+  rtk proxy scripts/test-watchdog.sh &&
+  rtk bun run typecheck
+```
 
 ## Skill evals
 
@@ -269,7 +288,7 @@ Project test commands used to grade builders run in disposable copies under the 
 The [batch 1 report](04b-batch-one.md) records each case, variant, trial, model, native session, fresh input, cache reads, cache writes, output, failing checks and API-equivalent costs.
 `bun scripts/report-step-04b.ts` reconstructs the report without launching a model.
 `bun scripts/run-batch-one.ts --codex-only` resumes Codex contestants and deterministic grading with Claude disabled.
-The twenty-run stability check and the end-to-end pilot remain deferred under the coordinator's stop instruction.
+The three-run stability check and the end-to-end pilot remain deferred under the coordinator's stop instruction.
 
 | Skill | Disposition at the batch 1 stop |
 | --- | --- |
@@ -393,15 +412,18 @@ A separate qualification of multi-result completion, author identity and output 
 
 | Issue | Status |
 | --- | --- |
-| #15 | Open pending the project-command substitution arm of R3, with native receipts, specialist attribution and real reviewer archival verified |
+| #15 | Closed after verifying native receipts, specialist attribution and real reviewer archival, with the project-command substitution arm deferred to #45 |
 | #16 | Closed after restoring the review validator and reproducing its 221 checks |
-| #17 | Open pending the remaining pinned proof matrix |
+| #17 | Closed after retaining the pinned observations and recording deferred proofs in #44 and #46 |
 | #18 | Closed after proving Codex R1 separately for shell and native reads and passing Codex R2 in the closed profile |
 | #19 | Closed after the D1 system-marker proof and all 12 spec-lead contestant trials ran under the named Claude lead launch |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
 | #43 | Open for step 5 to prove the Claude builder command path |
 | #44 | Open for step 9 to run paired disposable-login S1, system S3, S7 and S8 controls |
+| #45 | Open for R3 project-command substitution and other hostile-project controls before admitting untrusted repositories |
+| #46 | Open for non-gating harness delivery and discovery proofs |
+| #47 | Open for native spec-team handoff and completion failures recorded in batch 2 |
 
 ## Contract findings
 
@@ -417,7 +439,7 @@ The first D4 run reproduced this gap.
 The child adapter now verifies the parent start and joins the protected outer stream to the child's private transcript by session, role, parent tool call, native Write ID, success-event UUID, permission decision, submitted path and complete UTF-8 content.
 It never interprets tool-result text as an authentication record.
 The collector also rejects a designated path submitted from a second team session.
-Team-enabled dispatch remains gated on the remaining sandbox and discovery proofs.
+Team-enabled dispatch retains the applicable safety protections in the [testing policy](../testing-policy.md).
 Claude's direct Bash positive control failed with the closed read profile.
 Restricted Claude reviewer launches now receive file tools and a private stdio MCP server with fixed operations for the registered test, lint, typecheck, diff and show.
 The broker freezes a closed Seatbelt profile before launch and keeps a protected in-flight marker until command exit, process sweep and output drain are verified.
@@ -504,7 +526,7 @@ The immutable receipts, archived outputs, judge packets, case pins and usage dat
 Preserve that state and the existing factory homes.
 The queued work is one Codex judgment of the frozen architect submission, 45 unstarted Sonnet-high contestants across four skills, and 15 Sonnet-low judgments of completed Codex contestants.
 The 27 R3-gated code-stage contestants remain separately blocked.
-The owner deferred the end-to-end pilot and the twenty-run stability check.
+The owner deferred the end-to-end pilot and the three-run stability check.
 
 Reconstruct the current report without a model call using `rtk proxy bun scripts/report-batch-two.ts`.
 When the coordinator authorizes the successor to resume, use the following commands in order.
@@ -527,8 +549,8 @@ The new owner sets the lighter testing schedule.
 
 ### Gates and corrections
 
-Issues #15 and #17 remain open.
-The coordinator owns the pending R3 project-command integrity proof documented above.
+Issues #15 and #17 were open at transfer.
+Issue #45 now tracks the R3 project-command integrity proof documented above.
 All nine Codex native policy profiles are qualified.
 The Claude builder command path remains refused under #43, and the four disposable-login discovery controls remain unproven under #44.
 Issues #16, #18, #19, #20 and #21 are closed.
@@ -539,3 +561,8 @@ The lead series retains its original batch 2 skill pin while the corrected cases
 The additional findings about architect path citations, the clean creation-target spec, the free-text lead handoff and repeated team result records await coordinator review.
 The full suite passed 461 tests, the typecheck passed, the validator passed 226 controls, and the mutation scripts killed 79/79 step 4b mutants and 48/48 step 8 mutants.
 The seeded UI preflight verified the real desktop and mobile evidence independently of a paid verifier trial.
+
+The testing cleanup resumed evals before the coordinator narrowed its scope.
+The coordinator's scope change stopped the database auditor's in-flight third case before judgment and restored the owner hold on further sessions.
+The private ledger has zero unsettled charges and records $2.524338 of additional Claude API-equivalent spend after the original handover.
+The private receipts include completed Codex and Claude judgments, four code-review variants, two database-auditor variants, and the interrupted database-auditor attempt.
