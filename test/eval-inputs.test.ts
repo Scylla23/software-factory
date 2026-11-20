@@ -40,8 +40,13 @@ test("blind staging exposes only declared files, binds the plan and current spec
     const input = caseInput(git,factory,commit,role,id,variant);
     const dir = join(root,"revision"); mkdirSync(dir,{mode:0o700});
     const staged = stageBlindInputs(git,factory,commit,role,input,dir,{base:"a".repeat(40),head:"b".repeat(40)});
-    expect(revisionFixtureError(id + "/" + variant,dir,staged.specSet?.sha256)).toContain("distinct");
-    expect(revisionFixtureError(id + "/" + variant,dir,"c".repeat(64))).toBeNull();
+    const old = join(dir,"archive/spec/round-1");
+    const archived = ["spec-lead.json","spec.md","threat-model.md"].map(name =>
+      outputDigest(readFileSync(join(old,name))) + "  " + name + "\n").join("");
+    const hash = outputDigest(Buffer.from(archived));
+    expect(JSON.parse(readFileSync(join(old,"verdicts/security-auditor.json"),"utf8")).covers.specSetSha256).toBe(hash);
+    expect(revisionFixtureError(id + "/" + variant,dir,staged.specSet?.sha256)).toBeNull();
+    expect(revisionFixtureError(id + "/" + variant,dir,hash)).toContain("distinct");
     expect(() => revisionFixtureError(id + "/" + variant,dir,undefined)).toThrow("missing spec-set");
     expect(revisionFixtureError(id + "/lead-dropped-a-mitigation",dir,staged.specSet?.sha256)).toBeNull();
   } finally { rmSync(root,{recursive:true,force:true}); }

@@ -273,7 +273,10 @@ The fixture's round 1 verdict has a zero digest, which the shared eval method bi
 The revision identity check requires the archived digest to differ from that same current digest.
 All three verdicts echoed the correct current digest `f03ed6eba730669f43e9410f8e93e8d6d089f0a0d9672f21b4d8af9ec2724ccb`.
 The archived round 1 files independently hash to `0e99cceeabd1a308764ad0eedf5ed1c5ac9f8c8c50c964f3d4fc99e09e1c1439` under the section 6 algorithm.
-The proposed fixture correction is to put that archived digest in `skills/security-auditor/evals/fixtures/task-by-id-r1-audit.json`.
+The coordinator approved setting that archived digest in `skills/security-auditor/evals/fixtures/task-by-id-r1-audit.json`.
+Factory contract section 6 binds a verdict to the spec set its round reviewed and archives it before staging the next round.
+The shared eval method reserves an all-zero digest for the current staged set.
+A regression computes the previous digest from the staged archive and checks both equal-digest refusal and corrected-fixture acceptance.
 The report preserves the original failed identity checks and the $1.29028 consumed across the three trials.
 The runner checks for this contradiction after staging and refuses a new contestant while it persists.
 
