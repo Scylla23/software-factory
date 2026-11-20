@@ -15,15 +15,18 @@ export class RepoClient {
    * Calls the API and returns the parsed JSON body, or null for 404 when `allow404` is set.
    * Any other status outside 2xx throws a GitHubError with GitHub's message only.
    */
-  async request<T = unknown>(method: string, path: string, body?: unknown, opts: { allow404?: boolean } = {}): Promise<T | null> {
+  async request<T = unknown>(method: string, path: string, body?: unknown, opts: { allow404?: boolean; signal?: AbortSignal } = {}): Promise<T | null> {
     if (!path.startsWith("/")) throw new Error(`API path must start with /: ${path}`);
+    opts.signal?.throwIfAborted();
     const token = await this.tokens.get();
+    opts.signal?.throwIfAborted();
     if (!token.repositories.includes(this.repo)) throw new Error(`token is not scoped to ${this.repo}`);
+    const timeout = AbortSignal.timeout(GITHUB_TIMEOUT_MS);
     const res = await this.fetchImpl(`${GITHUB_API}${path}`, {
       method,
       headers: { ...baseHeaders(), Authorization: `Bearer ${token.secret()}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+      signal: opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout,
       redirect: "error",
     });
     if (res.status === 404 && opts.allow404) return null;

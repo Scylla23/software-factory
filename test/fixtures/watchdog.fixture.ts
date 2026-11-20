@@ -23,7 +23,7 @@ test.if(mode === "wedge")("ends while background work waits in Bun.spawnSync", a
 });
 
 test.if(mode === "leave")("leaves a detached process behind", async () => {
-  const sh = Bun.spawn(["/bin/sh", "-c", "/bin/sleep 127 > /dev/null 2>&1 &"], { cwd: process.env.FACTORY_TEST_STATE! });
+  const sh = Bun.spawn(["/bin/sh", "-c", "/bin/sleep 120 > /dev/null 2>&1 &"], { cwd: process.env.FACTORY_TEST_STATE! });
   await sh.exited;
 });
 

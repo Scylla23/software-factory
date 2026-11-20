@@ -1,3 +1,4 @@
+import { sessionUuid } from "./validation";
 import { closeSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
@@ -14,7 +15,6 @@ import type { RunOutcome, RunResult, RunSpec } from "./types";
 export { loadDispatchConfig, type DispatchConfig } from "./config";
 export type { RunResult, RunSpec } from "./types";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const AGENT_LABEL = /^[A-Za-z0-9._-]{1,64}$/;
 
 /**
@@ -23,7 +23,7 @@ const AGENT_LABEL = /^[A-Za-z0-9._-]{1,64}$/;
  * Throws only before anything starts (bad spec, aborted signal, unsafe config or log location).
  */
 export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<RunResult> {
-  if (!UUID.test(spec.runId)) throw new Error(`runId must be a lowercase UUID: ${spec.runId}`);
+  if (!sessionUuid.test(spec.runId)) throw new Error(`runId must be a lowercase UUID: ${spec.runId}`);
   if (spec.monitor && !AGENT_LABEL.test(spec.monitor.agent)) throw new Error(`monitor agent label must match ${AGENT_LABEL}: ${JSON.stringify(spec.monitor.agent)}`);
   spec.signal?.throwIfAborted();
   const worktree = realpathSync(spec.worktreePath);
@@ -110,6 +110,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
       outcome: outcome(s.succeeded),
       observedModel: s.observedModel,
       usage: s.usage,
+      ...(s.reportedCostUsd === undefined ? {} : { reportedCostUsd: s.reportedCostUsd }),
       resultText: s.resultText,
       diagnostics: [...diagnostics, ...s.diagnostics],
     };

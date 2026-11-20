@@ -40,24 +40,26 @@ export interface ClaudeModelUsage {
   outputTokens: number;
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
-  costUsd: number;
+  costUsd: number | null;
 }
 
 export interface ClaudeUsage {
   harness: "claude";
   /** Claude's own API-equivalent estimate. */
-  totalCostUsd: number;
+  totalCostUsd: number | null;
   byModel: Record<string, ClaudeModelUsage>;
 }
 
 /** Summed over every `turn.completed` event. `inputTokens` includes cached input, as Codex reports it. */
 export interface CodexUsage {
+  /** A failed or unfinished turn can incur additional unreported usage. */
+  partial?: true;
   harness: "codex";
   inputTokens: number;
   cachedInputTokens: number;
-  cacheWriteInputTokens: number;
+  cacheWriteInputTokens: number | null;
   outputTokens: number;
-  reasoningOutputTokens: number;
+  reasoningOutputTokens: number | null;
 }
 
 export interface RunResult {
@@ -74,6 +76,8 @@ export interface RunResult {
   observedModel: string | null;
   /** Null when usage is unrecoverable; never zero-filled. */
   usage: ClaudeUsage | CodexUsage | null;
+  /** Claude result total when the token breakdown was malformed or absent. */
+  reportedCostUsd?: number;
   /** Final agent message. */
   resultText: string | null;
   stdoutPath: string;

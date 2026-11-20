@@ -42,7 +42,7 @@ test("intake binds source, repository and issue ids independently of mutable iss
     expect(s.intake({ ...issue, repoId: 12 }, old).id).not.toBe(t.id);
     expect(s.intake({ ...issue, issueId: 23 }, old).id).not.toBe(t.id);
     expect(s.db.query("SELECT * FROM transitions").all()).toHaveLength(3);
-    expect(s.db.query("PRAGMA user_version").get()).toEqual({ user_version: 1 });
+    expect(s.db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
   } finally {
     s.db.close();
   }

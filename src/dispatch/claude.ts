@@ -1,3 +1,4 @@
+import { count, money } from "./validation";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
 import type { SandboxPolicy } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
@@ -89,6 +90,8 @@ export interface ClaudeStreamSummary {
   /** Null when absent, malformed, or ambiguous; never zero-filled. */
   usage: ClaudeUsage | null;
   /** A bounded sample; `diagnosticCount` counts them all. */
+  /** A valid result total can survive an unreadable token breakdown. */
+  reportedCostUsd?: number;
   diagnostics: string[];
   diagnosticCount: number;
 }
@@ -117,6 +120,8 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
       s.succeeded = event.subtype === "success" && event.is_error === false;
       s.resultText = str(event.result);
       s.usage = claudeUsage(event);
+      const total = usd(event.total_cost_usd);
+      if (!s.usage && total !== null) s.reportedCostUsd = total;
       if (!s.usage) sample.add(`line ${item.line}: result event has malformed usage`);
     }
   }
@@ -124,6 +129,7 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
     sample.add(`${results} result events; accounting is ambiguous`);
     s.succeeded = false;
     s.usage = null;
+    delete s.reportedCostUsd;
   }
   s.diagnostics = sample.list();
   s.diagnosticCount = sample.count;
@@ -132,8 +138,8 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
 
 function claudeUsage(result: Record<string, unknown>): ClaudeUsage | null {
   const modelUsage = result.modelUsage;
-  if (typeof result.total_cost_usd !== "number" || !isRecord(modelUsage)) return null;
-  const byModel: Record<string, ClaudeModelUsage> = {};
+  if (!isRecord(modelUsage)) return null;
+  const byModel: Record<string, ClaudeModelUsage> = Object.create(null);
   for (const [model, raw] of Object.entries(modelUsage)) {
     if (!isRecord(raw)) return null;
     const u = {
@@ -141,10 +147,13 @@ function claudeUsage(result: Record<string, unknown>): ClaudeUsage | null {
       outputTokens: raw.outputTokens,
       cacheReadInputTokens: raw.cacheReadInputTokens,
       cacheCreationInputTokens: raw.cacheCreationInputTokens,
-      costUsd: raw.costUSD,
     };
-    if (!Object.values(u).every((v) => typeof v === "number")) return null;
-    byModel[model] = u as ClaudeModelUsage;
+    if (!Object.values(u).every(count)) return null;
+    byModel[model] = { ...u, costUsd: usd(raw.costUSD) } as ClaudeModelUsage;
   }
-  return { harness: "claude", totalCostUsd: result.total_cost_usd, byModel };
+  return { harness: "claude", totalCostUsd: usd(result.total_cost_usd), byModel };
+}
+
+function usd(value: unknown): number | null {
+  return money(value) ? value : null;
 }

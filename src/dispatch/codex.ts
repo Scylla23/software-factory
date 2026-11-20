@@ -1,6 +1,7 @@
+import { count, safeSessionFile, sessionUuid } from "./validation";
 import { Glob } from "bun";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, readJsonl, str } from "./jsonl";
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { isUnder } from "./config";
 import type { SandboxPolicy } from "./policy";
@@ -121,6 +122,7 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
   let accountingComplete = true;
   let completed = false;
   let failed = false;
+  let openTurn = false;
   for await (const item of items) {
     if (item.kind === "invalid") {
       sample.add(describeInvalid(item));
@@ -130,10 +132,13 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
     const event = item.value;
     if (event.type === "thread.started") {
       threadId = str(event.thread_id);
+    } else if (event.type === "turn.started") {
+      openTurn = true;
     } else if (event.type === "item.completed" && isRecord(event.item) && event.item.type === "agent_message") {
       resultText = str(event.item.text) ?? resultText;
     } else if (event.type === "turn.completed") {
       completed = true;
+      openTurn = false;
       const turn = codexTurnUsage(event.usage);
       if (!turn) {
         sample.add(`line ${item.line}: turn.completed has malformed usage`);
@@ -146,19 +151,21 @@ export async function parseCodexEvents(items: AsyncIterable<JsonlItem>): Promise
     }
   }
   if (!accountingComplete) usage = null;
-  return { threadId, succeeded: completed && !failed && accountingComplete, resultText, usage, diagnostics: sample.list(), diagnosticCount: sample.count };
+  if (usage && (openTurn || failed)) usage.partial = true;
+  return { threadId, succeeded: completed && !openTurn && !failed && accountingComplete, resultText, usage, diagnostics: sample.list(), diagnosticCount: sample.count };
 }
 
-function codexTurnUsage(raw: unknown): CodexUsage | null {
+export function codexTurnUsage(raw: unknown): CodexUsage | null {
   if (!isRecord(raw)) return null;
   const u = {
     inputTokens: raw.input_tokens,
     cachedInputTokens: raw.cached_input_tokens,
-    cacheWriteInputTokens: raw.cache_write_input_tokens ?? 0,
+    cacheWriteInputTokens: raw.cache_write_input_tokens ?? null,
     outputTokens: raw.output_tokens,
-    reasoningOutputTokens: raw.reasoning_output_tokens ?? 0,
+    reasoningOutputTokens: raw.reasoning_output_tokens ?? null,
   };
-  if (!Object.values(u).every((v) => typeof v === "number")) return null;
+  if (![u.inputTokens,u.cachedInputTokens,u.outputTokens].every(count)
+      || ![u.cacheWriteInputTokens,u.reasoningOutputTokens].every(v => v === null || count(v))) return null;
   return { harness: "codex", ...(u as Omit<CodexUsage, "harness">) };
 }
 
@@ -167,20 +174,25 @@ function addUsage(a: CodexUsage, b: CodexUsage): CodexUsage {
     harness: "codex",
     inputTokens: a.inputTokens + b.inputTokens,
     cachedInputTokens: a.cachedInputTokens + b.cachedInputTokens,
-    cacheWriteInputTokens: a.cacheWriteInputTokens + b.cacheWriteInputTokens,
+    cacheWriteInputTokens: a.cacheWriteInputTokens === null || b.cacheWriteInputTokens === null ? null : a.cacheWriteInputTokens + b.cacheWriteInputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
-    reasoningOutputTokens: a.reasoningOutputTokens + b.reasoningOutputTokens,
+    reasoningOutputTokens: a.reasoningOutputTokens === null || b.reasoningOutputTokens === null ? null : a.reasoningOutputTokens + b.reasoningOutputTokens,
   };
 }
 
-const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Finds `<sessionsRoot>/YYYY/MM/DD/rollout-<timestamp>-<threadId>.jsonl`. */
 export async function findCodexSessionFile(sessionsRoot: string, threadId: string): Promise<string | null> {
-  if (!THREAD_ID.test(threadId)) throw new Error(`not a Codex thread id: ${JSON.stringify(threadId.slice(0, 80))}`);
+  if (!sessionUuid.test(threadId)) throw new Error(`not a Codex thread id: ${JSON.stringify(threadId.slice(0, 80))}`);
   const glob = new Glob(`*/*/*/rollout-*-${threadId}.jsonl`);
-  for await (const rel of glob.scan({ cwd: sessionsRoot, onlyFiles: true })) return `${sessionsRoot}/${rel}`;
-  return null;
+  if (!lstatSync(sessionsRoot, { throwIfNoEntry: false })?.isDirectory() || realpathSync(sessionsRoot) !== sessionsRoot) return null;
+  let found: string | null = null;
+  for await (const rel of glob.scan({ cwd: sessionsRoot, onlyFiles: true, followSymlinks: false })) {
+    const path = `${sessionsRoot}/${rel}`;
+    if (found || !safeSessionFile(path)) return null;
+    found = path;
+  }
+  return found;
 }
 
 /** The model of the last `turn_context` record, which is what Codex actually ran. */
