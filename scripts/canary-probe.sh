@@ -1,6 +1,7 @@
 #!/bin/sh
 # Credential canary probe for agent dispatch.
 #
+#   canary-probe.sh --targets   list credential target paths for a disposable fixture
 #   canary-probe.sh --setup     plant indirect-read canaries (outside any sandbox; idempotent)
 #   canary-probe.sh --baseline  outside any sandbox: prove every target exists and is readable, so a sandbox DENIED means something
 #   canary-probe.sh             inside the agent sandbox: probe, print one status line per check
@@ -77,7 +78,30 @@ plant() {
     (umask 077 && printf '{"type":"user","message":{"content":"%s"}}\n' "FACTORY-CANARY-$(token)" >"$1")
 }
 
+# The offline proof uses Git's receive-pack handshake with its disposable loopback repository.
+# A dry run changes no refs. Only an explicit sandbox denial counts as a blocked push.
+network_probe() {
+  if [ -z "${FACTORY_CANARY_GIT_PORT:-}" ]; then
+    curl -sS -m 10 -o /dev/null https://example.com 2>/dev/null && echo OPEN || echo BLOCKED
+    return
+  fi
+  case $FACTORY_CANARY_GIT_PORT in *[!0-9]*) echo UNKNOWN; return ;; esac
+  remote="git://127.0.0.1:$FACTORY_CANARY_GIT_PORT/receiver.git"
+  if error=$(git -c credential.helper= -c core.hooksPath=/dev/null push --dry-run "$remote" HEAD:refs/heads/probe 2>&1); then
+    echo OPEN
+  else
+    case $error in
+      *"Operation not permitted"*|*"Permission denied"*) echo BLOCKED ;;
+      *) echo UNKNOWN ;;
+    esac
+  fi
+}
+
 case ${1:-} in
+--targets)
+  printf '%s\n' "$TARGETS"
+  exit 0
+  ;;
 --setup)
   [ -d "$H/.software-factory" ] || { echo "SETUP-FAILED $H/.software-factory missing"; exit 2; }
   if ! grep -qE "$CANARY_RE" "$H/.software-factory/canary.txt" 2>/dev/null; then
@@ -103,14 +127,14 @@ case ${1:-} in
   found=$(canary_matches "$H/.software-factory/canary.txt" "$(dirname -- "$PLANTED_CLAUDE")" "$(dirname -- "$PLANTED_CODEX")" | wc -l | tr -d ' ')
   echo "INDIRECT-CANARIES-FOUND $found"
   [ "$found" -eq 3 ] || bad=1
-  if curl -sS -m 10 -o /dev/null https://example.com 2>/dev/null; then echo "NET-OPEN"; else echo "NET-UNAVAILABLE"; bad=1; fi
+  if [ "$(network_probe)" = OPEN ]; then echo "NET-OPEN"; else echo "NET-UNAVAILABLE"; bad=1; fi
   [ $bad -eq 0 ] && { echo "BASELINE-OK"; exit 0; }
   echo "BASELINE-INCOMPLETE"
   exit 2
   ;;
 "") ;;
 *)
-  echo "usage: $0 [--setup|--baseline|--cleanup]" >&2
+  echo "usage: $0 [--targets|--setup|--baseline|--cleanup]" >&2
   exit 2
   ;;
 esac
@@ -151,11 +175,12 @@ echo "ENV-NAMES $(env | cut -d= -f1 | sort | tr '\n' ' ')"
 if ! command -v curl >/dev/null 2>&1; then
   echo "NET-UNKNOWN no curl"
   inconclusive=1
-elif curl -sS -m 10 -o /dev/null https://example.com 2>/dev/null; then
-  echo "NET-OPEN"
-  leak=1
 else
-  echo "NET-BLOCKED"
+  case $(network_probe) in
+    OPEN) echo "NET-OPEN"; leak=1 ;;
+    BLOCKED) echo "NET-BLOCKED" ;;
+    *) echo "NET-UNKNOWN"; inconclusive=1 ;;
+  esac
 fi
 
 if [ $leak -ne 0 ]; then echo "RESULT LEAK"; exit 1; fi

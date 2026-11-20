@@ -792,3 +792,18 @@ Each run passed 478 tests across 46 files with 6,982 assertions and zero failure
 The runs took 116.20, 106.90 and 105.50 seconds.
 `bun run typecheck` exited successfully.
 The existing mutation scripts killed 68/68 step 3 mutants, 79/79 step 4b mutants and 48/48 step 8 mutants, for 195/195 overall.
+
+## Skill credential and push proof
+
+On November 20, 2026, the two harness profiles ran the same credential canary against a disposable home and a Git receiver bound to loopback.
+The unsandboxed baseline could read all 23 targets, find three indirect canaries and complete a dry-run Git push to that receiver.
+Each sandbox denied all 23 credential reads, hid the indirect canaries, passed its permitted-read control and denied the dry-run push.
+The receiver had zero refs after each run.
+
+| Harness and command | Profile and receipt | Native tool evidence | Claude USD |
+| --- | --- | --- | ---: |
+| `bun scripts/probe-skill-credentials.ts codex` | Codex CLI 0.169.0 builder sandbox, `10be6945-e503-44e0-90e8-db5e4e173d49` | The installed CLI executed the shell probe inside its generated closed-root profile. | 0 |
+| `bun scripts/probe-skill-credentials.ts claude` | Claude Code 2.1.325 code reviewer, `56812234-6293-4026-a1d4-ad67d8af9e29` | The registered test ran the shell probe inside the command broker, and the native Read tool separately denied the synthetic GitHub App credential. | 0.00155888 |
+
+The Claude Haiku low session advertised Edit, Glob, Grep, Read, Write and the registered project-check tool.
+The factory home preflight and postflight passed for that session.
