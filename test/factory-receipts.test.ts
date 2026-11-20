@@ -8,7 +8,7 @@ import { Uncertain } from "../src/factory/machine";
 import { Store } from "../src/factory/store";
 import { verifyPilot } from "../src/factory/verify";
 import { collectOutputs, outputDigest } from "../src/dispatch/output";
-import { dispatchWorker, workerFailure } from "../src/factory/worker";
+import { cleanWorkerResult, dispatchWorker, workerFailure } from "../src/factory/worker";
 
 function triageOutput(id: string, base: string, session: string) {
   return { attempt: id, role: "triage", round: 1, base, head: base, bundleHash: "a".repeat(64),
@@ -32,8 +32,16 @@ test("worker, project check and capture receipts are adopted only for the intend
     events.length = 0;
     save({ output: { result, files: [], collection: triageOutput(a.id, t.base, "one") } });
     expect((await dispatch()).result.sessionId).toBe("one");
-    await dispatch();
-    expect(events).toEqual(["recover-worker", "recover-worker"]);
+    const completed = await dispatch();
+    completed.result.noKnownSurvivors = true;
+    completed.result.quarantineReasons = [];
+    await cleanWorkerResult(completed.result, async () => { rmSync(join(job, "absent"), {recursive: true}); });
+    expect(completed.result.quarantineReasons[0]).toContain("worker cleanup failed");
+    expect(completed.result.quarantineWorktree).toBe(true);
+    expect(completed.collection).toEqual(triageOutput(a.id, t.base, "one"));
+    save({output: completed});
+    await expect(dispatch()).rejects.toBeInstanceOf(Uncertain);
+    expect(events).toEqual(["recover-worker", "recover-worker", "recover-worker"]);
     expect(store.db.query("SELECT attempt,prompt_revision FROM audit").all()).toEqual([{ attempt: a.id, prompt_revision: "d".repeat(64) }]);
     save({ output: {result: {...result, promptRevision: undefined}, files: []} });
     await expect(dispatch()).rejects.toThrow("dispatched prompt revision");

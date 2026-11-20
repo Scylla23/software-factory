@@ -118,64 +118,69 @@ async function work(id: string) {
     requireSkillProofs(agent.harness, job.input.role, job.input.members, job.input.stage, dispatch);
     const wt = job.role === "builder"
       ? await createWorktree(dispatch.executables.orca, `factory-${id}`, config.pilot.path, job.input.inputSha) : undefined;
-    let quarantine = true;
     let output: WorkerOutput;
     const dirs = createAttempt({ accountHome: dispatch.accountHome, stateRoot: dispatch.stateRoot,
       runRoot: join(dispatch.accountHome, ".software-factory-runs"), project: wt?.path ?? config.pilot.path,
       attemptId: id, role: job.input.role, stage: job.input.stage });
-    try {
-      if (!wt) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.worktree);
-      if (dirs.scratchRepo) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.scratchRepo);
-      const setupCheckout = wt?.path ?? dirs.scratchRepo;
-      if (setupCheckout) {
-        const pinned = runGit(dispatch.executables.git, setupCheckout, ["rev-parse", "HEAD"]).toString().trim();
-        if (pinned !== job.input.inputSha) throw new Uncertain("dependency checkout does not match intended skill input");
-        const verify = loadVerifyConfig(dispatch, {toolDirs: config.pilot.toolDirs, toolRoots: config.pilot.toolDirs, agentWriteRoots: [config.workspaceRoot]});
-        try { await prepareAgentCheckout(verify, {id, checkout: setupCheckout, scratch: dirs.scratchDir, logDir: dir,
-          setupTimeoutMs: config.pilot.installTimeoutMs, ...(wt ? {builderWorkspaceRoot: config.workspaceRoot} : {}), commands: config.pilot.commands}); }
-        catch (error) { throw new Uncertain("dependency setup requires inspection: " + (error as Error).message); }
-        finally { verify.egress.close(); }
-      }
-      const checkout = checkedCheckout(dispatch.executables.git, dirs.worktree, job.input.inputSha, !!wt);
-      if (agent.harness === "claude" && dirs.scratchRepo) job.input.brief.project.commands = brokerCommands();
-      const brief = {...stageInputs(dirs, job.input), ...checkout};
-      const result = await runAgent({
-        ...agent, evaluationLimits: job.evaluationLimits, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",
-        skill: { brief, dirs, members: job.input.members, toolDirs: config.pilot.toolDirs, factoryRepo, factoryCommit: job.factoryCommit },
-        instructions: { repo: config.pilot.path, baseSha: job.base, paths: PROJECT_INSTRUCTION_PATHS },
-      }, dispatch);
-      output = { result, files: [] };
-      if (!result.quarantineWorktree && result.noKnownSurvivors && result.outcome === "completed" && !result.resultText?.startsWith("BLOCKED: ")) {
-        if (!result.bundleHash || !result.sessionId) throw new Uncertain("skill output lacks trusted session or bundle hash");
-        const identity = { taskId: brief.taskId, attemptId: id, role: dirs.role, sessionId: result.sessionId };
-        const author = { role: dirs.role, sessionId: result.sessionId };
-        const expected = new Map<string, OutputAuthor>(expectedFiles[job.role].map(path => [path, author]));
-        const home = dispatch.harnessHomes[agent.harness];
-        let captured: Map<string, Buffer>;
-        try {
-          const writes = await (agent.harness === "claude" ? claudeWrites : codexWrites)(identity, dispatch.stateRoot, home, dirs.outDir);
-          if (job.input.members.length) await authenticateTeam(dirs, job.input.members, identity, dispatch.stateRoot, home, result.stdoutPath, expected, writes);
-          captured = collectOutputs(dirs, identity, expected, writes);
-        } catch (error) {
-          throw new OutputIntegrityError((error as Error).message);
-        }
-        const files = wt ? changes(wt.path) : [];
-        validateSkillOutput(job.input, dirs, captured, files.map(f => f.path), dispatch.executables.git, job.testPassed);
-        output = { result, files, collection: { attempt: id, role: dirs.role, base: job.base, head: job.head,
-          bundleHash: result.bundleHash, round: brief.round,
-          files: [...captured].map(([path, bytes]) => ({ path, role: expected.get(path)!.role, session: expected.get(path)!.sessionId,
-            sha256: outputDigest(bytes), base64: bytes.toString("base64") })) } };
-      }
-      quarantine = result.quarantineWorktree || !result.noKnownSurvivors;
-    } finally {
-      if (!quarantine) {
-        rmSync(dirs.root, { recursive: true });
-        if (wt) await removeWorktree(dispatch.executables.orca, wt.id);
-      }
+    if (!wt) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.worktree);
+    if (dirs.scratchRepo) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.scratchRepo);
+    const setupCheckout = wt?.path ?? dirs.scratchRepo;
+    if (setupCheckout) {
+      const pinned = runGit(dispatch.executables.git, setupCheckout, ["rev-parse", "HEAD"]).toString().trim();
+      if (pinned !== job.input.inputSha) throw new Uncertain("dependency checkout does not match intended skill input");
+      const verify = loadVerifyConfig(dispatch, {toolDirs: config.pilot.toolDirs, toolRoots: config.pilot.toolDirs, agentWriteRoots: [config.workspaceRoot]});
+      try { await prepareAgentCheckout(verify, {id, checkout: setupCheckout, scratch: dirs.scratchDir, logDir: dir,
+        setupTimeoutMs: config.pilot.installTimeoutMs, ...(wt ? {builderWorkspaceRoot: config.workspaceRoot} : {}), commands: config.pilot.commands}); }
+      catch (error) { throw new Uncertain("dependency setup requires inspection: " + (error as Error).message); }
+      finally { verify.egress.close(); }
     }
+    const checkout = checkedCheckout(dispatch.executables.git, dirs.worktree, job.input.inputSha, !!wt);
+    if (agent.harness === "claude" && dirs.scratchRepo) job.input.brief.project.commands = brokerCommands();
+    const brief = {...stageInputs(dirs, job.input), ...checkout};
+    const result = await runAgent({
+      ...agent, evaluationLimits: job.evaluationLimits, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",
+      skill: { brief, dirs, members: job.input.members, toolDirs: config.pilot.toolDirs, factoryRepo, factoryCommit: job.factoryCommit },
+      instructions: { repo: config.pilot.path, baseSha: job.base, paths: PROJECT_INSTRUCTION_PATHS },
+    }, dispatch);
+    output = { result, files: [] };
+    if (!result.quarantineWorktree && result.noKnownSurvivors && result.outcome === "completed" && !result.resultText?.startsWith("BLOCKED: ")) {
+      if (!result.bundleHash || !result.sessionId) throw new Uncertain("skill output lacks trusted session or bundle hash");
+      const identity = { taskId: brief.taskId, attemptId: id, role: dirs.role, sessionId: result.sessionId };
+      const author = { role: dirs.role, sessionId: result.sessionId };
+      const expected = new Map<string, OutputAuthor>(expectedFiles[job.role].map(path => [path, author]));
+      const home = dispatch.harnessHomes[agent.harness];
+      let captured: Map<string, Buffer>;
+      try {
+        const writes = await (agent.harness === "claude" ? claudeWrites : codexWrites)(identity, dispatch.stateRoot, home, dirs.outDir);
+        if (job.input.members.length) await authenticateTeam(dirs, job.input.members, identity, dispatch.stateRoot, home, result.stdoutPath, expected, writes);
+        captured = collectOutputs(dirs, identity, expected, writes);
+      } catch (error) {
+        throw new OutputIntegrityError((error as Error).message);
+      }
+      const files = wt ? changes(wt.path) : [];
+      validateSkillOutput(job.input, dirs, captured, files.map(f => f.path), dispatch.executables.git, job.testPassed);
+      output = { result, files, collection: { attempt: id, role: dirs.role, base: job.base, head: job.head,
+        bundleHash: result.bundleHash, round: brief.round,
+        files: [...captured].map(([path, bytes]) => ({ path, role: expected.get(path)!.role, session: expected.get(path)!.sessionId,
+          sha256: outputDigest(bytes), base64: bytes.toString("base64") })) } };
+    }
+    await cleanWorkerResult(result, async () => {
+      rmSync(dirs.root, { recursive: true });
+      if (wt) await removeWorktree(dispatch.executables.orca, wt.id);
+    });
     finish({ output });
   } catch (e) {
     finish(workerFailure(e));
+  }
+}
+
+export async function cleanWorkerResult(result: RunResult, cleanup: () => Promise<void>) {
+  if (result.quarantineWorktree || !result.noKnownSurvivors) return;
+  try {
+    await cleanup();
+  } catch (error) {
+    result.quarantineWorktree = true;
+    result.quarantineReasons.push("worker cleanup failed: " + String(error));
   }
 }
 
