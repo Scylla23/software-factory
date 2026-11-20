@@ -701,3 +701,22 @@ The builder stopped before editing and submitted a `BLOCKED:` result, which the 
 The task escalated at the spec head before gate 2.
 Combined Claude spend for issues #6, #7 and #9 was $0.9675884 at escalation, leaving $1.0324116.
 The #9 Codex builder cost $0.1783396 separately. [Pilot PR #10](https://github.com/Scylla23/factory-pilot/pull/10)
+
+### Local rehearsal of PR #10 and fresh intake
+
+The owner raised the combined pilot ceiling to $3.00 and requested a private rehearsal from the approved spec.
+The factory now runs Git status after setup and supplies the clean input SHA in the builder's trusted brief.
+The builder uses that result for cleanliness and verifies HEAD independently.
+A regression test covers the correct SHA, a wrong SHA, an untracked instruction file, and a staged change.
+
+The rehearsal used a disposable SQLite copy, a separate clone with no remote, and the real builder, project checks, review tools and verification browser.
+The builder completed the change ($0.2017524 Codex).
+The factory independently proved the single AC-1 assertion failed on the seed and passed on the scratch head, then passed the suite, lint and typecheck.
+Two Haiku-low reviews ran the registered commands but abbreviated the command label in their verdicts, failing the contract check.
+The broker now asks the reviewer to copy the executed label verbatim and the validator gives its exact expected value on retry.
+A fresh Haiku-low review passed on its first submission after the fix.
+All 24 checks passed on local commit `b6967655b183b6a4cab304f3da3a1431aaf37498`, with six captures in evidence receipt `3c0ecb6e-ff0b-47a2-b834-452f8797b22f`.
+The three Haiku receipts cost $0.01250205, $0.01216682 and $0.01194391, for $0.03661278 total.
+The live cap deducts 36,614 microdollars for these sessions after rounding up each receipt.
+The owner-account intake for issue #11 uses the original seed and brings no earlier task out of escalation.
+The combined Claude spend before #11 is $1.00420118, leaving $1.99579882 before conservative rounding. [Pilot issue #11](https://github.com/Scylla23/factory-pilot/issues/11)

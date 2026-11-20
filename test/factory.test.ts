@@ -274,6 +274,7 @@ test("the heading pilot binds its isolated base, column heading and unchanged in
   const page = "ItemPrice\nBench vises4\nMeasuring tapes0\nTool chestsUncounted";
   expect(pilotBase(6)).toBe(headingPilot.base);
   expect(pilotBase(9)).toBe(headingPilot.base);
+  expect(pilotBase(11)).toBe(headingPilot.base);
   expect(pilotBase(4)).toBe("main");
   expect(inventoryMatches(page, "before", f.rows, f.heading)).toBe(true);
   expect(inventoryMatches(page, "after", f.rows, f.heading)).toBe(false);
@@ -297,12 +298,12 @@ test("the pilot stops before an unpriced or unaffordable Claude session includin
       [prior.id,t.id,t.state,config.agents.spec.model,"high",old,old,"completed","a".repeat(64)]);
     const capture = (costUsd: number) => store.db.run("INSERT OR REPLACE INTO usage_captures VALUES(?,?,?)",
       [prior.id, "match", JSON.stringify({ coverage: "complete", costUsd })]);
-    capture(2.25);
+    capture(2.213386);
     expect(pilotSessionLimits(store, t, next, "reviewer", false, root)?.maxUsd).toBe(0.75);
-    capture(2.250001);
+    capture(2.213387);
     const replacement = store.intake({ ...issue, issueId: issue.issueId + 1, number: headingPilot.issues[1] }, old);
     expect(() => pilotSessionLimits(store, replacement, next, "reviewer", false, root)).toThrow("cap");
-    const third = store.intake({ ...issue, issueId: issue.issueId + 2, number: headingPilot.issues[2] }, old);
+    const third = store.intake({ ...issue, issueId: issue.issueId + 2, number: 11 }, old);
     expect(() => pilotSessionLimits(store, third, next, "reviewer", false, root)).toThrow("cap");
     expect(() => pilotSessionLimits(store, t, next, "spec", true, root)).toThrow("cap");
   } finally {

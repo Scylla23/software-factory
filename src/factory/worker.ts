@@ -214,7 +214,7 @@ export function pilotSessionLimits(store: Store, task: Task, id: string, role: R
      LEFT JOIN usage_captures u ON u.attempt=a.id
      WHERE t.repo_id=? AND json_extract(t.issue,'$.number') IN (SELECT value FROM json_each(?)) AND a.id<>?`,
   ).all(task.issue.repoId, JSON.stringify(headingPilot.issues), id);
-  let remaining = 3_000_000;
+  let remaining = 3_000_000 - headingPilot.rehearsalClaudeMicros;
   for (const attempt of prior) {
     const path = join(jobDir(attempt.id, stateRoot), "job.json");
     if (!existsSync(path)) continue;
