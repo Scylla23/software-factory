@@ -12,7 +12,7 @@ import { InstallationToken } from "../src/github/app";
 import { afterVerification, reviewVerdict } from "../src/factory/run";
 import { requireHealthyInfrastructure } from "../src/factory/checks";
 import { Uncertain, effect } from "../src/factory/machine";
-import { Store, type Approval, type Issue, type Task } from "../src/factory/store";
+import { reproductionFile, Store, type Approval, type Issue, type Task } from "../src/factory/store";
 import { inventoryMatches } from "../src/factory/verify";
 
 const old = "a".repeat(40);
@@ -42,6 +42,9 @@ test("intake binds source, repository and issue ids independently of mutable iss
   const s = new Store(":memory:");
   try {
     const t = s.intake(issue, old);
+    expect(reproductionFile(t.issue)).toBe("repro-issue-4.test.ts");
+    expect(reproductionFile(issue)).toBe("repro.test.ts");
+    expect(() => reproductionFile({...t.issue, reproductionFile: "../outside"})).toThrow("assignment");
     expect(s.intake({ ...issue, title: "renamed", number: 999 }, current)).toEqual(t);
     expect(s.intake({ ...issue, repoId: 12 }, old).id).not.toBe(t.id);
     expect(s.intake({ ...issue, issueId: 23 }, old).id).not.toBe(t.id);

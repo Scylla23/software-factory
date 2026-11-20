@@ -7,7 +7,7 @@ import { outputDigest } from "../dispatch/output";
 import { assertRepoPath } from "../github/commit";
 import { Uncertain } from "./machine";
 import { acceptedCollections, type Collection } from "./skill-store";
-import type { Store, Task } from "./store";
+import { reproductionFile, type Store, type Task } from "./store";
 
 export const skillRoles = { triage: "triage", spec: "spec-lead", builder: "builder", reviewer: "code-reviewer" } as const;
 export type WorkerRole = keyof typeof skillRoles;
@@ -39,7 +39,8 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
   const externalId = config.pilot.owner + "/" + config.pilot.repo + "#" + task.issue.number;
   text("task.json", { source: task.issue.source, externalId, project: config.pilot.repo, kind: "bug", title: task.issue.title,
     body: task.issue.body, attachments: [{ path: "pilot-checks.json" }], sender: String(task.issue.sender), revision: 1 });
-  text("pilot-checks.json", { reproduction: { file: "repro.test.ts", criterion: "AC-1", result: "named assertion failure on base and pass on head" },
+  const file = reproductionFile(task.issue);
+  text("pilot-checks.json", { reproduction: { file, criterion: "AC-1", result: "named assertion failure on base and pass on head" },
     fixture: inventoryFixture(task.issue.number), stageObservations });
   const requireCollection = (c: Collection | undefined, name: string) => {
     if (!c || c.base !== task.base) throw new Uncertain("missing validated skill input: " + name);
@@ -75,6 +76,7 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
   const stage = role === "spec" ? "spec" : role === "reviewer" ? "code" : role === "triage" ? "triage" : task.repairCount ? "repair" : "build";
   const criteria = spec && specFileSet(spec);
   const brief: BriefInput = { taskId: String(task.id), round, baseSha: task.base,
+    ...(task.issue.reproductionFile ? {reproductionFile: file} : {}),
     ...(validationFeedback ? { validationFeedback } : {}),
     ...(stage === "code" || stage === "repair" ? { headSha: task.head } : {}),
     ...(criteria ? { specSet: criteria } : {}), ...(Object.keys(previous).length ? { previous } : {}),

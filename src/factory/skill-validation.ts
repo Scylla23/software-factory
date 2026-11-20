@@ -96,6 +96,16 @@ export function validateSkillOutput(
       document.team.every((m: {status:string;file:string}) => m.status === "ran" && captured.has(m.file)), "fresh specialist decisions");
     const body = decoder.decode(captured.get("spec.md"));
     requireJoin(body.length <= 32000 && body.includes("AC-1"), "pilot spec");
+    if (brief.reproductionFile) {
+      const sections = body.split(/^#{1,6}[ \t]+/m).slice(1).filter(section => /^AC-1\b/.test(section));
+      const section = sections[0] ?? "";
+      const declared = [...section.matchAll(/^-[ \t]+Reproduction file:[ \t]*`?([^\s`]+)`?[ \t]*$/gm)];
+      const namedTests = section.match(/[\w./-]+\.(?:test|spec)\.[\w-]+/g) ?? [];
+      requireJoin(sections.length === 1 && declared.length === 1 && declared[0]![1] === brief.reproductionFile &&
+        namedTests.every(path => path === brief.reproductionFile) &&
+        document.acceptanceCriteria.some((c: Criterion) => c.id === "AC-1" && c.tag === "test"),
+        "AC-1 reproduction file " + brief.reproductionFile);
+    }
     const ids = document.acceptanceCriteria.map((c: Criterion) => c.id);
     const referenced = new Set(body.match(/\bAC-\d+\b/g));
     requireJoin(new Set(ids).size === ids.length && ids.every((id: string) => referenced.has(id)), "spec criteria");
@@ -110,6 +120,12 @@ export function validateSkillOutput(
     requireJoin(isDeepStrictEqual([...changedPaths].sort(), [...document.filesChanged].sort()), "builder changed files");
     const criteria: Criterion[] = document.acceptanceCriteria;
     requireJoin(isDeepStrictEqual(criteria.map(({id,tag}) => ({id,tag})), spec.acceptanceCriteria.map(({id,tag}) => ({id,tag}))), "approved acceptance criteria");
+    if (brief.reproductionFile) {
+      const test = document.reproduction?.test;
+      const ac1 = criteria.find(c => c.id === "AC-1")?.tests;
+      requireJoin(test?.file === brief.reproductionFile && /^AC-1(?: |$)/.test(test.name) &&
+        isDeepStrictEqual(ac1, [test]), "AC-1 reproduction file " + brief.reproductionFile);
+    }
     const tests = criteria.flatMap(c => c.tests ?? []);
     if (document.reproduction) tests.push(document.reproduction.test);
     for (const t of tests) {

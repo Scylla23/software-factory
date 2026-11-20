@@ -132,15 +132,24 @@ test("builder joins the complete diff and test names before storing changes", ()
   const {input, dirs} = prepare("builder");
   const report = fixture("reports/sort-fix-good.build-report.json");
   Object.assign(report, {taskId: input.brief.taskId, baseSha: task.base, inputSha: task.base, specSetSha256: input.brief.specSet?.sha256});
+  const assigned = input.brief.reproductionFile!;
+  const reproduction = {file: assigned, name: "AC-1 sorting by due date ascending is chronological"};
+  report.reproduction.test = reproduction;
+  report.acceptanceCriteria[0].tests = [reproduction];
+  report.filesChanged.push(assigned);
+  writeFileSync(join(sb.worktree, assigned), reproduction.name);
   const tests = report.acceptanceCriteria.flatMap((c: {tests: {name: string}[]}) => c.tests.map(t => t.name));
   writeFileSync(join(sb.worktree, "src/task-list/sort.test.ts"), tests.join("\n"));
   const check = (changed: string[]) => validateSkillOutput(input, dirs, new Map([["build-report.json", Buffer.from(JSON.stringify(report))]]), changed, "/usr/bin/git", false);
   expect(() => check(report.filesChanged)).not.toThrow();
   expect(() => check(report.filesChanged.slice(1))).toThrow("changed files");
-  report.acceptanceCriteria[0].tests[0].name = "absent-test";
+  report.reproduction.test = {...reproduction, file: "src/task-list/sort.test.ts"};
+  expect(() => check(report.filesChanged)).toThrow("AC-1 reproduction file");
+  report.reproduction.test = reproduction;
+  report.acceptanceCriteria[1].tests[0].name = "absent-test";
   expect(() => check(report.filesChanged)).toThrow("named test");
   symlinkSync(join(sb.worktree, "src/task-list/sort.test.ts"), join(sb.worktree, "linked.test.ts"));
-  report.acceptanceCriteria[0].tests[0] = {file: "linked.test.ts", name: tests[0]};
+  report.acceptanceCriteria[1].tests[0] = {file: "linked.test.ts", name: tests[1]};
   expect(() => check(report.filesChanged)).toThrow(InvalidSkillOutput);
 });
 test("unproven routes refuse dispatch before a harness or team can start", () => {
@@ -149,4 +158,22 @@ test("unproven routes refuse dispatch before a harness or team can start", () =>
     expect(() => requireSkillProofs(h, "builder", [])).toThrow("dispatch refused");
     expect(() => requireSkillProofs(h, "builder", ["architect"])).toThrow("only the spec lead");
   }
+});
+
+test("spec acceptance binds the single AC-1 file to the factory brief and to the AC-1 section", () => {
+  archive("triage", {"triage.json": JSON.stringify(fixture("taskdirs/sort/triage.json"))});
+  const { input, dirs } = prepare("spec");
+  const file = input.brief.reproductionFile;
+  expect(file).toBe("repro-issue-4.test.ts");
+  const spec = fixture("taskdirs/sort/spec-lead.json");
+  spec.taskId = input.brief.taskId;
+  const accept = (section: string) => validateSkillOutput(input, dirs, new Map([
+    ["spec-lead.json", Buffer.from(JSON.stringify(spec))],
+    ["spec.md", Buffer.from("### AC-1: Observed chronology\n" + section + "\n### AC-2: Descending\n### AC-3: Undated\n- Reproduction file: " + file)],
+  ]), [], "/usr/bin/git", false);
+  expect(() => accept("- Reproduction file: " + file)).not.toThrow();
+  for (const section of ["", "- Reproduction file: repro.test.ts",
+    "- Reproduction file: " + file + "\nWrite the reproduction in `old.test.ts`.",
+    "- Reproduction file: " + file + "\n- Reproduction file: " + file])
+    expect(() => accept(section)).toThrow("AC-1 reproduction file");
 });

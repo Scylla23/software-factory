@@ -120,8 +120,8 @@ export class Publisher {
   basePaths(base: string) {
     return new Set(runGit("/usr/bin/git", this.repoPath, ["ls-tree", "-rz", "--name-only", base]).toString().split("\0"));
   }
-  reproduction(head: string) {
-    return runGit("/usr/bin/git", this.repoPath, ["show", `${head}:repro.test.ts`]).toString("base64");
+  reproduction(head: string, file: string) {
+    return runGit("/usr/bin/git", this.repoPath, ["show", `${head}:${file}`]).toString("base64");
   }
   summary(evidence: EvidenceSummary) {
     return publishSummary(this.pulls, evidence, { botLogin: `${this.app.slug}[bot]` });

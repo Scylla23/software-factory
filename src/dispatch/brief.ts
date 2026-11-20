@@ -9,6 +9,8 @@ import { readRegularFile } from "./regular-file";
 export interface BriefInput {
   /** Validator observations about a rejected submission. Values are untrusted data. */
   validationFeedback?: string;
+  /** Required path for the single AC-1 test when the factory assigns it. */
+  reproductionFile?: string;
   taskId: string;
   round: number;
   baseSha: string;

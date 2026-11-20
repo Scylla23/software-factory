@@ -10,7 +10,7 @@ import { verdict, check, type Check } from "../verify/verdict";
 import { fenced, redact, type EvidenceSummary } from "../github/summary";
 import { collectFeedback } from "../usage/feedback";
 import { verifyPilot } from "./verify";
-import { Store, type Attempt, type Task } from "./store";
+import { reproductionFile, Store, type Attempt, type Task } from "./store";
 import { dispatchWorker, protectsChecks, WorkerLoginError, type WorkerOutput } from "./worker";
 
 import { loadDispatchConfig } from "../dispatch/config";
@@ -73,14 +73,15 @@ async function build(store: Store, task: Task, { git, dispatch, test, observe }:
   });
   const protectedFile = files.find((f) => protectsChecks(f.path));
   if (protectedFile) return store.move(task, "escalated", { reason: `builder changed check configuration: ${protectedFile.path}` });
-  const repro = files.find((f) => f.path === "repro.test.ts");
+  const file = reproductionFile(task.issue);
+  const repro = files.find((f) => f.path === file);
   if ((!repro || files.length === 0) && !task.repairCount)
-    return store.move(task, "failed", { reason: "builder omitted repro.test.ts" });
+    return store.move(task, "failed", { reason: `builder omitted ${file}` });
   const existing = git.basePaths(task.base);
   if (files.some((f) => existing.has(f.path) && /(?:^|\/)(?:test|tests)\/|\.(?:spec|test)\.[a-z]+$/.test(f.path)))
     return store.move(task, "escalated", { reason: "builder changed an existing test" });
   const content =
-    repro?.content ?? git.reproduction(task.head);
+    repro?.content ?? git.reproduction(task.head, file);
   const proof = await effect(store, task, "base-reproduction", { base: task.base, content }, (a) =>
     test(task, a, content),
   );

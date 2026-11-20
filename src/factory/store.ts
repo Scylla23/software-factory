@@ -5,6 +5,8 @@ import { migrateFeedbackFailures, migrateUsage } from "../usage/store";
 import { config } from "../../factory.config";
 
 export interface Issue {
+  /** Factory assignment frozen at intake. Older task snapshots used repro.test.ts. */
+  reproductionFile?: string;
   source: "github";
   repoId: number;
   issueId: number;
@@ -14,6 +16,17 @@ export interface Issue {
   sender: number;
   revision: string;
   url: string;
+}
+
+function assignedReproduction(number: number) {
+  if (!Number.isSafeInteger(number) || number < 1) throw new Error("invalid issue number for reproduction");
+  return `repro-issue-${number}.test.ts`;
+}
+export function reproductionFile(issue: Issue) {
+  if (issue.reproductionFile === undefined) return "repro.test.ts";
+  const file = assignedReproduction(issue.number);
+  if (file !== issue.reproductionFile) throw new Error("invalid stored reproduction assignment");
+  return file;
 }
 
 export const edges = {
@@ -124,7 +137,7 @@ export class Store {
       if (row) return this.task(row.id);
       const { lastInsertRowid } = this.db.run(
         "INSERT INTO tasks(source,repo_id,issue_id,issue,state,base,head) VALUES(?,?,?,?,'received',?,?)",
-        [issue.source, issue.repoId, issue.issueId, JSON.stringify(issue), base, base],
+        [issue.source, issue.repoId, issue.issueId, JSON.stringify({...issue, reproductionFile: assignedReproduction(issue.number)}), base, base],
       );
       const id = Number(lastInsertRowid);
       this.db.run("INSERT INTO transitions(task,visit,state,reason) VALUES(?,0,'received','owner-authorized issue')", [id]);

@@ -129,7 +129,7 @@ try {
       const body = role === "spec" ? teamHandoff ? `BLOCKED: team required, ${teamHandoff}, affects AC-1` : "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
       if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
         throw Error("reviewer did not see both reproduction results");
-      const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro.test.ts", content: "eA==" }] : [];
+      const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro-issue-4.test.ts", content: "eA==" }] : [];
       if (role === "builder" && scenario === "edited-test") files.push({ path: "app.test.ts", content: "eA==" });
       const [path, content] = role === "triage" ? ["triage.json", "{}"] : role === "spec" ? ["spec.md", body] :
         role === "builder" ? ["build-report.json", "{}"] : ["verdicts/code-reviewer.json", '{"verdict":"approve","summary":"AC-1 reviewed"}'];
