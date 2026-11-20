@@ -73,7 +73,8 @@ When a criterion cannot be met as written, stop and report a `spec-defect` block
    Check the states the frontend decision file or `<skillsDir>/frontend/references/ui-rubric.md` requires, at 1440x900 and 390x844, by reading your markup and styles.
 6. **Run the project's commands** for test, lint, and typecheck against the final state, and fix what fails.
    Record every command with its real exit code.
-7. **Review your own diff** with `git diff` and `git status` before you finish: every criterion implemented, every `test` criterion tested, nothing changed that no criterion needs, no debug output, no leftover files.
+7. **Review your own changes** with `git diff HEAD -- <edited paths>` and list new files with `git ls-files --others --exclude-standard`.
+   Read the new files and check every changed path against the criteria before reporting it.
 
 ## Mode `repair`
 
