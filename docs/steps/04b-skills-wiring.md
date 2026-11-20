@@ -673,3 +673,22 @@ The corrected skill lists the enum literals in its delivered instructions.
 The single retry now receives bounded, redacted validator feedback with the JSON pointer, rule, expected parameters and actual value in the run brief.
 The test submits the observed wrong signal, checks its retry prompt, and passes strict validation on the second attempt.
 The replacement task uses the same seed and counts both issues against one $2.00 pilot cap. [Pilot issue #7](https://github.com/Scylla23/factory-pilot/issues/7)
+
+### Builder preparation and the replacement pilot
+
+On #7, triage passed on the first attempt ($0.0612179) and the spec lead produced a spec ($0.3987176).
+The owner approved spec commit `423fa5090b604b35346af91f6283574bc884e263` on PR #8 in comment 7034368805.
+The Codex builder recorded a red reproduction and seven passing tests after its change, but lint and typecheck both stopped with `CouldntReadCurrentDirectory`.
+It submitted a partial report, and the factory escalated before publishing a fix. [Pilot PR #8](https://github.com/Scylla23/factory-pilot/pull/8)
+
+Installing the dependencies alone reproduced the same Bun package-script error in the builder sandbox.
+Node's script runner invokes the project's same lint and typecheck scripts successfully with the same closed reads.
+Commit `e2ae5e4` runs registered setup before builder dispatch with the step 2 registry proxy and revokes its credential when setup ends.
+An offline test executes both installed tools inside the actual Codex sandbox and verifies that the builder cannot alter them, read the planted secret or connect to a loopback listener.
+A fresh Orca worktree at the seed passed all four tests, lint and typecheck using the registered install and the builder's normal sandbox (setup receipt `d91b4bf8-c57c-492a-b736-e655b972daa1`).
+Bun's test discovery logged a denied ancestor read while completing all four tests.
+
+The seed already contains the prior issue's `repro.test.ts`.
+Commits `0a9d46a` and `12a6918` require new issues to use a dedicated file for one asserted AC-1 case, from the spec brief through independent base and head checks.
+The new task targets the original seed, reserves `repro-issue-9.test.ts`, and shares its $2.00 Claude ceiling with the two escalated tasks.
+The combined spend before its start is $0.5541241. [Pilot issue #9](https://github.com/Scylla23/factory-pilot/issues/9)
