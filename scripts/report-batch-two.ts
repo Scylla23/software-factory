@@ -7,7 +7,7 @@ import { loadDispatchConfig } from "../src/dispatch/config";
 import { parseClaudeStream } from "../src/dispatch/claude";
 import { readJsonl } from "../src/dispatch/jsonl";
 import { primary } from "../src/usage/capture";
-import { codexMeter, sums, type Meter } from "./eval-measurements";
+import { codexMeter, repeatedTeamCharge, sums, type Meter } from "./eval-measurements";
 import { flattenCases } from "./batch-one-cases";
 
 const d = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
@@ -49,7 +49,10 @@ for (const row of db
   if (!row.usage) throw new Error("unsettled Claude usage: " + row.id);
   const parsed = await parseClaudeStream(readJsonl(join(local, row.id + ".stdout.jsonl")));
   if (parsed.sessionId !== row.id || parsed.observedModel !== row.model) throw new Error("unjoined stream: " + row.id);
-  const cap = primary(parsed.usage, parsed.observedModel, row.outcome),
+  const usage =
+    parsed.usage ??
+    (row.kind === "spec-team" ? await repeatedTeamCharge(readJsonl(join(local, row.id + ".stdout.jsonl")), row.id, row.model) : null);
+  const cap = primary(usage, parsed.observedModel, row.outcome),
     meter = sums(cap);
   if (meter.cost === null || Math.ceil(meter.cost * 1_000_000) !== row.actual_micro) throw new Error("unreconciled Claude cost");
   if (cap.lines.length > 1)
@@ -170,13 +173,12 @@ for (const role of [
     if (actual.length < n)
       why = code
         ? "R3"
-        : key === "spec-reviewer-03-revision-breaks-something-else"
-          ? "archived verdict bound to current digest"
-          : ["verifier-01-plan-by-tag", "verifier-03-judge-ui-capture"].includes(key)
-            ? "referenced task-list worked example unavailable"
-            : stop
-              ? "dollar stop"
-              : "pending";
+        : stop
+          ? "dollar stop"
+          : key === "verifier-03-judge-ui-capture" &&
+              ![...trials].some(([k, t]) => k.startsWith("verifier-01-plan-by-tag#") && t.status === "passed")
+            ? "requires a passing verifier plan"
+            : "pending";
     table([key, graded ? passed + "/" + graded : "none", n, actual.length - graded, n - actual.length, why]);
   }
 }

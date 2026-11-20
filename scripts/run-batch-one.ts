@@ -14,6 +14,7 @@ import { authenticateTeam } from "../src/dispatch/team-outputs";
 import { collectOutputs, type OutputAuthor } from "../src/dispatch/output";
 import { requiredProofs } from "../src/dispatch/skill-launch";
 import { flattenCases, deterministicBatchOne, exposesAnswer, judgeGrades } from "./batch-one-cases";
+import { repeatedTeamCharge } from "./eval-measurements";
 import { EvalBudget } from "./eval-budget";
 import { DollarBudget } from "./eval-dollar-budget";
 import { caseInput, inspectBlindStream, stageBlindInputs } from "./eval-inputs";
@@ -27,7 +28,7 @@ import { JudgeQuarantined, runCodexJudge } from "./eval-codex-judge";
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const git = dispatch.executables.git,
   factory = realpathSync(join(import.meta.dir, ".."));
-const pin = runGit(git, factory, ["log", "-1", "--format=%H", "HEAD", "--", "skills"]).toString().trim();
+let pin = runGit(git, factory, ["log", "-1", "--format=%H", "HEAD", "--", "skills"]).toString().trim();
 const dry = process.argv[2] === "--preflight";
 const codexOnly = process.argv[2] === "--codex-only";
 const second = process.argv[2] === "--batch-two-leads";
@@ -36,6 +37,11 @@ const batch = join(dispatch.stateRoot, "evaluations", second ? "v1-step-4b-batch
 mkdirSync(batch, { recursive: true, mode: 0o700 });
 assertPrivateDir(batch, dispatch.stateRoot);
 const ledger = second ? new DollarBudget(join(batch,"usage.sqlite")) : new EvalBudget(join(batch, "usage.sqlite"));
+if (second) {
+  // Keep the lead series on its original pin when unrelated role fixtures are corrected.
+  const first = ledger.db.query<{revision:string},[]>("SELECT revision FROM trials ORDER BY rowid LIMIT 1").get();
+  if (first) pin = first.revision;
+}
 function overspent(actual: ReturnType<typeof ledger.settle>) {
   return "overshootUsd" in actual ? actual.overshootUsd > 0 : !!(actual.overshootInput || actual.overshootOutput);
 }
@@ -190,7 +196,9 @@ async function batchOne() {
               dispatch,
             );
             cleanup = result.noKnownSurvivors && !result.quarantineWorktree;
-            const actual = ledger.settle(session, result.usage?.harness === "claude" ? result.usage : null, result.outcome);
+            const charge = result.usage?.harness === "claude" ? result.usage :
+              second && selected.length ? await repeatedTeamCharge(readJsonl(result.stdoutPath),session,model.model) : null;
+            const actual = ledger.settle(session, charge, result.outcome);
             return { result, actual };
           };
           let handoff = false;

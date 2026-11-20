@@ -40,3 +40,45 @@ test("judges cannot reserve an unapproved model and overshoot stops even an inex
     ledger.db.close();
   }
 });
+
+test("team notification accounting joins the same session, index and unchanged model charge", async () => {
+  const { repeatedTeamCharge } = await import("../scripts/eval-measurements");
+  const session = crypto.randomUUID(),
+    model = "claude-opus-5-5";
+  const init = { type: "system", subtype: "init", session_id: session, model };
+  const models = { [model]: { inputTokens: 1, outputTokens: 2, cacheReadInputTokens: 3, cacheCreationInputTokens: 4, costUSD: 0.5 } };
+  const first = {
+    type: "result",
+    session_id: session,
+    uuid: crypto.randomUUID(),
+    result_index: 0,
+    total_cost_usd: 0.5,
+    modelUsage: models,
+    model_usage_since_last_result: models,
+  };
+  const next = {
+    ...first,
+    uuid: crypto.randomUUID(),
+    result_index: 1,
+    origin: { kind: "task-notification", producer: "session-task" },
+    model_usage_since_last_result: {},
+  };
+  async function charge(last: object, initial: object = first) {
+    async function* records() {
+      for (const [i, value] of [init, init, initial, last].entries()) yield { kind: "record" as const, line: i + 1, value: { ...value } };
+    }
+    return repeatedTeamCharge(records(), session, model);
+  }
+  expect((await charge(next))?.totalCostUsd).toBe(0.5);
+  for (const change of [
+    { origin: null },
+    { result_index: 2 },
+    { session_id: crypto.randomUUID() },
+    { uuid: first.uuid },
+    { model_usage_since_last_result: models },
+    { modelUsage: {} },
+    { total_cost_usd: 1 },
+  ])
+    expect(await charge({ ...next, ...change })).toBeNull();
+  expect(await charge(next, { ...first, model_usage_since_last_result: {} })).toBeNull();
+});
