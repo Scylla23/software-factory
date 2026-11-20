@@ -570,7 +570,7 @@ The private receipts include completed Codex and Claude judgments, four code-rev
 
 ## Final eval results
 
-Of 44 case variants, 25 passed, five failed on both the first trial and retry, one ended without a submission, and 13 were deferred.
+Of 44 case variants, 26 passed, four failed on both the first trial and retry, one ended without a submission, and 13 were deferred.
 The result column uses the first valid trial and one retry after failure.
 The spend columns include every recorded contestant and judge session, including historical extra trials, native team members and invalid fixtures.
 The costs are in API-equivalent USD and sum the displayed five-decimal session charges, so rounding can affect the last digits.
@@ -593,7 +593,7 @@ The corrected solo lead, spec-reviewer creation target and revision fixtures use
 | spec-reviewer-02-clean-spec-approves/bug-spec | pass | 0.02611 | 1.18322 |
 | spec-reviewer-02-clean-spec-approves/plan-creates-a-file | pass | 0.00000 | 1.83238 |
 | spec-reviewer-03-revision-breaks-something-else | pass | 0.04348 | 1.33760 |
-| security-auditor-01-cross-user-access-in-diff | fail / fail | 0.09377 | 0.93168 |
+| security-auditor-01-cross-user-access-in-diff | pass / pass on corrected rubric | 0.19517 | 0.93168 |
 | security-auditor-02-safe-diff-approves | pass | 0.04072 | 0.45789 |
 | security-auditor-03-spec-stage/lead-dropped-a-mitigation | pass | 0.09864 | 1.20877 |
 | security-auditor-03-spec-stage/revision-edits-only-the-threat-model | pass | 0.05074 | 2.65272 |
@@ -623,16 +623,18 @@ The corrected solo lead, spec-reviewer creation target and revision fixtures use
 | threat-modeler-02-mitigation-changes-criteria | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
 | threat-modeler-03-small-flagged-task | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
 
-The two batch reports reconcile to $39.24679 across both vendors, approximately $22.49495 Claude and $16.75184 Codex.
+The two batch reports reconcile to $39.34819 across both vendors, approximately $22.59634 Claude and $16.75184 Codex.
 The original handover had already spent about $18.93 on Claude.
-Of the additional $5.00, the cleanup used $2.524338 and the resumed run used $1.036786, leaving $1.438876 under the ledger's conservative rounding.
+Of the additional $5.00, the cleanup used $2.524338 and the resumed run used $1.138184, leaving $1.337478 under the ledger's conservative rounding.
 The first paid session in this dispatch reserved $0.15 for a Sonnet-low judgment.
 Both Sonnet-high specialist cases, including the one frontend retry, reserved $1.00 before each launch.
-The owner ended the authorized case list after frontend-01, with zero pending reservations.
+The owner ended contestant launches after frontend-01 and authorized two frozen rejudgments of the corrected security rubric.
+The ledger has zero pending reservations.
 The unrun disposition records the owner's coverage plan and gives those variants no passing grade. [Deferred variants, #49](https://github.com/Scylla23/software-factory/issues/49)
 
 - Both Codex security-auditor inputs passed all deterministic checks on the first trial.
   The planted defect trial and retry both failed the Sonnet judge's requirement to quote evidence for each blocking finding.
+  The corrected rubric passed both frozen reviews and supersedes the original grades.
   The clean diff passed its judgment.
   These code-stage trials used static source evidence and the registered test suite.
 - The native lead promotion and conflict trials retain their recorded failures for the handoff and repeated result events. [Native handoff follow-up, #47](https://github.com/Scylla23/software-factory/issues/47)
@@ -643,3 +645,31 @@ The unrun disposition records the owner's coverage plan and gives those variants
   Frontend failed the route and per-screen state checks twice, and the retry also failed the viewport check.
 - Step 3 already dispatched the triage, spec-lead, builder and code-reviewer skills through its normal worker.
   The remaining functions in `src/factory/prompts.ts` serialize observations for the staged attachments.
+
+
+### Repeated failures
+
+The planted security review exposed a rubric defect.
+The original `proven` question asked “Does each blocking finding quote the offending line or the result of a probe, rather than only asserting the weakness?”
+Both submissions traced the relevant behavior with step-by-step line citations, a form of proof the security-auditor skill explicitly permits.
+Commit `3bb6c26` corrected the question and both frozen outputs passed new Sonnet judgments, costing $0.05051 and $0.05089.
+The original two failed judgments remain in the receipts.
+
+Frontend-01 exposed a screen-specification weakness.
+The checks required “every data row of the Screens table has a Route cell starting with /” and “the States table has a row for every screen in the Screens table, with no empty cell”.
+Both submissions described an error screen using a condition and grouped sign-up and sign-in states.
+The retry omitted the error screen's state row and missed a viewport check.
+The fixture supplies the draft criteria and both target viewports.
+The skill examples show a route, layout and state table for the declared screens. [Frontend follow-up, #50](https://github.com/Scylla23/software-factory/issues/50)
+
+### Pilot intake and triage
+
+The App seeded `factory/pilot-4b-heading-base` at `9739f1f7912605144c17693602080e93ca6f3247`, changing the inventory column heading from “Stock count” to “Price”.
+The owner labeled pilot issue #6.
+Both Sonnet-low triage attempts emitted `single area, no schema or API change` where the schema requires `single area`.
+The controller escalated before creating a spec or PR and the two charges totaled $0.0941886. [Pilot issue #6](https://github.com/Scylla23/factory-pilot/issues/6) [Triage defect #51](https://github.com/Scylla23/software-factory/issues/51)
+
+The corrected skill lists the enum literals in its delivered instructions.
+The single retry now receives bounded, redacted validator feedback with the JSON pointer, rule, expected parameters and actual value in the run brief.
+The test submits the observed wrong signal, checks its retry prompt, and passes strict validation on the second attempt.
+The replacement task uses the same seed and counts both issues against one $2.00 pilot cap. [Pilot issue #7](https://github.com/Scylla23/factory-pilot/issues/7)
