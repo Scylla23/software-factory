@@ -8,6 +8,7 @@ import { findCodexSessionFile } from "../src/dispatch/codex";
 import { codexWrites } from "../src/dispatch/codex-writes";
 import { runAgent, loadDispatchConfig } from "../src/dispatch";
 import { assertPrivateDir } from "../src/dispatch/config";
+import { checkedCheckout } from "../src/factory/worker";
 import { runGit } from "../src/dispatch/git";
 import { PROJECT_INSTRUCTION_PATHS } from "../src/dispatch/instructions";
 import { collectOutputs } from "../src/dispatch/output";
@@ -115,6 +116,7 @@ export async function collectCodexTrials(batchTwo = false, selected?: string, tr
       }
       const brief: BriefInput = {
         ...fields,
+        ...(role === "builder" ? checkedCheckout(git, dirs.worktree, fields.headSha ?? fields.baseSha, true) : {}),
         ...(role === "security-auditor" && stage === "code" ? {
           auditMethod: "Use static source citations for findings. Run the existing registered test suite in scratchRepo. Do not construct or execute attack probes or reproduction payloads.",
         } : {}),
