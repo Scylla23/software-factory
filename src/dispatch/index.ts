@@ -1,4 +1,5 @@
 import { sessionUuid } from "./validation";
+import { config as factoryConfig } from "../../factory.config";
 import { closeSync, existsSync, realpathSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
@@ -51,6 +52,10 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (skill) {
     if (skill.dirs.worktree !== worktree || basename(skill.dirs.root) !== spec.runId) throw new Error("skill attempt or worktree mismatch");
     if (skill.namedLeadEvaluation && (spec.harness !== "claude" || skill.dirs.role !== "spec-lead")) throw new Error("named lead evaluation requires a Claude spec lead");
+    if (skill.evaluationMember && (!spec.evaluationLimits || spec.harness !== "claude" || skill.dirs.role !== "spec-lead" ||
+        skill.namedLeadEvaluation || skill.members.length || !Object.hasOwn(factoryConfig.specTeam,skill.evaluationMember) ||
+        spec.model !== factoryConfig.specTeam[skill.evaluationMember].model || spec.effort !== factoryConfig.specTeam[skill.evaluationMember].effort))
+      throw new Error("invalid standalone specialist evaluation");
     requireSkillProofs(spec.harness, skill.dirs.role, skill.members, skill.dirs.stage, config);
   }
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
@@ -76,13 +81,13 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const broker = fileToolsOnly && skill.dirs.scratchRepo ? prepareBroker(skill.dirs, config, spec.logDir, skill.brief.baseSha, skill.brief.headSha!) : undefined;
   const brief = skill ? runBrief(skill.dirs, skill.brief, skill.members.length > 0) : undefined;
 
-  const prompt = brief ? briefPrompt(brief) : spec.prompt;
+  const prompt = skill?.evaluationMember ? "Complete the decision assigned in your system run brief." : brief ? briefPrompt(brief) : spec.prompt;
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
   const path = skill ? trustedAgentPath([...skill.toolDirs, "/Library/Developer/CommandLineTools/usr/bin"], agentWritable) : config.agentPath;
   const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: path, accountHome: config.accountHome });
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
-  const team = skill && brief && (skill.members.length || skill.namedLeadEvaluation) ? publishTeam(skill, brief, projectInstructions) : undefined;
+  const team = skill && brief && (skill.members.length || skill.namedLeadEvaluation || skill.evaluationMember) ? publishTeam(skill, brief, projectInstructions) : undefined;
   const promptRevision = createHash("sha256").update(JSON.stringify([prompt, instructions, team?.revision ?? null])).digest("hex");
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
@@ -200,8 +205,11 @@ async function observedCodexModel(root: string, threadId: string, diagnostics: s
 function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, projectInstructions: string | null) {
   if (!skill.dirs.agentsDir) throw new Error("spec lead lacks its private definitions directory");
   const file = join(skill.dirs.agentsDir, "definitions.json");
-  const definitions = claudeDefinitions(brief, skill.members, projectInstructions);
+  const member = skill.evaluationMember;
+  const all = member ? claudeDefinitions({...brief,teamEnabled:true},[member],projectInstructions,true) :
+    claudeDefinitions(brief, skill.members, projectInstructions);
+  const definitions = member ? {[member]:all[member]} : all;
   const bytes = JSON.stringify(definitions);
   writeFileSync(file, bytes, { flag: "wx", mode: 0o400 });
-  return { file, members: skill.members, revision: createHash("sha256").update(bytes).digest("hex") };
+  return { file, members: skill.members, named:member, revision: createHash("sha256").update(bytes).digest("hex") };
 }

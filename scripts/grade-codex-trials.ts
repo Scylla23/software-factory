@@ -7,9 +7,10 @@ import { assertPrivateDir } from "../src/dispatch/config";
 import { runGit } from "../src/dispatch/git";
 import { isRecord, readJsonl } from "../src/dispatch/jsonl";
 import { readRegularFile } from "../src/dispatch/regular-file";
-import { flattenCases, judgeGrades, type Check } from "./batch-one-cases";
+import { flattenCases, judgeGrades, parseJudgeGrades, type Check } from "./batch-one-cases";
 import { checkCodexOutput, redBeforeFix, type TrialSetup } from "./eval-codex-checks";
 import { EvalBudget } from "./eval-budget";
+import { DollarBudget } from "./eval-dollar-budget";
 import { pinnedFixture } from "./eval-checkout";
 import { caseInput } from "./eval-inputs";
 
@@ -19,8 +20,8 @@ const factory = realpathSync(join(import.meta.dir, ".."));
 const json = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 const record = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value), { mode: 0o600, flag: "wx" });
 
-async function judge(
-  ledger: EvalBudget,
+export async function judge(
+  ledger: EvalBudget | DollarBudget,
   setup: TrialSetup,
   dir: string,
   checks: Check[],
@@ -34,7 +35,7 @@ async function judge(
   try {
     limit = ledger.reserve(id, trial, setup.key + "/judge", "judge", model);
   } catch (e) {
-    if ((e as Error).message === "batch token stop rule reached") return { status: "stopped" as const };
+    if (["batch token stop rule reached","batch dollar stop rule reached"].includes((e as Error).message)) return { status: "stopped" as const };
     throw e;
   }
   const cwd = mkdtempSync(join(dispatch.accountHome, ".factory-eval-judge-"));
@@ -77,21 +78,17 @@ async function judge(
       )
         throw new Error("judge used a tool");
     }
-    let grades: unknown;
-    try {
-      grades = JSON.parse(result.resultText ?? "");
-    } catch {
-      grades = [];
-    }
+    const grades = parseJudgeGrades(result.resultText ?? "");
     return { status: "graded" as const, id, actual, grades };
   } finally {
     if (!keep) rmSync(cwd, { recursive: true, force: true });
   }
 }
 
-export async function gradeCodexTrials(noClaude = false) {
+export async function gradeCodexTrials(noClaude = false, batchTwo = false) {
+  if (batchTwo && !noClaude) throw new Error("batch two judging requires the dollar ledger");
   const ledger = new EvalBudget(join(root, "usage.sqlite"));
-  const codex = join(root, "codex");
+  const codex = join(batchTwo ? join(dispatch.stateRoot,"evaluations","v1-step-4b-batch-2") : root, "codex");
   assertPrivateDir(codex, dispatch.stateRoot);
   try {
     for (const entry of readdirSync(codex).sort()) {
@@ -137,7 +134,7 @@ export async function gradeCodexTrials(noClaude = false) {
       };
       if (!existsSync(packetPath)) record(packetPath, { checks, candidate, fixtures });
       if (alreadyGraded) continue;
-      const decision = noClaude ? { status: "stopped" as const } : await judge(ledger, setup, dir, checks, candidate, fixtures);
+      const decision = !checks.length ? {status:"unneeded" as const} : noClaude ? { status: "stopped" as const } : await judge(ledger, setup, dir, checks, candidate, fixtures);
       const judgments =
         decision.status === "graded"
           ? judgeGrades(decision.grades, checks, new Map(Object.entries(candidate).map(([k, v]) => [k, Buffer.from(v)])))
@@ -145,7 +142,7 @@ export async function gradeCodexTrials(noClaude = false) {
       const status =
         Object.values(deterministic).includes(false) || (judgments && Object.values(judgments).includes(false))
           ? "failed"
-          : judgments
+          : judgments || !checks.length
             ? "passed"
             : "unjudged";
       const result = { key, trial, status, deterministic, judgments, judge: decision.status };

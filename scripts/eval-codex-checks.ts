@@ -104,7 +104,7 @@ export async function checkCodexOutput(
   const builder = s.role === "builder",
     repair = s.stage === "repair",
     api = s.key.includes("02-security");
-  const rel = builder ? "build-report.json" : "verdicts/security-auditor.json";
+  const rel = builder ? "build-report.json" : "verdicts/"+s.role+".json";
   const d = JSON.parse(submission[rel]!);
   const schema = JSON.parse(safeText(s.skills, builder ? "builder/build-report.schema.json" : "_shared/verdict.schema.json"));
   const valid = Boolean(new Ajv2020({ strictTypes: false, allowUnionTypes: true }).compile(schema)(d));
@@ -113,6 +113,38 @@ export async function checkCodexOutput(
   if (!valid) return { grade, candidate };
   const previous = (path: string) => JSON.parse(safeText(s.task, path));
   const status = cmd("status", "--porcelain=v1", "-z", "--untracked-files=all").split("\0").filter(Boolean);
+  if (s.role === "spec-reviewer") {
+    const four = s.key.endsWith("/four-defects"), clean = s.key.startsWith("spec-reviewer-02");
+    const planned = s.key.endsWith("/plan-creates-a-file"), tier = planned ? "M" : "S";
+    const ground = d.checks.grounding, tiers = d.checks.tier;
+    const blocking = (cat: string, ac?:string, file?:string) => d.findings.some((f:any) =>
+      f.blocking && f.category===cat && (!ac || f.acIds.includes(ac)) && (!file || f.location.file===file));
+    grade.identity = d.role === s.role && d.stage === "spec" && d.round === s.brief.round && d.taskId === s.brief.taskId;
+    grade["spec-hash"] = d.covers.specSetSha256 === s.brief.specSet?.sha256;
+    grade.verdict = clean ? d.verdict==="approve" && !d.findings.some((f:any)=>f.blocking) : d.verdict==="changes";
+    grade["worktree-clean"] = status.length===0;
+    grade.lost = blocking("lost-requirement",undefined,s.key.endsWith("/requirement-moved-to-non-goals") ? "spec.md" : undefined);
+    grade.untestable = blocking("untestable","AC-2");
+    grade["missing-path"] = ground?.missingPaths?.includes("src/api/auth.ts") && blocking("grounding");
+    grade.tier = four ? tiers?.specTier==="S" && !!tiers.assessedTier && tiers.assessedTier!=="S" && blocking("tier")
+      : tiers?.specTier===tier && tiers?.assessedTier===tier;
+    grade["no-new-paths-flagged"] = !d.findings.some((f:any)=>f.category==="grounding");
+    grade["no-grounding"] = grade["not-missing"] = ground?.missingPaths?.length===0 && grade["no-new-paths-flagged"];
+    grade.grounding = ground?.pathsChecked>=2 && ground.missingPaths.length===0;
+    grade.restraint = d.findings.length<=3;
+    const newPath = "src/api/task-by-id.test.ts";
+    grade["new-path"] = ground?.newPaths?.includes(newPath) === true;
+    grade.accepted = grade.schema === true && grade.identity && grade["spec-hash"] && grade.verdict &&
+      d.covers.baseSha===s.refs.base && !Object.hasOwn(d.covers,"headSha") &&
+      cmd("ls-tree","--name-only",s.refs.base,"--",newPath).trim()==="";
+    if (s.brief.round===2) {
+      grade["spec-hash"] &&= previous("archive/spec/round-1/verdicts/spec-reviewer.json").covers.specSetSha256!==d.covers.specSetSha256;
+      grade.round = d.round===2 && d.checks.revisionDiffReviewed===true;
+      grade.resolution = d.resolutions?.length===1 && d.resolutions[0].round===1 && d.resolutions[0].n===1 && d.resolutions[0].status==="resolved";
+      grade.contradiction = blocking("contradiction","AC-3");
+    }
+    return {grade,candidate};
+  }
   if (!builder) {
     const first = s.brief.round === 1,
       threats = d.checks?.threatModel;

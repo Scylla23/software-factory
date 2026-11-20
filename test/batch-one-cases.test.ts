@@ -1,13 +1,22 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { deterministicBatchOne, exposesAnswer, flattenCases, judgeGrades, reusedFilesExist, type Check } from "../scripts/batch-one-cases";
+import { deterministicBatchOne, exposesAnswer, flattenCases, judgeGrades, parseJudgeGrades, reusedFilesExist, type Check } from "../scripts/batch-one-cases";
 import type { runBrief } from "../src/dispatch/brief";
 
 const skills = join(import.meta.dir, "../skills");
 const fixture = join(skills, "_shared/evals/tasklist/taskdirs/sort");
 const lead = JSON.parse(readFileSync(join(skills, "spec-lead/evals/evals.json"), "utf8")).cases;
 const check = (id: string, kind: Check["kind"] = "deterministic"): Check => ({ id, kind, check: id });
+
+test("the judge may return one unambiguous fenced JSON array followed by its explanation",()=>{
+  const value=[{id:"reason",yes:true,quote:"quote"}];
+  const block="```json\n"+JSON.stringify(value)+"\n```";
+  expect(parseJudgeGrades(JSON.stringify(value))).toEqual(value);
+  expect(parseJudgeGrades(block+"\n\nEvidence for the check.")).toEqual(value);
+  expect(parseJudgeGrades(block+"\n"+block)).toEqual([]);
+  expect(parseJudgeGrades("Here is an example:\n"+block)).toEqual([]);
+});
 
 test("each reuse entry identifies an existing file independently of its explanation", () => {
   const tracked = new Set(["src/routes.ts"]);

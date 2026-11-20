@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
-import { isRecord } from "../src/dispatch/jsonl";
+import { dirname, join, posix, resolve } from "node:path";
+import { isRecord, readJsonl } from "../src/dispatch/jsonl";
 import { outputDigest } from "../src/dispatch/output";
 import { readRegularFile } from "../src/dispatch/regular-file";
 import { assertRepoPath } from "../src/github/commit";
@@ -9,8 +9,10 @@ import { pinnedFixture } from "./eval-checkout";
 const members = ["architecture.md", "frontend.md", "infra.md", "spec-lead.json", "spec.md", "team-brief.md", "threat-model.md"];
 
 export function revisionFixtureError(key: string, task: string, current: string | undefined): string | null {
-  if (key !== "security-auditor-03-spec-stage/revision-edits-only-the-threat-model") return null;
-  const path = join(task, "archive/spec/round-1/verdicts/security-auditor.json");
+  const role = key === "security-auditor-03-spec-stage/revision-edits-only-the-threat-model" ? "security-auditor"
+    : key === "spec-reviewer-03-revision-breaks-something-else" ? "spec-reviewer" : null;
+  if (!role) return null;
+  const path = join(task, "archive/spec/round-1/verdicts",role+".json");
   const prior = JSON.parse(readRegularFile(path, 1024 * 1024).toString()).covers?.specSetSha256;
   if (![prior, current].every(digest => typeof digest === "string" && /^[a-f0-9]{64}$/.test(digest)))
     throw new Error("missing spec-set identity in staged revision fixture");
@@ -87,4 +89,27 @@ export function stageBlindInputs(git: string, factory: string, commit: string, r
   }
   const brief = bindShas(input.brief,refs,specSet?.sha256,planHash) as Record<string,unknown>;
   return {...brief,baseSha:refs.base,...(["code","repair","judge"].includes(String(brief.stage)) ? {headSha:refs.head} : {}),...(specSet ? {specSet} : {})};
+}
+
+export async function inspectBlindStream(stdoutPath: string, canary: string, worktree: string) {
+  let inspected = false;
+  for await (const item of readJsonl(stdoutPath)) {
+    if (item.kind !== "record" || JSON.stringify(item.value).includes(canary)) throw new Error("compromised blind trial");
+    const e = item.value;
+    if (e.type !== "assistant" || !isRecord(e.message) || !Array.isArray(e.message.content)) continue;
+    for (const c of e.message.content)
+      if (isRecord(c) && c.type === "tool_use" && isRecord(c.input)) {
+        if (/(?:^|[\s/"'])evals\//.test(JSON.stringify(c.input)) && ["Bash", "Read", "Glob", "Grep", "Agent"].includes(String(c.name)))
+          throw new Error("eval fixture access");
+        const target = c.input.file_path ?? c.input.path ?? (c.name === "Glob" || c.name === "Grep" ? "." : null);
+        const path = typeof target === "string" ? resolve(worktree, target) : undefined;
+        if (
+          typeof path === "string" &&
+          (path === worktree || path.startsWith(worktree + "/")) &&
+          ["Read", "Glob", "Grep"].includes(String(c.name))
+        )
+          inspected = true;
+      }
+  }
+  return inspected;
 }

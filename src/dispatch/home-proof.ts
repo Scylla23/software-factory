@@ -107,6 +107,32 @@ export function verifiedHomeProof(harness: Harness, state: string, executable: s
 export function verifiedTeamModelProof(state: string, executable: string) {
   return verifiedReceipt("claude", state, executable, "d3-distinct", qualifiesTeamModelProof);
 }
+export function qualifiesNativeRoots(raw: unknown, role: string, stage?: string) {
+  return isRecord(raw) && raw.harness === "codex" && raw.version === pinnedVersions.codex &&
+    raw.role === role && raw.stage === stage && raw.model === "gpt-6-luna" && raw.effort === "low" &&
+    raw.factoryLogin === true && raw.homeAudit === true && raw.control === false && raw.passed === true &&
+    raw.filesMatch === true && raw.nativeDenied === true && raw.observedModel === true &&
+    typeof raw.thread === "string" && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(raw.thread);
+}
+export function verifiedNativeRoots(state: string, executable: string, role: string, stage?: string) {
+  return verifiedReceipt("codex", state, executable, "native-"+role+"-"+stage, r => qualifiesNativeRoots(r,role,stage));
+}
+export function qualifiesReviewIntegrity(harness: Harness, raw: unknown) {
+  if (!isRecord(raw) || raw.harness !== harness || raw.version !== pinnedVersions[harness] ||
+      raw.test !== "review-integrity" || !isRecord(raw.positive) || !isRecord(raw.negative)) return false;
+  const yes = raw.positive, no = raw.negative;
+  const session = (id: unknown) => typeof id === "string" && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id);
+  return session(yes.session) && session(no.session) && yes.session !== no.session &&
+    typeof yes.head === "string" && /^[a-f0-9]{40}$/.test(yes.head) && no.head === yes.head &&
+    yes.headTestsPassed === true && yes.authenticatedChangesArchived === true &&
+    no.headTestsPassed === true && no.inputWritesDenied === true && no.snapshotWritesDenied === true &&
+    no.inputsIntact === true && no.snapshotIntact === true && no.quarantined === true && no.approvals === 0 &&
+    (no.substitution === "denied" || (no.substitution === "detected" &&
+      no.escalation === "skill output integrity escalation: output bytes changed after authenticated final write: verdicts/code-reviewer.json"));
+}
+export function verifiedReviewIntegrity(harness: Harness, state: string, executable: string) {
+  return verifiedReceipt(harness,state,executable,"review-integrity",r => qualifiesReviewIntegrity(harness,r));
+}
 function verifiedReceipt(harness: Harness, state: string, executable: string, kind: string, accepts: (raw: unknown) => boolean) {
   const dir = join(state, "skill-proofs"),
     path = join(dir, harness + "-" + kind + ".json");

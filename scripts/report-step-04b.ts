@@ -7,46 +7,15 @@ import { loadDispatchConfig } from "../src/dispatch/config";
 import { parseClaudeStream } from "../src/dispatch/claude";
 import { parseCodexEvents } from "../src/dispatch/codex";
 import { readJsonl } from "../src/dispatch/jsonl";
-import { primary, type Capture } from "../src/usage/capture";
-import { captureRun } from "../src/usage/sessions";
+import { primary } from "../src/usage/capture";
+import { codexMeter, sums, type Meter } from "./eval-measurements";
 import { flattenCases } from "./batch-one-cases";
 import { revisionFixtureError } from "./eval-inputs";
-import { requiredProofs } from "../src/dispatch/skill-launch";
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const batch = join(dispatch.stateRoot, "evaluations", "v1-step-4b-batch-1"),
   db = new Database(join(batch, "usage.sqlite"), { readonly: true });
 const json = (p: string) => JSON.parse(readFileSync(p, "utf8"));
-type Meter = { fresh: number; read: number; write: number | null; output: number; cost: number | null };
-function sums(capture: Capture): Meter {
-  if (!capture.lines.length) throw new Error("no measured usage");
-  const add = (f: (line: Capture["lines"][number]) => number) => capture.lines.reduce((n, l) => n + f(l), 0);
-  return {
-    fresh: add((l) => l.input),
-    read: add((l) => l.cacheRead),
-    write: capture.lines.every((l) => l.cacheWrite !== null) ? add((l) => l.cacheWrite!) : null,
-    output: add((l) => l.output),
-    cost: capture.costUsd,
-  };
-}
-async function codexMeter(file: string, session: string, model: string) {
-  const parsed = await parseCodexEvents(readJsonl(file));
-  if (parsed.threadId !== session || !parsed.usage || !parsed.succeeded) throw new Error("cannot join Codex usage to its session");
-  const { capture, observed } = await captureRun(
-    { harness: "codex", runId: session, sessionId: session, requestedModel: model, observedModel: null, usage: null, outcome: "completed" },
-    dispatch,
-  );
-  const m = sums(capture);
-  if (
-    observed !== model ||
-    m.write === null ||
-    m.fresh + m.read + m.write !== parsed.usage.inputTokens ||
-    m.read !== parsed.usage.cachedInputTokens ||
-    m.output !== parsed.usage.outputTokens
-  )
-    throw new Error("Codex public and per-request usage disagree");
-  return m;
-}
 type Session = { key: string; trial: number; role: string; model: string; session: string; meter: Meter; result: string };
 const sessions: Session[] = [];
 const outcomes = new Map<string, string[]>();
@@ -113,7 +82,7 @@ for (const row of ledger) {
       session,
       role: "judge",
       model: "gpt-6.2-astra",
-      meter: await codexMeter(path, session, "gpt-6.2-astra"),
+      meter: await codexMeter(dispatch, path, session, "gpt-6.2-astra"),
       result: rejected.length ? "no - " + rejected.join(", ") : "yes",
     });
   }
@@ -142,7 +111,7 @@ for (const name of readdirSync(join(batch, "codex")).sort()) {
     role: setup.role,
     model: r.model,
     result: status,
-    meter: await codexMeter(join(root, r.id + ".stdout.jsonl"), r.session, r.model),
+    meter: await codexMeter(dispatch, join(root, r.id + ".stdout.jsonl"), r.session, r.model),
   });
 }
 db.close();
@@ -171,7 +140,9 @@ for (const role of ["triage", "spec-lead", "builder", "spec-reviewer", "security
     const key = row.id + (row.variant ? "/" + row.variant : ""),
       obs = outcomes.get(key) ?? [];
     const h = role === "triage" || role === "spec-lead" ? "claude" : "codex";
-    const missing = h === "claude" ? [] : requiredProofs(h, role, [], row.id.includes("spec-stage") ? "spec" : "code", dispatch);
+    // The batch-one refusals are historical observations on the original pin.
+    const missing = role === "spec-reviewer" ? ["native file tool write-root matrix for spec-reviewer"]
+      : role === "security-auditor" && !row.id.includes("spec-stage") ? ["R3 project-command substitution"] : [];
     const total = obs.filter(Boolean).length,
       pass = obs.filter((v) => v === "pass").length,
       failed = obs.filter((v) => v.startsWith("fail")).length,

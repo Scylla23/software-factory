@@ -134,3 +134,32 @@ export function taskRoutes(db = new Database("tasks.sqlite", {create:true})) {
   const base = runGit(git, project, ["rev-parse", "HEAD"]).toString().trim();
   return { base, head: base };
 }
+
+export function specialistProject(git:string,factory:string,pin:string,project:string,role:string,existing:boolean) {
+  const command=(...args:string[])=>runGit(git,project,args).toString().trim();
+  if (!existing) command("init","-q","--template=");
+  else {
+    const refs=plantPilot(git,factory,pin,project);
+    if (role==="threat-modeler") return refs;
+    if (role==="architect") {
+      const replace=(path:string,from:string,to:string)=>{
+        const p=join(project,path),s=readFileSync(p,"utf8");
+        if(!s.includes(from))throw new Error("missing schema or task-list fixture anchor");
+        writeFileSync(p,s.replace(from,to));
+      };
+      replace("migrations/001_create_tasks.sql","title TEXT NOT NULL","assignee TEXT, title TEXT NOT NULL");
+      replace("src/api/tasks.ts","title, due, owner_id","title, due, assignee, owner_id");
+      replace("src/task-list/sort.ts","title: string;","title: string; assignee?: string | null;");
+      replace("src/task-list/view.ts","title: task.title,","title: task.title, assignee: task.assignee,");
+      replace("src/routes.ts","escaped(row.title)","escaped(row.title) + \"</td><td>\" + escaped(row.assignee ?? \"\")");
+    } else if (role==="infra") {
+      mkdirSync(join(project,".github/workflows"),{recursive:true});
+      writeFileSync(join(project,".github/workflows/test.yml"),"name: test\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: oven-sh/setup-bun@v2\n      - run: bun install --frozen-lockfile\n      - run: bun test\n",{flag:"wx"});
+      writeFileSync(join(project,"app.service"),"[Unit]\nDescription=Task list\n[Service]\nWorkingDirectory=/srv/task-list\nExecStart=/usr/local/bin/bun server.ts\nRestart=on-failure\n",{flag:"wx"});
+    }
+  }
+  command("add","-A");
+  command("-c","user.name=Factory","-c","user.email=fixture@example.invalid","-c","core.hooksPath=/dev/null","commit","--allow-empty","-qm","Project revision");
+  const base=command("rev-parse","HEAD");
+  return {base,head:base};
+}

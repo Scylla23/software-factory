@@ -1,12 +1,13 @@
 import { sourceRead } from "./codex-source-read";
 /** Cheap, isolated Codex proofs. Each invocation uses one disposable account home per arm. */
-import { closeSync, statSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, statSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join, relative } from "node:path";
 import { codexWrites } from "../src/dispatch/codex-writes";
 import { outputDigest } from "../src/dispatch/output";
 import { codexArgs, codexReadable } from "../src/dispatch/codex";
-import { loadDispatchConfig } from "../src/dispatch/config";
+import { assertPrivateDir, loadDispatchConfig } from "../src/dispatch/config";
+import { pinnedVersions, qualifiesNativeRoots } from "../src/dispatch/home-proof";
 import { agentEnv, effectiveDenyRead } from "../src/dispatch/policy";
 import { runGit } from "../src/dispatch/git";
 import { readJsonl } from "../src/dispatch/jsonl";
@@ -17,6 +18,7 @@ import { probeBundle } from "./probe-bundle";
 import { expectedSource, proofSource } from "./probe-sources";
 import { withCodexProofLogin } from "./proof-credentials";
 import { config } from "../factory.config";
+import { beforeHomeLaunch, afterHomeLaunch } from "../src/dispatch/home-session";
 
 import { nativeRole, nativeRootPlan, codexNativeSource, checkNativeFiles } from "./probe-native-roots";
 
@@ -30,6 +32,7 @@ if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "codex-cli 0.
 
 async function probe(control: boolean) {
   const root = mkdtempSync(join(userInfo().homedir, ".factory-proof-"));
+  let retain = false;
   try {
     const directory = (name: string) => {
       const path = join(root, name);
@@ -119,7 +122,9 @@ async function probe(control: boolean) {
         args[index] = args[index]!.replace("factory={filesystem=", 'factory={extends=":workspace",filesystem=').replace('":root"="none",', "");
       }
       const env = agentEnv(process.env, { harness: "codex", trustedPath: "/usr/bin:/bin", accountHome: home, harnessHome: codexHome });
+      const inventory = native && factoryLogin ? beforeHomeLaunch("codex", codexHome, args, undefined, exe) : null;
       const stdout = join(state, "stdout.jsonl");
+      if (inventory) retain = true;
       const stdoutFd = openSync(stdout, "wx", 0o600);
       const stderrFd = openSync(join(state, "stderr.log"), "wx", 0o600);
       const proc = (() => {
@@ -158,6 +163,10 @@ async function probe(control: boolean) {
       }
       if (!thread) throw new Error("missing parent thread");
       const children = new Set<string>();
+      if (inventory) {
+        await afterHomeLaunch("codex", codexHome, inventory, stdout, thread);
+        retain = false;
+      }
       const sampleCalls = new Set<string>();
       const actualChildRoles = new Set<string>();
       const bundledNames = new Set<string>();
@@ -251,11 +260,22 @@ async function probe(control: boolean) {
         (test !== "S7" || children.size === 1) : checks[test as keyof typeof checks]);
       console.log(JSON.stringify({ test, control, factoryLogin, thread, children: [...children], observedModel, sawTools, spawnOffered, sawSkill,
         nativeDenied, bundledNames: [...bundledNames], sourceListed, childListed, sourceLoaded, requested, actualChildRoles: [...actualChildRoles], customBody, customModel, observedRead, canaryRead, exactWrite, digestMatched, nativeStatus, passed }));
+      if (passed && native && profile && inventory) {
+        const receipt = {harness:"codex", version:pinnedVersions.codex, role:profile[0], stage:profile[1],
+          model:"gpt-6-luna",effort:"low",thread,factoryLogin,homeAudit:true,control,passed,
+          filesMatch:checkNativeFiles(native,"codex"),nativeDenied,observedModel};
+        if (!qualifiesNativeRoots(receipt,profile[0],profile[1])) throw new Error("invalid native proof receipt");
+        const dir = assertPrivateDir(join(dispatch.stateRoot,"skill-proofs"),dispatch.stateRoot);
+        const tmp = join(dir,crypto.randomUUID()+".tmp");
+        writeFileSync(tmp,JSON.stringify(receipt),{flag:"wx",mode:0o600});
+        renameSync(tmp,join(dir,"codex-"+test+".json"));
+      }
       return passed;
     };
     return factoryLogin ? await run(dispatch.harnessHomes.codex) : await withCodexProofLogin(exe, state, home, run);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    if (retain) console.error("quarantined native proof directory: " + root);
+    else rmSync(root, { recursive: true, force: true });
   }
 }
 try {

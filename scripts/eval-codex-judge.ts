@@ -1,5 +1,6 @@
 // The judge has a neutral Git directory and receives only source fixtures, output and check text.
 import { closeSync, openSync, writeFileSync } from "node:fs";
+import {parseJudgeGrades} from "./batch-one-cases";
 import { join } from "node:path";
 import { beforeHomeLaunch, afterHomeLaunch } from "../src/dispatch/home-session";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "../src/dispatch/codex";
@@ -73,9 +74,6 @@ export async function runCodexJudge(config: DispatchConfig, cwd: string, logDir:
   }
   const session = result.threadId && (await findCodexSessionFile(join(home, "sessions"), result.threadId));
   if (!result.succeeded || !session || (await codexSessionModel(session)) !== model) throw new Error("unverified judge session");
-  let grades: unknown = [];
-  try {
-    grades = JSON.parse(result.resultText ?? "");
-  } catch {}
+  const grades = parseJudgeGrades(result.resultText ?? "");
   return { session: result.threadId, usage: result.usage, grades };
 }

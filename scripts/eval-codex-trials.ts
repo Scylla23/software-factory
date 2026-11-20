@@ -21,9 +21,6 @@ const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] })
 const git = dispatch.executables.git,
   factory = realpathSync(join(import.meta.dir, ".."));
 const pin = runGit(git, factory, ["log", "-1", "--format=%H", "HEAD", "--", "skills"]).toString().trim();
-const batch = join(dispatch.stateRoot, "evaluations", "v1-step-4b-batch-1", "codex");
-mkdirSync(batch, { recursive: true, mode: 0o700 });
-assertPrivateDir(batch, dispatch.stateRoot);
 const mkdir = (p: string) => {
   mkdirSync(p, { mode: 0o700 });
   return p;
@@ -40,7 +37,10 @@ async function verifyBlind(path: string, canary: string) {
 }
 
 // Preserve the checked-out worktree until independent deterministic checks and cross-vendor grading finish.
-export async function collectCodexTrials() {
+export async function collectCodexTrials(batchTwo = false) {
+  const batch = join(dispatch.stateRoot, "evaluations", batchTwo ? "v1-step-4b-batch-2" : "v1-step-4b-batch-1", "codex");
+  mkdirSync(batch, { recursive: true, mode: 0o700 });
+  assertPrivateDir(batch, dispatch.stateRoot);
   for (const role of ["builder", "security-auditor", "spec-reviewer"] as const) {
     const cases = JSON.parse(pinnedFixture(git, factory, pin, "skills/" + role + "/evals/evals.json").toString()).cases;
     for (const row of flattenCases(cases)) {
@@ -48,6 +48,7 @@ export async function collectCodexTrials() {
       const stage = String(input.brief.stage);
       const missing = requiredProofs("codex", role, [], stage, dispatch);
       const key = row.id + (row.variant ? "/" + row.variant : "");
+      if (batchTwo && (role === "builder" || row.variant === "lead-dropped-a-mitigation")) continue;
       if (missing.length) {
         console.log(JSON.stringify({ key, missing, trials: 3 }));
         continue;
@@ -199,4 +200,4 @@ export async function collectCodexTrials() {
     }
   }
 }
-if (import.meta.main) await collectCodexTrials();
+if (import.meta.main) await collectCodexTrials(process.argv[2] === "--batch-two");

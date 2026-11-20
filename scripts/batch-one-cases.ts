@@ -283,6 +283,15 @@ export function deterministicBatchOne(context: GradeContext) {
 }
 
 /** Judge quotations must be substrings of a contestant output, not strings copied from the rubric. */
+export function parseJudgeGrades(text: string): unknown {
+  try { return JSON.parse(text); } catch {}
+  const blocks = [...text.matchAll(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*\r?$/gm)];
+  if (blocks.length === 1 && !text.slice(0,blocks[0]!.index).trim()) {
+    try { return JSON.parse(blocks[0]![1]!); } catch {}
+  }
+  return [];
+}
+
 export function judgeGrades(raw: unknown, checks: Check[], files: Map<string, Buffer>) {
   const rows = Array.isArray(raw) ? raw : [];
   const answers = [...files.values()].map((b) => b.toString());

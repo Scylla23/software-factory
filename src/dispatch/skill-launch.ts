@@ -1,6 +1,6 @@
 import type { AttemptDirectories } from "./attempt";
 import type { BriefInput, requiredMembers } from "./brief";
-import { verifiedPersonalProbe, verifiedTeamModelProof } from "./home-proof";
+import { verifiedNativeRoots, verifiedPersonalProbe, verifiedReviewIntegrity, verifiedTeamModelProof } from "./home-proof";
 import type { DispatchConfig } from "./config";
 import type { Harness } from "./types";
 
@@ -9,6 +9,8 @@ export interface SkillLaunch {
   brief: BriefInput;
   /** Measure the named Claude lead even when the eval case has no team. */
   namedLeadEvaluation?: true;
+  /** A standalone specialist eval uses its production child system prompt with read-only staged inputs. */
+  evaluationMember?: ReturnType<typeof requiredMembers>[number];
   members: ReturnType<typeof requiredMembers>;
   toolDirs: readonly string[];
   factoryRepo: string;
@@ -29,9 +31,12 @@ export function requiredProofs(harness: Harness, role: AttemptDirectories["role"
     }
     if (role === "builder") missing.push("builder command execution with closed reads");
   } else {
-    if (["spec-reviewer","database-auditor","code-reviewer"].includes(role)) missing.push("native file tool write-root matrix for " + role);
+    if (["spec-reviewer","database-auditor","code-reviewer"].includes(role) &&
+        (!dispatch || !verifiedNativeRoots(dispatch.stateRoot, dispatch.executables.codex, role, stage)))
+      missing.push("native file tool write-root matrix for " + role);
   }
-  if (role === "code-reviewer" || (["security-auditor","database-auditor"].includes(role) && stage === "code"))
+  if ((role === "code-reviewer" || (["security-auditor","database-auditor"].includes(role) && stage === "code")) &&
+      (!dispatch || !verifiedReviewIntegrity(harness,dispatch.stateRoot,dispatch.executables[harness])))
     missing.push("R3 project-command substitution");
   return missing;
 }

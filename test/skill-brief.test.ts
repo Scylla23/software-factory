@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { cpSync } from "node:fs";
+import { cpSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../factory.config";
 import { claudeArgs } from "../src/dispatch/claude";
@@ -49,6 +49,14 @@ test("the brief contains one block and every selected specialist has its own aut
     policy:{readable:[],denyRead:[],denyWrite:[]},team:{file:"lead.json",members:[]},fileToolsOnly:true});
   expect(argv[argv.indexOf("--agent") + 1]).toBe("spec-lead");
   expect(argv[argv.indexOf("--tools") + 1]!.split(",")).not.toContain("Agent");
+  writeFileSync(join(dirs.taskDir,"team-brief.md"),"Read-only brief");
+  const evaluation=claudeDefinitions(runBrief(dirs,data,true),["architect"],null,true).architect!;
+  expect(evaluation.prompt).toContain(join(dirs.taskDir,"team-brief.md"));
+  expect(evaluation.prompt).not.toContain(join(dirs.outDir,"team-brief.md"));
+  const single=claudeArgs({sessionId:brief.attemptId,prompt:"Complete your decision",model:config.specTeam.architect.model,effort:"high",
+    policy:{readable:[],denyRead:[],denyWrite:[]},team:{file:"member.json",members:[],named:"architect"},fileToolsOnly:true});
+  expect(single[single.indexOf("--agent")+1]).toBe("architect");
+  expect(single[single.indexOf("--tools")+1]).toBe("Read,Glob,Grep,Write");
   expect(() => claudeDefinitions(runBrief(dirs, data), ["architect"], null)).toThrow("team-enabled");
   expect(() => runBrief(dirs, { ...data, baseSha: "HEAD" })).toThrow("identity");
 });

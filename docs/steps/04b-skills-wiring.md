@@ -200,6 +200,23 @@ A separate Codex run used shell output and correctly failed the native receipt c
 The project-command substitution arm remains open.
 D4 separately demonstrated the protected specialist receipt.
 
+### Coordinator handoff for the R3 test
+
+The coordinator owns the project-command negative arm.
+The worker ran the host-side corruption control and the legitimate reviewer submissions only.
+The existing positive entry point is `scripts/probe-review-integrity.ts`, with `prepareVerdict` and `verifyVerdict` in `scripts/probe-verdict.ts`.
+The existing broker integration test is `test/skill-broker.test.ts`.
+The registry in `factory.config.ts` supplies the pilot's test argv to `prepareBroker` in `src/dispatch/broker.ts`.
+Calling the returned `runTest()` executes that registered command in the disposable review checkout using its frozen policy.
+The staged inputs are the attempt's `task/` and `skills/` trees and the reviewed source is its read-only `snapshot/`.
+The positive observation must archive the authenticated changes verdict after the head tests pass.
+The negative observation must have the same head, a distinct session, passing head tests, observed denials for writes to the protected inputs and snapshot, matching post-run bytes, zero approvals and a quarantined attempt.
+For the verdict itself, a successful arm records either an observed denial or the native digest mismatch that produced the distinct integrity escalation.
+The receipt validator in `src/dispatch/home-proof.ts` checks the supervisor's exact reason in the detected branch.
+After independently verifying both arms, the test owner can atomically publish its private mode-0600 result to `skill-proofs/<harness>-review-integrity.json` in factory state.
+`qualifiesReviewIntegrity` defines the required fields and `verifiedReviewIntegrity` checks the pinned executable, trusted location and receipt before launch.
+No R3 receipt was issued in batch 2.
+
 `python3 scripts/mutate-step-04b.py` killed 59 of 59 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions, judge quotations, discovery write denials, lazy reads and specialist model selection.
 The three development suites passed with 331, 342 and 355 tests.
 The third suite ran in 97.37 seconds under the external watchdog.

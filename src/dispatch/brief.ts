@@ -1,4 +1,5 @@
 import { basename, join } from "node:path";
+import { existsSync } from "node:fs";
 import { config } from "../../factory.config";
 import type { AttemptDirectories } from "./attempt";
 import { composeInstructions } from "./bundle";
@@ -50,7 +51,7 @@ export function requiredMembers(tier: "S" | "M" | "L", security: boolean, newPro
 
 /** Build definitions as factory data. Launch authorization remains a separate preflight. */
 export function claudeDefinitions(
-  brief: ReturnType<typeof runBrief>, members: readonly Member[], projectInstructions: string | null,
+  brief: ReturnType<typeof runBrief>, members: readonly Member[], projectInstructions: string | null, stagedMemberInputs = false,
 ) {
   if (brief.role !== "spec-lead" || brief.teamEnabled !== (members.length > 0) || new Set(members).size !== members.length)
     throw new Error("definitions require a matching team-enabled state and distinct members");
@@ -82,8 +83,9 @@ export function claudeDefinitions(
     const inherited = new Set(brief.previous?.decisions?.map(decision => decision.file) ?? []);
     const child = { taskId, attemptId, round, baseSha, worktree, skillsDir, outDir, taskDir, scratchDir, project,
       role: member.name, parentRole: "spec-lead", stage: "spec",
-      reads: member.reads.filter(name => outputs.has(name) || inherited.has(name))
-        .map(name => join(outputs.has(name) ? outDir : taskDir, name)), writes: join(outDir, member.writes) };
+      reads: stagedMemberInputs ? member.reads.filter(name => existsSync(join(taskDir,name))).map(name => join(taskDir,name))
+        : member.reads.filter(name => outputs.has(name) || inherited.has(name)).map(name => join(outputs.has(name) ? outDir : taskDir, name)),
+      writes: join(outDir, member.writes) };
     const prompt = composeInstructions(skillsDir, member.name, null) + "\n" + briefPrompt(child) + "\n" + (projectInstructions ?? "");
     if (Buffer.byteLength(prompt) > MAX_INSTRUCTIONS_BYTES) throw new Error("child instructions exceed byte limit");
     definitions[member.name] = {

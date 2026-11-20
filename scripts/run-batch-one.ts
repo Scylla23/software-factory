@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { config } from "../factory.config";
 import { checkoutSnapshot, createAttempt } from "../src/dispatch/attempt";
 import { requiredMembers, runBrief, type BriefInput } from "../src/dispatch/brief";
@@ -15,7 +15,8 @@ import { collectOutputs, type OutputAuthor } from "../src/dispatch/output";
 import { requiredProofs } from "../src/dispatch/skill-launch";
 import { flattenCases, deterministicBatchOne, exposesAnswer, judgeGrades } from "./batch-one-cases";
 import { EvalBudget } from "./eval-budget";
-import { caseInput, stageBlindInputs } from "./eval-inputs";
+import { DollarBudget } from "./eval-dollar-budget";
+import { caseInput, inspectBlindStream, stageBlindInputs } from "./eval-inputs";
 import { evalCheckout, pinnedFixture } from "./eval-checkout";
 import { plantPilot } from "./eval-pilot";
 import { probePersonalSources } from "./probe-personal-sources";
@@ -29,11 +30,15 @@ const git = dispatch.executables.git,
 const pin = runGit(git, factory, ["log", "-1", "--format=%H", "HEAD", "--", "skills"]).toString().trim();
 const dry = process.argv[2] === "--preflight";
 const codexOnly = process.argv[2] === "--codex-only";
-if (process.argv.slice(2).some((a) => a !== "--preflight" && a !== "--codex-only")) throw new Error("select --preflight or --codex-only");
-const batch = join(dispatch.stateRoot, "evaluations", "v1-step-4b-batch-1");
+const second = process.argv[2] === "--batch-two-leads";
+if (process.argv.length > 3 || (process.argv[2] && !dry && !codexOnly && !second)) throw new Error("unknown run mode");
+const batch = join(dispatch.stateRoot, "evaluations", second ? "v1-step-4b-batch-2" : "v1-step-4b-batch-1");
 mkdirSync(batch, { recursive: true, mode: 0o700 });
 assertPrivateDir(batch, dispatch.stateRoot);
-const ledger = new EvalBudget(join(batch, "usage.sqlite"));
+const ledger = second ? new DollarBudget(join(batch,"usage.sqlite")) : new EvalBudget(join(batch, "usage.sqlite"));
+function overspent(actual: ReturnType<typeof ledger.settle>) {
+  return "overshootUsd" in actual ? actual.overshootUsd > 0 : !!(actual.overshootInput || actual.overshootOutput);
+}
 const mkdir = (root: string, name: string) => {
   const p = join(root, name);
   mkdirSync(p, { mode: 0o700 });
@@ -45,30 +50,8 @@ const routing = {
   L: { builder: "Opus 5.5", codeReviewer: "GPT-6.2-Astra" },
 };
 
-async function inspectBlindStream(stdoutPath: string, canary: string, worktree: string) {
-  let inspected = false;
-  for await (const item of readJsonl(stdoutPath)) {
-    if (item.kind !== "record" || JSON.stringify(item.value).includes(canary)) throw new Error("compromised blind trial");
-    const e = item.value;
-    if (e.type !== "assistant" || !isRecord(e.message) || !Array.isArray(e.message.content)) continue;
-    for (const c of e.message.content)
-      if (isRecord(c) && c.type === "tool_use" && isRecord(c.input)) {
-        if (/(?:^|[\s/"'])evals\//.test(JSON.stringify(c.input)) && ["Bash", "Read", "Glob", "Grep", "Agent"].includes(String(c.name)))
-          throw new Error("eval fixture access");
-        const target = c.input.file_path ?? c.input.path ?? (c.name === "Glob" || c.name === "Grep" ? "." : null);
-        const path = typeof target === "string" ? resolve(worktree, target) : undefined;
-        if (
-          typeof path === "string" &&
-          (path === worktree || path.startsWith(worktree + "/")) &&
-          ["Read", "Glob", "Grep"].includes(String(c.name))
-        )
-          inspected = true;
-      }
-  }
-  return inspected;
-}
-
 async function batchOne() {
+  if (second && ledger.db.query("SELECT id FROM batch_stop").get()) return;
   if (codexOnly || (!dry && ledger.db.query("SELECT id FROM batch_stop").get())) {
     const {collectCodexTrials} = await import("./eval-codex-trials");
     const {gradeCodexTrials} = await import("./grade-codex-trials");
@@ -76,12 +59,12 @@ async function batchOne() {
     await gradeCodexTrials(true);
     return;
   }
-  if (!dry) for (const h of ["claude", "codex"] as const) {
+  if (!dry && !second) for (const h of ["claude", "codex"] as const) {
     if (!verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(await probePersonalSources(h,dispatch)));
     if (h === "claude" && verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
   }
 
-  if (!dry) {
+  if (!dry && !second) {
     const {collectCodexTrials}=await import("./eval-codex-trials");
     const {gradeCodexTrials}=await import("./grade-codex-trials");
     await collectCodexTrials();
@@ -90,6 +73,7 @@ async function batchOne() {
 
   let skipped = 0;
   for (const role of ["triage", "spec-lead"] as const) {
+    if (second && role === "triage") continue;
     const cases = JSON.parse(pinnedFixture(git, factory, pin, `skills/${role}/evals/evals.json`).toString()).cases;
     for (const row of flattenCases(cases)) {
       const input = caseInput(git, factory, pin, role, row.id, row.variant);
@@ -106,6 +90,7 @@ async function batchOne() {
       }
       for (let trial = 1; trial <= 3; trial++) {
         const trialKey = key + "#" + trial;
+        if (second && trialKey === "spec-lead-01-draft-and-revise/bug-reproduce-first#1") continue;
         const previous = ledger.db
           .query<{ revision: string; status: string }, [string]>("SELECT revision,status FROM trials WHERE key=?")
           .get(trialKey);
@@ -223,7 +208,7 @@ async function batchOne() {
             checkoutSnapshot(git, repo, refs.base, initial.worktree);
             stageBlindInputs(git, factory, pin, role, input, initial.taskDir, refs);
             const { result, actual } = await launch(first, initial, [], mkdir(batch, first), key + "/handoff", true);
-            if (actual.overshootInput || actual.overshootOutput) throw new Error("batch stopped after a measured overshoot");
+            if (overspent(actual)) throw new Error("batch stopped after a measured overshoot");
             if (!cleanup) throw new Error("unverified handoff cleanup");
             const text = result.resultText ?? "";
             handoff =
@@ -247,7 +232,7 @@ async function batchOne() {
             }
           }
           const { result, actual } = await launch(id, dirs, members, log, promotion ? key + "/team" : key, !promotion);
-          const overshoot = !!(actual.overshootInput || actual.overshootOutput);
+          const overshoot = overspent(actual);
           let passed = false,
             report: object = { actual };
           try {
@@ -351,9 +336,9 @@ try {
   console.error((error as Error).message);
   process.exitCode = 1;
 } finally {
-  const sessions = ledger.db
-    .query("SELECT id,trial,model,estimate_input,estimate_output,actual_input,actual_output,outcome FROM sessions ORDER BY rowid")
-    .all();
+  const sessions = ledger.db.query(second
+    ? "SELECT id,trial,model,estimate_micro,actual_micro,outcome FROM sessions ORDER BY rowid"
+    : "SELECT id,trial,model,estimate_input,estimate_output,actual_input,actual_output,outcome FROM sessions ORDER BY rowid").all();
   const trials = ledger.db.query("SELECT key,status FROM trials ORDER BY key").all();
   console.log(JSON.stringify({ usage: ledger.totals(), sessions, trials }));
   ledger.db.close();

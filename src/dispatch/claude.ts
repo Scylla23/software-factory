@@ -72,7 +72,7 @@ export interface ClaudeCommandInput {
   evaluationLimits?: { maxTurns: number; maxUsd: number };
   fileToolsOnly?: boolean;
   brokerFile?: string;
-  team?: { file: string; members: readonly string[] };
+  team?: { file: string; members: readonly string[]; named?: string };
 }
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
@@ -89,8 +89,8 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",
-    "--tools", input.toolFreeJudge ? "" : [...CLAUDE_BUILDER_TOOLS.filter(tool => !filesOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
-    ...(input.team ? ["--agents", input.team.file, "--agent", "spec-lead"] : []),
+    "--tools", input.toolFreeJudge ? "" : input.team?.named ? "Read,Glob,Grep,Write" : [...CLAUDE_BUILDER_TOOLS.filter(tool => !filesOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
+    ...(input.team ? ["--agents", input.team.file, "--agent", input.team.named ?? "spec-lead"] : []),
     "--strict-mcp-config",
     ...(input.brokerFile ? ["--mcp-config", input.brokerFile] : []),
     // No skills or slash commands at all; the dedicated CLAUDE_CONFIG_DIR already drops the owner's, this drops the built-ins.

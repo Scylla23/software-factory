@@ -1,5 +1,26 @@
 import { expect, test } from "bun:test";
-import { homeSources, pinnedVersions, qualifiesHomeProof } from "../src/dispatch/home-proof";
+import { homeSources, pinnedVersions, qualifiesHomeProof, qualifiesNativeRoots, qualifiesReviewIntegrity } from "../src/dispatch/home-proof";
+
+test("native mechanism receipts bind the pinned harness to its role, stage, denied operations and resulting files",()=>{
+  const r={role:"spec-reviewer",stage:"spec",harness:"codex",version:pinnedVersions.codex,model:"gpt-6-luna",effort:"low",
+    factoryLogin:true,homeAudit:true,control:false,passed:true,filesMatch:true,nativeDenied:true,observedModel:true,thread:crypto.randomUUID()};
+  const check=(raw:unknown)=>qualifiesNativeRoots(raw,"spec-reviewer","spec");
+  expect(check(r)).toBe(true);
+  for(const k of Object.keys(r))expect(check({...r,[k]:null})).toBe(false);
+  expect(qualifiesNativeRoots(r,"database-auditor","code")).toBe(false);
+});
+
+test("R3 requires paired observations, a quarantined attempt and the registered integrity reason",()=>{
+  const head="b".repeat(40),p={session:crypto.randomUUID(),head,headTestsPassed:true,authenticatedChangesArchived:true};
+  const n={session:crypto.randomUUID(),head,headTestsPassed:true,inputWritesDenied:true,snapshotWritesDenied:true,inputsIntact:true,snapshotIntact:true,
+    quarantined:true,approvals:0,substitution:"denied"};
+  const check=(neg:object)=>qualifiesReviewIntegrity("claude",{harness:"claude",version:pinnedVersions.claude,test:"review-integrity",positive:p,negative:neg});
+  expect(check(n)).toBe(true);
+  for(const key of Object.keys(n))expect(check({...n,[key]:null})).toBe(false);
+  expect(check({...n,session:p.session})).toBe(false);
+  expect(check({...n,substitution:"detected",escalation:"retry"})).toBe(false);
+  expect(check({...n,substitution:"detected",escalation:"skill output integrity escalation: output bytes changed after authenticated final write: verdicts/code-reviewer.json"})).toBe(true);
+});
 
 test("only independent, isolated positive and negative S1 observations qualify for the pinned harness", () => {
   for (const harness of ["codex", "claude"] as const) {
