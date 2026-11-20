@@ -550,7 +550,7 @@ test("scratch dependency setup sees the registry proxy only during setup and lea
   mkdirSync(scratch);
   const checkout = makeRepo(scratch, "repo", [{"source.txt": "pinned"}]);
   const id = crypto.randomUUID();
-  await prepareAgentCheckout(env.config, {id, checkout: checkout.path, scratch, logDir: env.logDir,
+  await prepareAgentCheckout(env.config, {id, checkout: checkout.path, scratch, logDir: env.logDir, setupTimeoutMs: 10_000,
     commands: {setup: [["/bin/sh", "-c", 'test -n "$HTTPS_PROXY" && echo prepared > setup-ran']], egress: ["registry.npmjs.org"]}});
   expect(readFileSync(join(checkout.path, "source.txt"), "utf8")).toBe("pinned");
   expect(readFileSync(join(checkout.path, "setup-ran"), "utf8")).toBe("prepared\n");
@@ -573,7 +573,7 @@ test("builder installs local tools before dispatch and runs both registered scri
     'chmod +x node_modules/.bin/local-check',
   ].join("\n");
   await prepareAgentCheckout({...env.config, untrustedRoots: [...env.config.untrustedRoots, env.repos]}, {
-    id, scratch: dirs.scratchDir, checkout: dirs.worktree, builderWorkspaceRoot: env.repos, logDir: env.logDir,
+    id, scratch: dirs.scratchDir, checkout: dirs.worktree, builderWorkspaceRoot: env.repos, logDir: env.logDir, setupTimeoutMs: 10_000,
     commands: {setup: [["/bin/sh", "-ec", setup]], egress: []},
   });
   const cli = Bun.which("codex")!;

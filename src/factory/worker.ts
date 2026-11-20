@@ -132,7 +132,7 @@ async function work(id: string) {
         if (pinned !== job.input.inputSha) throw new Uncertain("dependency checkout does not match intended skill input");
         const verify = loadVerifyConfig(dispatch, {toolDirs: config.pilot.toolDirs, toolRoots: config.pilot.toolDirs, agentWriteRoots: [config.workspaceRoot]});
         try { await prepareAgentCheckout(verify, {id, checkout: setupCheckout, scratch: dirs.scratchDir, logDir: dir,
-          ...(wt ? {builderWorkspaceRoot: config.workspaceRoot} : {}), commands: config.pilot.commands}); }
+          setupTimeoutMs: config.pilot.installTimeoutMs, ...(wt ? {builderWorkspaceRoot: config.workspaceRoot} : {}), commands: config.pilot.commands}); }
         catch (error) { throw new Uncertain("dependency setup requires inspection: " + (error as Error).message); }
         finally { verify.egress.close(); }
       }
@@ -285,7 +285,8 @@ export async function dispatchWorker(
     launcherPid = launch(dir, attempt.id, stateRoot);
   }
   const start = Date.now();
-  const timeout = config.agents[role].timeoutMs + 120_000;
+  const setupBudget = role === "builder" || role === "reviewer" ? config.pilot.commands.setup.length * config.pilot.installTimeoutMs : 0;
+  const timeout = setupBudget + config.agents[role].timeoutMs + 120_000;
   let sawStart = false;
   for (;;) {
     const stdout = join(dir, `${attempt.id}.stdout.jsonl`);

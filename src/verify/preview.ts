@@ -331,7 +331,7 @@ export function reserveAttempt(config: Pick<VerifyConfig, "stateRoot" | "untrust
 
 /** Install in the pinned reviewer copy or the assigned builder worktree before dispatch. */
 export async function prepareAgentCheckout(config: VerifyConfig, input: {
-  id: string; checkout: string; scratch: string; builderWorkspaceRoot?: string; logDir: string; commands: Pick<ProjectCommands, "setup" | "egress">;
+  id: string; checkout: string; scratch: string; builderWorkspaceRoot?: string; logDir: string; setupTimeoutMs: number; commands: Pick<ProjectCommands, "setup" | "egress">;
 }) {
   const { checkout, scratch, builderWorkspaceRoot } = input;
   if (!UUID.test(input.id) || realpathSync(scratch) !== scratch || realpathSync(checkout) !== checkout)
@@ -357,7 +357,7 @@ export async function prepareAgentCheckout(config: VerifyConfig, input: {
     const env = projectEnv({home, path: config.toolPath, user: userInfo().username, proxy: proxy.url});
     for (const [i, argv] of input.commands.setup.entries()) {
       const dest = openLog(config, input.logDir, input.id + ".scratch-setup-" + i + ".log");
-      const run = spawnSandboxed(config, policy, argv, input.checkout, env, dest.fd, 120_000);
+      const run = spawnSandboxed(config, policy, argv, input.checkout, env, dest.fd, input.setupTimeoutMs);
       try {
         const result = await run.supervised;
         const sweep = await settle(config, result.unverified, builderWorkspaceRoot ? [checkout, scratch] : [scratch]);

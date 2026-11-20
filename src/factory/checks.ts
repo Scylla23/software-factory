@@ -86,7 +86,7 @@ export class ProjectChecks {
         sha: revision,
         logDir,
         project: config.pilot.commands,
-        setupTimeoutMs: config.pilot.verificationInstallTimeoutMs,
+        setupTimeoutMs: config.pilot.installTimeoutMs,
         readyTimeoutMs: 30_000,
         maxLifetimeMs: 300_000,
       },

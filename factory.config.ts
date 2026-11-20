@@ -37,7 +37,7 @@ export const config = {
       lint: ["node", "--run", "lint"],
       typecheck: ["node", "--run", "typecheck"],
     },
-    verificationInstallTimeoutMs: 300_000,
+    installTimeoutMs: 300_000,
     fixtures: {
       inventory: {
         issue: 4,
