@@ -5,7 +5,7 @@
 The owner replaced disposable-login S1, system-source S3, S7 and S8 with a factory-home preflight and a negative-only personal-source probe.
 Those four claims remain unproven.
 Issue #44 tracks the paired disposable-login controls.
-The historical preflight table below describes the earlier decision.
+The batch report lists the effective preflight disposition for each case.
 
 The original inventory refused both factory homes because the pinned CLIs had installed account-synced Claude skills and plugin manifests, and bundled Codex skills and cached remote plugins.
 The coordinator approved retaining those sources at known disabled locations.
@@ -32,11 +32,12 @@ A missing transcript, a loaded source or a new source location quarantines the a
 The personal probe enumerated 177 installed skill and agent names without reading their files.
 Claude Haiku low session `fa2e95a6-e4b2-42a9-9204-e07684742faf` and Codex Luna low thread `01a1f755-95d8-7283-bcab-1ca823071c83` both passed.
 These are negative-only observations without a personal-home positive control.
-The discriminating D3 arms on the factory login passed with Haiku low as parent, Sonnet medium as the defined child, and no child start when its definition was absent.
+The discriminating D3 definition-absent arm `949a7054-7f2c-4a6b-b9b6-18936534e785` requested the named child and recorded no child start.
+The definition-present arm `7afbbb77-87b8-4d44-8bc4-b44344b0e3b5` observed Haiku low as parent and Sonnet medium as the child, including the delivered brief and specialist system instructions.
 Production and evaluation continue to require the applicable native controls and R3.
 
 
-Status is incomplete on branch `Scylla23/factory-step4b-wiring`, based on `5e0cc6d`.
+Step 4b remains incomplete on branch `Scylla23/factory-step4b-wiring`, rebased onto step 8 at `d88d164`.
 
 ## Implemented
 
@@ -62,11 +63,10 @@ The scratch setup uses the step 2 Seatbelt profile, supervised processes and a p
 The stage driver consumes authenticated file contents for the spec and code verdict and keeps the existing owner, reproduction, head-check and evidence gates.
 A schema or join failure gets one new attempt.
 An output integrity failure takes the stage directly to escalation.
-The dispatcher refuses production launches on both pinned harnesses while the required live controls remain incomplete.
+The dispatcher refuses a role and stage whenever one of its required controls remains incomplete.
 Existing tasks without the required validated collections also escalate when resuming at a dependent stage.
 
-The separate store migration uses version 2 on the step 3 base.
-It needs renumbering when the coordinator requests the rebase onto step 8.
+The separate store migration at `9ef662c` upgrades step 8's version 3 store and the earlier skill-only version 2 store to version 4.
 
 ## Pinned harness results
 
@@ -105,7 +105,7 @@ Run `bun scripts/probe-step-04b.ts` with the test name to reproduce a row.
 | Codex S6, fact 13b | Unverified | Thread `01a1f5a5-5574-7862-aac2-aa0527c8d705` requested the project type and started no child, but the source-specific positive control is missing |
 | Codex S7, fact 14 | Unverified | Child home-source discovery requires independent proof credentials |
 
-Both D3 probes kept parent and child on the requested cheap model and low effort.
+Both original D3 probes kept parent and child on the requested cheap model and low effort.
 They establish no discrimination between different model and effort settings.
 The Codex definition-absent control sometimes selected an unnamed default child, so it does not prove a named rejection.
 S1, the system-source arm of S3, S7 and S8 need additional source-specific controls.
@@ -166,19 +166,19 @@ The enabled alternate arms were Claude `0f752b09-ae7e-4f95-a577-6a32475ea927` an
 5. The coordinator retained the credential gates for S1, the S3 system source, S7 and S8.
    No paid proof or evaluation ran during this revision.
 6. The coordinator accepts partial Claude D3 for step 4b only after a discriminating model and effort observation.
-   The batch command schedules `D3-distinct` with a Haiku 5.5 low parent and a Sonnet 5.5 medium child in a disposable authenticated home.
+   The owner subsequently moved D3 to the audited factory login, with a Haiku 5.5 low parent and a Sonnet 5.5 medium child.
    The definition-absent arm must request the same child and record no start.
    The enabled arm must link the child to the parent start and verify its effective skill, run brief, model and request effort in the private transcript.
-   This live arm awaits the owner credential.
+   Both live arms passed on the factory login.
 
-## Disposable proof authentication
+## Optional disposable proof authentication for step 9
 
 Claude proof launches read Keychain service `software-factory.claude-oauth-token`, account `software-factory`, through the fixed system security executable.
 The token enters only the child environment with subprocess scrubbing enabled.
 Codex proof launches read service `software-factory.openai-proof-api-key` on the same account, pass the independent key to CLI login over stdin and delete the disposable CLI home at teardown.
 The runner refuses a missing item before launching a harness.
 Fake security executables cover both missing items, env-only Claude injection, redaction and Codex stdin login and teardown on success and failure.
-Owner provisioning is pending for home-source discovery, including S1, S7, S8 and the dedicated-home definition control of S6.
+The owner deferred disposable proof credentials to step 9, including the source-specific home discovery and dedicated-home definition controls.
 The ordinary factory login remains valid for project-source and delivery controls that plant no home sources.
 
 ## Validator and regression tests
@@ -207,88 +207,84 @@ The coordinator-requested regression suite first passed 365 tests with 5,654 ass
 The batch runner and its fixtures then passed a 376-test suite with 5,732 assertions in 100.48 seconds.
 The planted pilot separately passed its registered typecheck and all six application tests.
 The earlier batch-runner revision passed the factory typecheck and 18 focused tests.
-After the coordinator decisions the final suite passed 382 tests across 38 files, with 6,544 assertions in 95.80 seconds.
+Before step 8 merged, the suite passed 382 tests across 38 files, with 6,544 assertions in 95.80 seconds.
 The factory typecheck passed and all nine Codex shell role profiles passed their offline write-root checks.
+On the rebased branch the full suite passed 451 tests across 42 files with 6,755 assertions.
+The typecheck and the 221 validator controls passed.
+The mutation scripts killed all 71 step 4b mutants and all 48 step 8 mutants.
+The staged revision preflight also passed its focused regression, including the corrected-digest control.
 The 20 consecutive final runs await completed evals at the coordinator's request.
 
 ## Skill evals
 
-| Skill | Blind eval result |
+The batch ran against skill tree `2f827fb52ec7d1ccaadc0f97bf6ca3cd784b793e` before and after rebasing onto `d88d164`.
+The negative-only personal probes and the distinct D3 certificate qualified the eligible batch 1 routes.
+The blind input preflight stages 44 variants across 12 catalogs.
+The factory gave contestants only the staged inputs, a neutral fixture checkout, the skill bundle and the run brief.
+A canary in the excluded eval tree and the native event stream check for answer leakage.
+Project test commands used to grade builders run in disposable copies under the existing Seatbelt broker.
+
+The [batch 1 report](04b-batch-one.md) records each case, variant, trial, model, native session, fresh input, cache reads, cache writes, output, failing checks and API-equivalent costs.
+`bun scripts/report-step-04b.ts` reconstructs the report without launching a model.
+`bun scripts/run-batch-one.ts --codex-only` resumes Codex contestants and deterministic grading with Claude disabled.
+The twenty-run stability check and the end-to-end pilot remain deferred under the coordinator's stop instruction.
+
+| Skill | Current disposition |
 | --- | --- |
-| Triage | Pending |
-| Spec lead | Pending isolated Claude lead and team proofs |
-| Architect | Pending isolated discovery controls and production evaluation approval |
-| Infra | Pending isolated discovery controls and production evaluation approval |
-| Frontend | Pending isolated discovery controls and production evaluation approval |
-| Threat modeler | Pending isolated discovery controls and production evaluation approval |
-| Spec reviewer | Pending verified dispatch |
-| Builder | Pending verified dispatch |
-| Code reviewer | Pending batch 2 authorization and verified dispatch |
-| Security auditor | Pending verified dispatch |
-| Database auditor | Pending batch 2 authorization and verified dispatch |
-| Verifier | Pending batch 2 authorization and verified dispatch |
+| Triage | Eight passes from nine trials, with the first case failing its third trial on the tier signal enum |
+| Spec lead | One named solo trial failed the reused-path check despite passing all three judge checks, with eleven trials stopped before launch |
+| Architect | Batch 2 authorization pending. |
+| Infra | Batch 2 authorization pending. |
+| Frontend | Batch 2 authorization pending. |
+| Threat modeler | Batch 2 authorization pending. |
+| Spec reviewer | Five variants refused before dispatch for the native write-root matrix. |
+| Builder | Three trials per case on Sol high, with case dispositions in the batch report. |
+| Code reviewer | R3 and batch 2 authorization pending. |
+| Security auditor | Both code cases refused on R3, three spec submissions await a judge and three revision trials had an invalid fixture |
+| Database auditor | R3 for code-stage review and batch 2 authorization pending. |
+| Verifier | Batch 2 authorization pending. |
 
-The named spec lead evaluation path selects `--agent spec-lead` even when the case has an empty specialist team.
-The empty definition retains the lead skill and exposes no subagent tool.
-The blind input preflight staged 44 variants across all 12 skill catalogs.
-Twenty-four variants use the pinned tasklist fixture repository, nine are self-contained, and eleven require a matching planted pilot.
-The preflight stages only declared inputs, substitutes the selected SHAs, computes the spec and plan digests from the staged bytes and preserves deliberately stale evidence.
-The fixture repository is rebuilt under a neutral name with the patch outside its readable tree.
-The preflight does not dispatch an agent, grade an output or establish that a planted pilot matches a case.
-No production contestant, cross-vendor judge or end-to-end pilot has run.
+The coordinator's merge notice arrived after Claude reached its stop rule.
+Step 8's capture reconciled each completed pre-merge session against its protected native evidence.
+Five Codex contestants had already started when the notice arrived.
+The sixth and later contestants ran after the rebase, typecheck, full suite and both mutation suites.
+No contestant was repeated for the rebase.
+A concurrent Codex session's runtime lock initially refused the solo spec lead's Codex judge before launch.
+After validating the lock and the two pinned-executable aliases, the factory restored the exact original project commit by its hash and graded the saved authenticated submission once.
+All six repository files cited in the reused-files section existed.
+The literal path checker also treated the HTTP route `/tasks` in the explanation as a repository path.
+The recorded check remains failed.
+The proposed rubric change would check the repo-relative file naming each reuse entry and allow HTTP routes in its explanation.
+The pinned skill and rubric retain their original wording.
 
-### Batch 1 and Codex case preflight
+All 15 eligible Codex contestants finished.
+The native file-tool gate refused 15 spec-reviewer trials and R3 refused six code-stage auditor trials before launch.
+Eight builder trials and three auditor trials passed their deterministic checks and await a Sonnet judge.
+Builder case 1 trial 3 lacked an authenticated final write of `build-report.json`.
+The runner retained 14 judge packets for the 15 Codex contestants with their recorded inputs and authenticated outputs where available.
+The 32 saved session catalogs passed the strengthened source-listing audit on offline replay.
 
-Run `bun scripts/run-batch-one.ts` from this checkout to attempt isolated S1 on both pinned binaries and dispatch eligible Claude batch 1 trials.
-Use `--preflight` to inspect case gates without starting a proof or contestant.
-The command includes Codex contestant preflight only.
-It records approved Claude trial sessions in a private batch database and reports the session estimates, actuals, trial outcomes and cumulative usage.
-An interrupted or unmeasured Claude session blocks a new reservation.
-Exit 2 means cases were skipped for missing evidence.
-Provisioning the Keychain items makes isolated S1 and the distinct Claude D3 proof runnable.
-The S3 system-source proof remains independently required on both harnesses.
-The factory still refuses a case if any of its controls is open.
+The three spec-stage security-auditor revision trials had invalid inputs.
+The fixture's round 1 verdict has a zero digest, which the shared eval method binds to the current spec set.
+The revision identity check requires the archived digest to differ from that same current digest.
+All three verdicts echoed the correct current digest `f03ed6eba730669f43e9410f8e93e8d6d089f0a0d9672f21b4d8af9ec2724ccb`.
+The archived round 1 files independently hash to `0e99cceeabd1a308764ad0eedf5ed1c5ac9f8c8c50c964f3d4fc99e09e1c1439` under the section 6 algorithm.
+The proposed fixture correction is to put that archived digest in `skills/security-auditor/evals/fixtures/task-by-id-r1-audit.json`.
+The report preserves the original failed identity checks and the $1.29028 consumed across the three trials.
+The runner checks for this contradiction after staging and refuses a new contestant while it persists.
 
-The last credential-aware invocation returned both missing-credential results and zero S1 arms.
-The subsequent no-spend preflight reported zero contestant and judge sessions, zero input and output tokens, and zero pending reservations.
-Each row requires three scored trials.
-The 21 Claude and 36 Codex trials have no measured pass rate.
+Of the 25 contestants, eight passed, three failed the recorded checks, three encountered the invalid fixture and eleven await cross-vendor judgment.
+The seven Codex judging sessions bring the measured API-equivalent total to $5.60598.
+The measured solo lead gives no basis for estimating child usage in a team trial.
 
-| Case and variant | Contestant | Missing proof or fixture condition |
-| --- | --- | --- |
-| `triage-01-single-area-bug` | Sonnet low | S1, S3 |
-| `triage-02-schema-change-called-tiny` | Sonnet low | S1, S3 |
-| `triage-03-injected-instructions` | Sonnet low | S1, S3 |
-| `spec-lead-01-draft-and-revise/bug-reproduce-first` | Opus high | S1, S3 |
-| `spec-lead-01-draft-and-revise/revision-answers-both-reviewers` | Opus high | S1, S3 |
-| `spec-lead-02-tier-promotion-runs-team` | Opus high | S1, S3, S8, D3 |
-| `spec-lead-03-ac-changing-conflict-escalates` | Opus high | S1, S3, S8, D3 |
-| `builder-01-bug-reproduce-first` | Sol high | S1, S3 |
-| `builder-02-security-criteria` | Sol high | S1, S3 |
-| `builder-03-repair-fix-and-dispute` | Sol high | S1, S3 |
-| `spec-reviewer-01-planted-defects/four-defects` | Astra high | S1, S3, native write roots |
-| `spec-reviewer-01-planted-defects/requirement-moved-to-non-goals` | Astra high | S1, S3, native write roots |
-| `spec-reviewer-02-clean-spec-approves/bug-spec` | Astra high | S1, S3, native write roots |
-| `spec-reviewer-02-clean-spec-approves/plan-creates-a-file` | Astra high | S1, S3, native write roots |
-| `spec-reviewer-03-revision-breaks-something-else` | Astra high | S1, S3, native write roots |
-| `security-auditor-01-cross-user-access-in-diff` | Astra high | S1, S3, R3 |
-| `security-auditor-02-safe-diff-approves` | Astra high | S1, S3, R3 |
-| `security-auditor-03-spec-stage/lead-dropped-a-mitigation` | Astra high | S1, S3 |
-| `security-auditor-03-spec-stage/revision-edits-only-the-threat-model` | Astra high | S1, S3 |
-
-Triage uses Sonnet 5.5 low and the named spec lead uses Opus 5.5 high.
-The lead runner requests native specialists for the L conflict case and measures the tier-promotion handoff and fresh team on separate attempt IDs.
-The promoted session only qualifies after the first lead returns the required block with no children or output files.
-Unobserved specialist completion fails the dependency-order check.
-Claude outputs with judge checks go to a fresh Codex Astra high judge with the fixture, checks and authenticated output.
-The judge runs outside both the skill bundle and the contestant checkout.
-The grader requires one affirmative answer and an exact supporting quotation for each judge check.
-
-Sonnet 5.5 low judging of Codex outputs is authorized against the same Claude budget.
-There are no eligible Codex submissions to judge.
-The Codex cases still need measured contestant runs and cross-vendor grades once their own controls pass.
-Standalone architect, infra, frontend, threat modeler, code reviewer, database auditor and verifier trials await batch 2 authorization.
-The pilot requires separate authorization after the evals pass.
+The 800,000-input stop barred the next solo spec-lead trial after 766,704 input and 25,610 output tokens.
+Its same-case estimate was 196,796 input and 8,471 output, with 33,296 input and 94,390 output remaining.
+No Sonnet judge ran on a Codex submission.
+A deterministic failure is a failed trial even if its judge was barred.
+A submission that passed deterministic checks and still needed a judge is recorded as unjudged.
+The two terms `launch` and `access` also occurred as ordinary verbs in vendor instructions during the negative-only probes.
+Neither appeared as a listed or loaded personal source.
+The report distinguishes actual completed trials, refusals before launch and budget stops.
 
 The Claude stop rule uses 800,000 input and 120,000 output tokens across the batch, including children, retries and Sonnet judging.
 Before each session the runner adds measured totals to the largest same-case observed input and output, using the initial estimates below until a session has been measured.
@@ -312,10 +308,11 @@ Actuals come from each final result's per-model totals, counting normal input, c
 | #16 | Closed after restoring the review validator and reproducing its 221 checks |
 | #17 | Open pending the remaining pinned proof matrix |
 | #18 | Closed after proving Codex R1 separately for shell and native reads and passing Codex R2 in the closed profile |
-| #19 | Open pending authorized blind spec lead evals under the selected lead definition, with D1 verified separately |
+| #19 | Open after one named solo trial, pending remaining spec-lead trials and their judges |
 | #20 | Closed with fresh eligible launch and refused-route controls for L promotion and M security, plus preservation of the original inputs |
 | #21 | Closed after confirming the distinct collector error now survives the supervisor receipt and escalates before retry, store acceptance or gate 2 |
 | #43 | Open for step 5 to prove the Claude builder command path |
+| #44 | Open for step 9 to run paired disposable-login S1, system S3, S7 and S8 controls |
 
 ## Contract findings
 
