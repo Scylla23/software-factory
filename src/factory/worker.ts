@@ -93,6 +93,15 @@ export function changes(path: string): WorkerOutput["files"] {
   });
 }
 
+export function checkedCheckout(git: string, path: string, intended: string, builder: boolean) {
+  const head = runGit(git, path, ["rev-parse", "HEAD"]).toString().trim();
+  if (head !== intended) throw new Uncertain("checkout does not match intended skill input");
+  if (!builder) return {};
+  if (runGit(git, path, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]).length)
+    throw new Uncertain("builder checkout has pending changes after dependency setup");
+  return {cleanCheckoutAt: head};
+}
+
 async function work(id: string) {
   const dir = jobDir(id, config.stateRoot);
   assertPrivateDir(dir, config.stateRoot);
@@ -126,12 +135,10 @@ async function work(id: string) {
           ...(wt ? {builderWorkspaceRoot: config.workspaceRoot} : {}), commands: config.pilot.commands}); }
         catch (error) { throw new Uncertain("dependency setup requires inspection: " + (error as Error).message); }
         finally { verify.egress.close(); }
-        if (wt && changes(wt.path).length) throw new Uncertain("dependency setup changed builder source files");
       }
-      const current = runGit(dispatch.executables.git, dirs.worktree, ["rev-parse", "HEAD"]).toString().trim();
-      if (current !== job.input.inputSha) throw new Uncertain("checkout does not match intended skill input");
+      const checkout = checkedCheckout(dispatch.executables.git, dirs.worktree, job.input.inputSha, !!wt);
       if (agent.harness === "claude" && dirs.scratchRepo) job.input.brief.project.commands = brokerCommands();
-      const brief = stageInputs(dirs, job.input);
+      const brief = {...stageInputs(dirs, job.input), ...checkout};
       const result = await runAgent({
         ...agent, evaluationLimits: job.evaluationLimits, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",
         skill: { brief, dirs, members: job.input.members, toolDirs: config.pilot.toolDirs, factoryRepo, factoryCommit: job.factoryCommit },
@@ -207,7 +214,7 @@ export function pilotSessionLimits(store: Store, task: Task, id: string, role: R
      LEFT JOIN usage_captures u ON u.attempt=a.id
      WHERE t.repo_id=? AND json_extract(t.issue,'$.number') IN (SELECT value FROM json_each(?)) AND a.id<>?`,
   ).all(task.issue.repoId, JSON.stringify(headingPilot.issues), id);
-  let remaining = 2_000_000;
+  let remaining = 3_000_000;
   for (const attempt of prior) {
     const path = join(jobDir(attempt.id, stateRoot), "job.json");
     if (!existsSync(path)) continue;
@@ -220,7 +227,7 @@ export function pilotSessionLimits(store: Store, task: Task, id: string, role: R
     remaining -= Math.ceil(capture.costUsd * 1_000_000);
   }
   const estimate = team ? 4_000_000 : role === "triage" ? 150_000 : role === "spec" ? 850_000 : 750_000;
-  if (estimate > remaining) throw new Uncertain("next Claude session exceeds the $2 heading pilot cap");
+  if (estimate > remaining) throw new Uncertain("next Claude session exceeds the $3 heading pilot cap");
   return { maxUsd: estimate / 1_000_000, maxTurns: 32 };
 }
 

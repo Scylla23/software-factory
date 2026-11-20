@@ -11,6 +11,8 @@ export interface BriefInput {
   validationFeedback?: string;
   /** Required path for the single AC-1 test when the factory assigns it. */
   reproductionFile?: string;
+  /** Builder input SHA after the factory observed an empty post-setup git status. */
+  cleanCheckoutAt?: string;
   taskId: string;
   round: number;
   baseSha: string;

@@ -297,9 +297,9 @@ test("the pilot stops before an unpriced or unaffordable Claude session includin
       [prior.id,t.id,t.state,config.agents.spec.model,"high",old,old,"completed","a".repeat(64)]);
     const capture = (costUsd: number) => store.db.run("INSERT OR REPLACE INTO usage_captures VALUES(?,?,?)",
       [prior.id, "match", JSON.stringify({ coverage: "complete", costUsd })]);
-    capture(1.25);
+    capture(2.25);
     expect(pilotSessionLimits(store, t, next, "reviewer", false, root)?.maxUsd).toBe(0.75);
-    capture(1.250001);
+    capture(2.250001);
     const replacement = store.intake({ ...issue, issueId: issue.issueId + 1, number: headingPilot.issues[1] }, old);
     expect(() => pilotSessionLimits(store, replacement, next, "reviewer", false, root)).toThrow("cap");
     const third = store.intake({ ...issue, issueId: issue.issueId + 2, number: headingPilot.issues[2] }, old);

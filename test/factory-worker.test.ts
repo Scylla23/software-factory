@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { changes } from "../src/factory/worker";
+import { runGit } from "../src/dispatch/git";
+import { changes, checkedCheckout } from "../src/factory/worker";
 import { Uncertain } from "../src/factory/machine";
 
 function withRepo(check: (dir: string) => void) {
@@ -34,4 +35,16 @@ test("builder changes to commands, test discovery, compiler or lint configuratio
   }
   writeFileSync(join(dir, "app.ts"), "fixed");
   expect(changes(dir).map((f) => f.path)).toEqual(["app.ts"]);
+}));
+
+test("the builder brief gets the factory's clean status only at the pinned post-setup SHA", () => withRepo(dir => {
+  const git = "/usr/bin/git";
+  const sha = runGit(git, dir, ["rev-parse", "HEAD"]).toString().trim();
+  expect(checkedCheckout(git, dir, sha, true)).toEqual({cleanCheckoutAt: sha});
+  expect(checkedCheckout(git, dir, sha, false)).toEqual({});
+  expect(() => checkedCheckout(git, dir, "f".repeat(40), true)).toThrow("intended");
+  writeFileSync(join(dir, "AGENTS.md"), "project instructions");
+  expect(() => checkedCheckout(git, dir, sha, true)).toThrow("pending changes");
+  runGit(git, dir, ["add", "AGENTS.md"]);
+  expect(() => checkedCheckout(git, dir, sha, true)).toThrow("pending changes");
 }));
