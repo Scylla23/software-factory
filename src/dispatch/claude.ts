@@ -1,4 +1,7 @@
 import { count, money } from "./validation";
+import { claudeHomeSettings } from "./home-settings";
+import { discoveryGlobs } from "./discovery";
+import { BROKER_TOOL } from "./broker";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
 import type { SandboxPolicy } from "./policy";
 import type { ClaudeModelUsage, ClaudeUsage } from "./types";
@@ -12,14 +15,20 @@ export const CLAUDE_BUILDER_TOOLS = ["Bash", "Read", "Edit", "Write", "Glob", "G
  * runAgent refuses to dispatch while any managed settings source exists (see config.ts).
  * Claude has no read carve-outs: `policy.readable` is for Codex's own binary.
  */
-export function claudeSettings(policy: SandboxPolicy): object {
+export function claudeSettings(policy: SandboxPolicy, team = false, fileToolsOnly = !!policy.discoveryRoots, broker = false): object {
   const denyRead = [...policy.denyRead];
-  const denyWrite = [...policy.denyWrite];
+  const denyWrite = [...new Set([...policy.denyWrite, ...(policy.writable ? policy.readable.filter(p => !policy.writable!.includes(p)) : [])])];
   const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
   return {
+    ...claudeHomeSettings,
     permissions: {
-      allow: [...CLAUDE_BUILDER_TOOLS],
+      allow: policy.writable
+        ? ["Read", "Glob", "Grep", ...(fileToolsOnly ? [] : ["Bash"]), ...(broker ? [BROKER_TOOL] : []), ...policy.writable.flatMap(p => [...rules("Write", p), ...rules("Edit", p)])]
+        : [...CLAUDE_BUILDER_TOOLS],
       deny: [
+        ...(fileToolsOnly ? ["Bash"] : []),
+        ...(policy.discoveryRoots ? discoveryGlobs.flatMap(pattern => ["Write", "Edit", "Read"].map(tool => `${tool}(//${pattern})`)) : []),
+        ...(team ? ["Agent(Explore)", "Agent(Plan)", "Agent(general-purpose)", "Agent(fork)"] : []),
         "WebFetch",
         "WebSearch",
         ...denyRead.flatMap((p) => rules("Read", p)),
@@ -34,7 +43,9 @@ export function claudeSettings(policy: SandboxPolicy): object {
       allowUnsandboxedCommands: false,
       network: { allowedDomains: [] },
       // Claude's sandbox makes a linked worktree's shared git dir writable for Bash; denyWrite takes it back.
-      filesystem: { denyRead, denyWrite },
+      filesystem: policy.writable
+        ? { denyRead: ["/", ...denyRead], allowRead: [...policy.readable, ...policy.writable], denyWrite, allowWrite: policy.writable }
+        : { denyRead, denyWrite },
     },
   };
 }
@@ -55,25 +66,39 @@ export interface ClaudeCommandInput {
    * `--restricted` already stops Claude from loading the worktree's CLAUDE.md on its own.
    */
   instructionsFile?: string | null;
+  /** Factory-selected attempt directories, excluding the definitions and the run root. */
+  directories?: readonly string[];
+  toolFreeJudge?: true;
+  evaluationLimits?: { maxTurns: number; maxUsd: number };
+  fileToolsOnly?: boolean;
+  brokerFile?: string;
+  team?: { file: string; members: readonly string[]; named?: string };
 }
 
 /** Arguments after the executable, which the caller resolves (config.ts). */
 export function claudeArgs(input: ClaudeCommandInput): string[] {
+  const cap = input.evaluationLimits;
+  const filesOnly = input.fileToolsOnly ?? !!input.policy.discoveryRoots;
+  if (cap && (!Number.isSafeInteger(cap.maxTurns) || cap.maxTurns < 1 || !Number.isFinite(cap.maxUsd) || cap.maxUsd <= 0)) throw new Error("invalid Claude evaluation limits");
   return [
     "-p",
     "--output-format", "stream-json",
     "--verbose",
     "--model", input.model,
+    ...(cap ? ["--max-turns",String(cap.maxTurns),"--max-budget-usd",String(cap.maxUsd)] : []),
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",
-    "--tools", CLAUDE_BUILDER_TOOLS.join(","),
+    "--tools", input.toolFreeJudge ? "" : input.team?.named ? "Read,Glob,Grep,Write" : [...CLAUDE_BUILDER_TOOLS.filter(tool => !filesOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
+    ...(input.team ? ["--agents", input.team.file, "--agent", input.team.named ?? "spec-lead"] : []),
     "--strict-mcp-config",
+    ...(input.brokerFile ? ["--mcp-config", input.brokerFile] : []),
     // No skills or slash commands at all; the dedicated CLAUDE_CONFIG_DIR already drops the owner's, this drops the built-ins.
     "--disable-slash-commands",
     "--permission-mode", "dontAsk",
     "--permission-prompts", "none",
-    "--settings", JSON.stringify(claudeSettings(input.policy)),
+    "--settings", JSON.stringify(claudeSettings(input.policy, !!input.team?.members.length, filesOnly, !!input.brokerFile)),
+    ...(input.directories ?? []).flatMap(p => ["--add-dir", p]),
     ...(input.instructionsFile ? ["--append-system-prompt-file", input.instructionsFile] : []),
     "--",
     input.prompt,
@@ -101,20 +126,43 @@ export interface ClaudeStreamSummary {
  * The `result` event carries the run's whole accounting, so a lost interior line does not make usage incomplete,
  * but a second `result` event does, because it is unclear whether its totals are cumulative.
  */
-export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promise<ClaudeStreamSummary> {
+export async function parseClaudeStream(items: AsyncIterable<JsonlItem>, skill?: {
+  session: string; members: readonly string[];
+}): Promise<ClaudeStreamSummary> {
   const s: ClaudeStreamSummary = { sessionId: null, observedModel: null, succeeded: false, resultText: null, usage: null, diagnostics: [], diagnosticCount: 0 };
   const sample = new DiagnosticSample();
   let results = 0;
+  let invalidRun = false;
+  let initialized = false;
   for await (const item of items) {
     if (item.kind === "invalid") {
+      if (skill) invalidRun = true;
       sample.add(describeInvalid(item));
       continue;
     }
     const event = item.value;
+    if (skill && event.type === "assistant" && isRecord(event.message) && Array.isArray(event.message.content)) {
+      for (const tool of event.message.content) {
+        if (!isRecord(tool) || tool.type !== "tool_use" || !["Task","Agent"].includes(String(tool.name))) continue;
+        const type = isRecord(tool.input) && tool.input.subagent_type;
+        if (event.parent_tool_use_id || typeof type !== "string" || !skill.members.includes(type)) {
+          invalidRun = true;
+          sample.add("unapproved subagent call in skill session");
+        }
+      }
+    }
     if (event.type === "system" && event.subtype === "init") {
+      initialized = true;
+      if (skill && (event.session_id !== skill.session || !Array.isArray(event.tools) ||
+          event.tools.includes("Bash") ||
+          (!skill.members.length && event.tools.some(name => /^(Agent|Task)(?:\(|$)/.test(String(name)))))) {
+        invalidRun = true;
+        sample.add("skill session identity or tool inventory mismatch");
+      }
       s.sessionId = str(event.session_id) ?? s.sessionId;
       s.observedModel = str(event.model);
     } else if (event.type === "result") {
+      if (skill && event.session_id !== skill.session) invalidRun = true;
       results++;
       s.sessionId = str(event.session_id) ?? s.sessionId;
       s.succeeded = event.subtype === "success" && event.is_error === false;
@@ -131,6 +179,7 @@ export async function parseClaudeStream(items: AsyncIterable<JsonlItem>): Promis
     s.usage = null;
     delete s.reportedCostUsd;
   }
+  if (skill && (!initialized || invalidRun)) s.succeeded = false;
   s.diagnostics = sample.list();
   s.diagnosticCount = sample.count;
   return s;

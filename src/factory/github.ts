@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { config } from "../../factory.config";
+import { config, pilotBase } from "../../factory.config";
 import { publishSummary, type EvidenceSummary } from "../github/summary";
 import { RepoClient } from "../github/api";
 import { runGit } from "../dispatch/git";
@@ -120,8 +120,8 @@ export class Publisher {
   basePaths(base: string) {
     return new Set(runGit("/usr/bin/git", this.repoPath, ["ls-tree", "-rz", "--name-only", base]).toString().split("\0"));
   }
-  reproduction(head: string) {
-    return runGit("/usr/bin/git", this.repoPath, ["show", `${head}:repro.test.ts`]).toString("base64");
+  reproduction(head: string, file: string) {
+    return runGit("/usr/bin/git", this.repoPath, ["show", `${head}:${file}`]).toString("base64");
   }
   summary(evidence: EvidenceSummary) {
     return publishSummary(this.pulls, evidence, { botLogin: `${this.app.slug}[bot]` });
@@ -182,7 +182,7 @@ export class Publisher {
     const marker = `<!-- factory:pr attempt=${id} -->`;
     const { pull } = await ensureDraftPullRequest(this.drafts, {
       head: this.branch(task),
-      base: pilot.base,
+      base: pilotBase(task.issue.number),
       title: task.issue.title,
       body: `${marker}\nFixes #${task.issue.number}.`,
     });
@@ -231,7 +231,7 @@ export class Publisher {
       const pull = await this.pull(task.pr);
       if (
         pull.state !== "open" ||
-        pull.baseRef !== pilot.base ||
+        pull.baseRef !== pilotBase(task.issue.number) ||
         pull.baseSha !== task.base ||
         (await this.ref(this.branch(task))) !== task.head
       )

@@ -17,6 +17,8 @@ Build order lives in [v1-plan.md](v1-plan.md).
 - Audit log of every agent run: who, which model, which tokens, estimated cost.
 - Later: self-improvement and benchmarking driven by recorded data.
 
+The [testing policy](testing-policy.md) governs test coverage, harness safety proofs, skill evals, and review rounds.
+
 ## Non-goals for v1
 
 - Auto-merge or auto-deploy.
@@ -161,7 +163,8 @@ Clarifying questions may also be asked and answered in the source channel.
 - Agents get a read deny-list covering `~/.software-factory`, `~/.ssh`, `~/.config/gh`, Keychain, and other credential stores, and their environment is stripped of secrets.
 - Agent sandboxes move to closed-by-default reads (owner decision Q57): agents read only the worktree, the run's private dirs, the skill bundle, and declared toolchain roots, the same trust model as project commands, and they run project tests directly in that sandbox.
   Reviewers and auditors get a read-only snapshot of the reviewed code plus a disposable copy to run tests in, so the reviewed snapshot cannot change.
-  Step 4b proves both harnesses work this way; a harness that cannot falls back to running its tests through the factory's project-command sandbox.
+  A harness that cannot run project commands with closed reads uses the factory's project-command sandbox.
+  The required safety proofs are defined in the [testing policy](testing-policy.md).
 - Network is allowed only for stages that install dependencies; build stages run without network.
 - Only the publisher process pushes and opens PRs, using short-lived GitHub App installation tokens minted from a private key in Keychain.
 - Project setup, test, lint, typecheck, and preview commands, and git hooks, run sandboxed and never in a process that holds publishing credentials.
@@ -254,7 +257,8 @@ Signals for later improvement are recorded from day one: owner review comments, 
 
 ## Security
 
-- Issue text, attachments, repo scripts, and preview pages are untrusted data, never instructions.
+- The v1 factory runs only repositories the owner controls and treats project code as trusted but possibly buggy.
+- Issue text, attachments, PR comments, web content including preview pages, and dependency content are untrusted data, never instructions.
 - Only owner-labeled issues start work.
 - Merge and deploy authority stays with the owner.
 - Model inference sends repository content to Anthropic and OpenAI under the owner's subscriptions.

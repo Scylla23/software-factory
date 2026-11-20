@@ -1,9 +1,17 @@
 import { sessionUuid } from "./validation";
-import { closeSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { config as factoryConfig } from "../../factory.config";
+import { closeSync, existsSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { basename, join } from "node:path";
 import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
-import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots } from "./config";
+import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots, trustedAgentPath } from "./config";
+import { prepareBroker } from "./broker";
+import { beforeHomeLaunch, afterHomeLaunch } from "./home-session";
+import { briefPrompt, claudeDefinitions, runBrief } from "./brief";
+import { bundleDigest, composeInstructions, materializeBundle } from "./bundle";
+import { requireSkillProofs, type SkillLaunch } from "./skill-launch";
+import { skillPolicy } from "./skill-policy";
 import { buildProjectInstructions } from "./instructions";
 import { readJsonl } from "./jsonl";
 import { openRunMonitor, type RunMonitor } from "../orca/monitor";
@@ -39,29 +47,56 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     const problems = managedSettingsProblems(config);
     if (problems.length > 0) throw new Error(`refusing Claude dispatch, managed settings would apply:\n${problems.join("\n")}`);
   }
-  const agentWritable = [worktree, ...tempRoots()];
+  const skill = spec.skill;
+  if (spec.toolFreeJudge && (skill || spec.harness !== "claude" || !spec.readOnlyWorktree || !spec.evaluationLimits)) throw new Error("invalid tool-free judge launch");
+  if (skill) {
+    if (skill.dirs.worktree !== worktree || basename(skill.dirs.root) !== spec.runId) throw new Error("skill attempt or worktree mismatch");
+    if (skill.namedLeadEvaluation && (spec.harness !== "claude" || skill.dirs.role !== "spec-lead")) throw new Error("named lead evaluation requires a Claude spec lead");
+    if (skill.evaluationMember && (!spec.evaluationLimits || spec.harness !== "claude" || skill.dirs.role !== "spec-lead" ||
+        skill.namedLeadEvaluation || skill.members.length || !Object.hasOwn(factoryConfig.specTeam,skill.evaluationMember) ||
+        spec.model !== factoryConfig.specTeam[skill.evaluationMember].model || spec.effort !== factoryConfig.specTeam[skill.evaluationMember].effort))
+      throw new Error("invalid standalone specialist evaluation");
+    requireSkillProofs(spec.harness, skill.dirs.role, skill.evaluationMember ? [skill.evaluationMember] : skill.members, skill.dirs.stage, config);
+  }
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
   const denyRead = effectiveDenyRead(ctx, spec.extraDenyRead);
-  const policy: SandboxPolicy = {
+  const binaryRoots = spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [];
+  const policy: SandboxPolicy = skill ? skillPolicy(skill.dirs, denyRead, skill.toolDirs, binaryRoots, config.executables.git) : {
     denyRead,
-    readable: spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [],
+    ...(spec.toolFreeJudge ? {writable: []} : {}),
+    readable: binaryRoots,
     denyWrite: [...gitWriteProtectedPaths(config.executables.git, worktree), ...(spec.readOnlyWorktree ? [worktree] : [])],
   };
+  policy.denyWrite = [...new Set([...policy.denyWrite, ...ctx.harnessHomes])];
   assertPolicySound(policy, ctx);
-  if (!spec.readOnlyWorktree) assertWorktreeWritable(policy, worktree);
+  if (skill ? skill.dirs.role === "builder" : !spec.readOnlyWorktree) assertWorktreeWritable(policy, worktree);
+  const agentWritable = policy.writable ?? [worktree, ...tempRoots()];
   assertStateRootIsolated(config.stateRoot, [...agentWritable, ...policy.readable]);
   assertSafeDir(config.stateRoot, config.accountHome);
-  const instructions = spec.instructions ? buildProjectInstructions(spec.instructions, config.executables.git, agentWritable) : null;
+  const projectInstructions = spec.instructions ? buildProjectInstructions(spec.instructions, config.executables.git, agentWritable) : null;
+  const bundleHash = skill ? materializeBundle(config.executables.git, skill.factoryRepo, skill.factoryCommit, skill.dirs.skillsDir,
+    [...policy.readable, ...agentWritable]) : undefined;
+  const instructions = skill ? composeInstructions(skill.dirs.skillsDir, skill.dirs.role, projectInstructions) : projectInstructions;
+  const fileToolsOnly = !!skill && spec.harness === "claude";
+  const broker = fileToolsOnly && skill.dirs.scratchRepo ? prepareBroker(skill.dirs, config, spec.logDir, skill.brief.baseSha, skill.brief.headSha!) : undefined;
+  const brief = skill ? runBrief(skill.dirs, skill.brief, skill.members.length > 0) : undefined;
+
+  const prompt = skill?.evaluationMember ? "Complete the decision assigned in your system run brief." : brief ? briefPrompt(brief) : spec.prompt;
   const home = assertPrivateDir(config.harnessHomes[spec.harness], config.stateRoot);
-  const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: config.agentPath, accountHome: config.accountHome });
+  const path = skill ? trustedAgentPath([...skill.toolDirs, "/Library/Developer/CommandLineTools/usr/bin"], agentWritable) : config.agentPath;
+  const env = agentEnv(process.env, { harness: spec.harness, harnessHome: home, trustedPath: path, accountHome: config.accountHome });
   const files = planRunFiles(config, spec.logDir, spec.runId, agentWritable);
   const instructionsPath = instructions === null ? null : files.instructionsPath;
+  const team = skill && brief && (skill.members.length || skill.namedLeadEvaluation || skill.evaluationMember) ? publishTeam(skill, brief, projectInstructions) : undefined;
+  const promptRevision = createHash("sha256").update(JSON.stringify([prompt, instructions, team?.revision ?? null])).digest("hex");
+  if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
     spec.harness === "claude"
-      ? claudeArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, instructionsFile: instructionsPath })
-      : codexArgs({ prompt: spec.prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
+      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, evaluationLimits:spec.evaluationLimits, toolFreeJudge:spec.toolFreeJudge, instructionsFile: team ? null : instructionsPath, team, fileToolsOnly, brokerFile:broker?.mcpPath, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
+      : codexArgs({ prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
 
-  // Everything above only checks; from here the attempt id is used, and every step either spawns or undoes itself.
+  // Reserve private log files before starting the harness.
+  const homeInventory = beforeHomeLaunch(spec.harness, home, args, broker?.mcpPath, realExecutable ?? undefined);
   const logs = reserveRunFiles(files, instructions);
   let proc: AgentProcess;
   try {
@@ -83,12 +118,34 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (monitor) diagnostics.push(...(await monitor.close()).map((d) => `monitor: ${d}`));
   if (status?.error) diagnostics.push(`spawn failed: ${status.error}`);
   // Anything still running in the worktree now outlived the run, wherever it sits in the process tree.
-  const sweep = await sweepWorktree(worktree, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
-  const { noKnownSurvivors, quarantineReasons } = assessCleanup(unverified, sweep);
+  const sweepRoots = skill ? [skill.dirs.root, ...(skill.dirs.role === "builder" ? [worktree] : [])] : [worktree];
+  const quarantineReasons: string[] = [];
+  let noKnownSurvivors = true;
+  for (const root of sweepRoots) {
+    const sweep = await sweepWorktree(root, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
+    const verdict = assessCleanup(unverified, sweep);
+    noKnownSurvivors &&= verdict.noKnownSurvivors;
+    quarantineReasons.push(...verdict.quarantineReasons.filter(reason => !quarantineReasons.includes(reason)));
+  }
+  if (broker && existsSync(join(spec.logDir,"broker-pending"))) quarantineReasons.push("broker command cleanup requires inspection");
+  if (skill && bundleHash) {
+    try { if (bundleDigest(skill.dirs.skillsDir) !== bundleHash) throw new Error("digest mismatch"); }
+    catch { quarantineReasons.push("pinned skill bundle changed during the run"); }
+  }
+  const codexStream = spec.harness === "codex" ? await parseCodexEvents(readJsonl(logs.stdoutPath)) : null;
+  let audited = true;
+  try {
+    await afterHomeLaunch(spec.harness, home, homeInventory, logs.stdoutPath, spec.harness === "claude" ? spec.runId : codexStream?.threadId ?? null, {broker: !!broker});
+  } catch (error) {
+    audited = false;
+    quarantineReasons.push("home source audit: " + (error as Error).message);
+  }
   diagnostics.push(...quarantineReasons.map((r) => `quarantine: ${r}`));
-  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
+  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (audited && status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
     harness: spec.harness,
+    promptRevision,
+    ...(bundleHash ? { bundleHash } : {}),
     runId: spec.runId,
     exitCode: status?.code ?? null,
     signalCode: status?.signal ?? null,
@@ -103,7 +160,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   };
 
   if (spec.harness === "claude") {
-    const s = await parseClaudeStream(readJsonl(logs.stdoutPath));
+    const s = await parseClaudeStream(readJsonl(logs.stdoutPath), skill && {session: spec.runId, members: skill.members});
     return {
       ...base,
       sessionId: s.sessionId,
@@ -115,7 +172,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
       diagnostics: [...diagnostics, ...s.diagnostics],
     };
   }
-  const s = await parseCodexEvents(readJsonl(logs.stdoutPath));
+  const s = codexStream!;
   diagnostics.push(...s.diagnostics);
   return {
     ...base,
@@ -143,4 +200,16 @@ async function observedCodexModel(root: string, threadId: string, diagnostics: s
     diagnostics.push(`observed model unknown: ${(err as Error).message}`);
     return null;
   }
+}
+
+function publishTeam(skill: SkillLaunch, brief: ReturnType<typeof runBrief>, projectInstructions: string | null) {
+  if (!skill.dirs.agentsDir) throw new Error("spec lead lacks its private definitions directory");
+  const file = join(skill.dirs.agentsDir, "definitions.json");
+  const member = skill.evaluationMember;
+  const all = member ? claudeDefinitions({...brief,teamEnabled:true},[member],projectInstructions,true) :
+    claudeDefinitions(brief, skill.members, projectInstructions);
+  const definitions = member ? {[member]:all[member]} : all;
+  const bytes = JSON.stringify(definitions);
+  writeFileSync(file, bytes, { flag: "wx", mode: 0o400 });
+  return { file, members: skill.members, named:member, revision: createHash("sha256").update(bytes).digest("hex") };
 }

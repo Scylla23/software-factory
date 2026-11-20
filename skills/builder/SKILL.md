@@ -31,7 +31,10 @@ The run brief's `stage` is your mode, and the mode decides where the worktree st
 | `repair` | `headSha`: your earlier work, committed by the factory, exactly as it was reviewed. | `headSha` | `previous.buildReport`, `previous.findings` (every verdict, failed check, and verification result that sent the work back), and `previous.ownerFeedback` when the owner commented. |
 | `resume` | `headSha`: your partial work plus the dependency the factory installed, committed by the factory. | `headSha` | `previous.buildReport`, whose `install-needed` blocker this run continues from. |
 
-Confirm with `git rev-parse HEAD` that the worktree is at that commit and clean before you change anything, and stop under Blocked runs if it is not.
+Before editing, confirm that `git rev-parse HEAD` matches the expected input SHA.
+Use the trusted run brief's `cleanCheckoutAt` as the factory's Git status result for that SHA.
+The factory checks tracked and untracked files after setup, including protected instruction files that the sandbox hides from Git.
+If either SHA differs or the factory's clean result is missing, stop under Blocked runs.
 A repair never starts over from base: the reviewed diff is the thing being repaired.
 
 ## Order of authority
@@ -54,6 +57,7 @@ When a criterion cannot be met as written, stop and report a `spec-defect` block
    Write the `AC-1` test exactly as its Fixture, Action, and Expected lines describe, before touching the code under test.
    Run it and confirm it fails for the reason `AC-1` states, not because of a typo, an import error, or a different assertion.
    Record the command, the nonzero exit code, and the failing assertion in `reproduction`.
+   When the brief assigns a `reproductionFile`, create that exact file for the single asserted AC-1 case and put additional tests in separate new files.
    If it passes on the unfixed code, stop with a `bug-not-reproduced` blocker: a fix for a bug you cannot show is unverifiable.
    The order is checked, not taken on your word: the factory reads the run's own record of your edits and commands, and it reruns the head's tests on the base's code itself.
    A red run reported after the fix was already written fails the run.
@@ -69,7 +73,8 @@ When a criterion cannot be met as written, stop and report a `spec-defect` block
    Check the states the frontend decision file or `<skillsDir>/frontend/references/ui-rubric.md` requires, at 1440x900 and 390x844, by reading your markup and styles.
 6. **Run the project's commands** for test, lint, and typecheck against the final state, and fix what fails.
    Record every command with its real exit code.
-7. **Review your own diff** with `git diff` and `git status` before you finish: every criterion implemented, every `test` criterion tested, nothing changed that no criterion needs, no debug output, no leftover files.
+7. **Review your own changes** with `git diff HEAD -- <edited paths>` and list new files with `git ls-files --others --exclude-standard`.
+   Read the new files and check every changed path against the criteria before reporting it.
 
 ## Mode `repair`
 

@@ -91,6 +91,18 @@ If `kind` looks wrong (a "bug" that asks for new behavior), say so in `kindCheck
 
 Write `<outDir>/triage.json`, valid against `triage/triage.schema.json`, and end with a final message that is exactly that JSON.
 
+Use the following schema literals verbatim.
+Put explanations in `tierReasons[].evidence`.
+
+| Field | Allowed values |
+| --- | --- |
+| `schemaVersion` | `1` |
+| `tier` | `S`, `M`, `L` |
+| `tierReasons[].signal` | `single area`, `several modules`, `new dependency`, `api change`, `schema change`, `auth change`, `cross-cutting change`, `architectural change`, `new project`, `unlocalized bug`, `unclear task` |
+| `confidence` | `low`, `medium`, `high` |
+| `kindCheck.declared`, `kindCheck.assessed` | `feature`, `bug` |
+| `riskFlags.security.value`, `riskFlags.migration.value`, `riskFlags.newProject.value`, `injectionSuspected` | `true`, `false` |
+
 ```json
 {
   "schemaVersion": 1,

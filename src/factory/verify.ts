@@ -1,9 +1,11 @@
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "../../factory.config";
+import { config, inventoryFixture } from "../../factory.config";
 import type { EvidenceSummary } from "../github/summary";
-import { withVerificationProfile } from "../verify/browser";
-import { commandCheck } from "../verify/checks";
+import { OrcaError } from "../orca/cli";
+import { PreviewError } from "../verify/preview";
+import { CaptureInfrastructureError, withVerificationProfile } from "../verify/browser";
+import { commandCheck, teardownCheck } from "../verify/checks";
 import { VIEWPORTS, type EvidenceRecord } from "../verify/evidence";
 import { type EvidenceStore, openEvidenceStore } from "../verify/store";
 import { check, type Check, verdict } from "../verify/verdict";
@@ -16,13 +18,26 @@ export function inventoryMatches(
   text: string,
   stage: "before" | "after",
   rows: readonly { name: string; before: string; after: string }[] = inventory.rows,
+  heading?: { before: string; after: string },
 ) {
   // Orca's reader keeps row boundaries but may concatenate adjacent table cells.
   const lines = text.split(/\r?\n/).map((s) => s.replace(/\|/g, " ").trim().replace(/\s+/g, " "));
+  if (heading) {
+    const headers = lines.filter(line => line.startsWith("Item"));
+    if (headers.length !== 1 || headers[0]!.slice(4).trim() !== heading[stage]) return false;
+  }
   return rows.every((row) => {
     const cells = lines.filter((line) => line.startsWith(row.name));
     return cells.length === 1 && cells[0]?.slice(row.name.length).trim() === row[stage];
   });
+}
+
+export function verificationErrorCheck(error: unknown): Check {
+  if (error instanceof PreviewError && error.startFailure === "project")
+    return check("preview starts", false, String(error));
+  const retryable = error instanceof CaptureInfrastructureError || error instanceof OrcaError ||
+    (error instanceof PreviewError && error.retryableStart);
+  return check(retryable ? "verification infrastructure" : "complete browser verification", false, String(error));
 }
 
 export async function verifyPilot(
@@ -31,7 +46,8 @@ export async function verifyPilot(
   project: ProjectChecks,
   prior: Check[],
 ): Promise<EvidenceSummary> {
-  if (task.issue.number !== inventory.issue) throw new Error("no registered verification fixture for this issue");
+  const fixture = inventoryFixture(task.issue.number);
+  if (task.issue.number !== fixture.issue) throw new Error("no registered verification fixture for this issue");
   const dir = join(project.stateRoot, "evidence", attempt.id);
   if (!attempt.fresh && existsSync(dir)) {
     const receipt = join(dir, "records.json");
@@ -86,7 +102,7 @@ export async function verifyPilot(
               checks.push(
                 check(
                   `AC-1 ${name} stock counts`,
-                  !record.truncated.pageText && inventoryMatches(record.pageText, phase),
+                  !record.truncated.pageText && inventoryMatches(record.pageText, phase, fixture.rows, fixture.heading),
                   record.pageText,
                 ),
               );
@@ -122,7 +138,8 @@ export async function verifyPilot(
       },
     );
   } catch (e) {
-    checks.push(check("complete browser verification", false, String(e)));
+    if (e instanceof PreviewError && e.teardown) checks.push(teardownCheck("preview start teardown", e.teardown));
+    checks.push(verificationErrorCheck(e));
   }
   const result = {
     pr: task.pr,

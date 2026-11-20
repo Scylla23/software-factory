@@ -22,6 +22,11 @@ with tempfile.TemporaryDirectory(prefix="factory-usage-mutations-") as tmp:
     shutil.copytree(root / "src", directory / "src")
     shutil.copytree(root / "test", directory / "test", ignore=shutil.ignore_patterns(".state"))
     shutil.copy(root / "factory.config.ts", directory)
+    (directory / "node_modules").symlink_to(root / "node_modules", target_is_directory=True)
+    # Fresh dispatches pin the factory revision even when the launcher is a test double.
+    subprocess.run(["git", "init", "-q", "--template="], cwd=directory, check=True)
+    subprocess.run(["git", "-c", "user.name=Factory", "-c", "user.email=test@example.invalid",
+                    "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-qm", "Fixture"], cwd=directory, check=True)
     (directory / "docs").mkdir()
     shutil.copy(root / "docs/design.md", directory / "docs")
     for suite, test in sorted({(suite, test) for _, suite, test, _, _ in cases}):

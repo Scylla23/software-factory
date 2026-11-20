@@ -55,7 +55,7 @@ export function parseStabilize(raw: unknown): StabilizeReport {
     v = null;
   }
   if (!isRecord(v) || typeof v.width !== "number" || typeof v.height !== "number" || typeof v.fonts !== "boolean" || typeof v.frames !== "boolean" || typeof v.visibility !== "string") {
-    throw new Error(`stabilize script returned ${JSON.stringify(raw)?.slice(0, 200)}`);
+    throw new CaptureInfrastructureError(`stabilize script returned ${JSON.stringify(raw)?.slice(0, 200)}`);
   }
   return { width: v.width, height: v.height, fonts: v.fonts, frames: v.frames, visibility: v.visibility };
 }
@@ -74,7 +74,7 @@ export interface GithubSessionCheck {
 /** Reads, from the page's own profile, which GitHub cookies it holds, without reporting any value but `logged_in`. */
 async function githubSession(orcaPath: string, page: string): Promise<GithubSessionCheck> {
   const r = await orcaJson(orcaPath, ["cookie", "get", "--page", page, "--url", "https://github.com"]);
-  if (!Array.isArray(r.cookies)) throw new Error("orca cookie get returned no cookie list");
+  if (!Array.isArray(r.cookies)) throw new CaptureInfrastructureError("orca cookie get returned no cookie list");
   const names: string[] = [];
   let loggedIn: string | null = null;
   for (const c of r.cookies) {
@@ -109,6 +109,8 @@ export interface VerificationBrowser {
   /** Opens a tab of this profile on `url` and reports its GitHub session, which must be signed out. */
   sessionAt(url: string): Promise<GithubSessionCheck & { title: string | null }>;
 }
+
+export class CaptureInfrastructureError extends Error {}
 
 /** Thrown when the profile or a tab could not be verified gone; the ids are Orca's opaque handles, not secrets. */
 export class BrowserCleanupError extends Error {
@@ -177,7 +179,7 @@ export async function withVerificationProfile<T>(opts: ProfileOptions, use: (bro
     // A create whose outcome is uncertain may have opened a tab after all; the end of the verification closes every tab
     // Orca lists for this profile, known or not.
     const page = str((await orcaJson(orcaPath, ["tab", "create", "--url", "about:blank", "--profile", profileId, "--worktree", opts.worktree])).browserPageId);
-    if (!page) throw new Error("orca tab create returned no page id");
+    if (!page) throw new CaptureInfrastructureError("orca tab create returned no page id");
     opened.add(page);
     const shown = await orcaJson(orcaPath, ["tab", "profile", "show", "--page", page]);
     if (shown.profileId !== profileId) {
@@ -222,14 +224,14 @@ export async function withVerificationProfile<T>(opts: ProfileOptions, use: (bro
       ? await orcaJson(orcaPath, ["set", "device", "--page", page, "--name", v.device])
       : await orcaJson(orcaPath, ["viewport", "--page", page, "--width", String(v.width), "--height", String(v.height), "--scale", String(v.scale), ...(v.mobile ? ["--mobile"] : [])]);
     if (r.width !== v.width || r.height !== v.height || r.deviceScaleFactor !== v.scale || r.mobile !== v.mobile) {
-      throw new Error(`orca applied ${JSON.stringify(r).slice(0, 200)}, not the ${v.name} viewport ${v.width}x${v.height}@${v.scale}${v.mobile ? " mobile" : ""}`);
+      throw new CaptureInfrastructureError(`orca applied ${JSON.stringify(r).slice(0, 200)}, not the ${v.name} viewport ${v.width}x${v.height}@${v.scale}${v.mobile ? " mobile" : ""}`);
     }
   };
 
   const onOrigin = async (page: string, origin: string, when: string): Promise<string> => {
     const tab = await orcaJson(orcaPath, ["tab", "show", "--page", page]);
     const url = isRecord(tab.tab) ? str(tab.tab.url) : null;
-    if (!url) throw new Error(`orca tab show gave no URL ${when}`);
+    if (!url) throw new CaptureInfrastructureError(`orca tab show gave no URL ${when}`);
     let at: string;
     try {
       at = new URL(url).origin;
@@ -272,12 +274,12 @@ export async function withVerificationProfile<T>(opts: ProfileOptions, use: (bro
         let stabilized: StabilizeReport | null = null;
         if (input.stabilize !== false) {
           stabilized = parseStabilize((await orcaJson(orcaPath, ["eval", "--page", page, "--expression", STABILIZE_SCRIPT])).result);
-          if (stabilized.width !== v.width || stabilized.height !== v.height) throw new Error(`viewport is ${stabilized.width}x${stabilized.height}, expected ${v.width}x${v.height}`);
-          if (!stabilized.fonts) throw new Error("web fonts did not finish loading within 5s; the screenshot would not be repeatable");
+          if (stabilized.width !== v.width || stabilized.height !== v.height) throw new CaptureInfrastructureError(`viewport is ${stabilized.width}x${stabilized.height}, expected ${v.width}x${v.height}`);
+          if (!stabilized.fonts) throw new CaptureInfrastructureError("web fonts did not finish loading within 5s; the screenshot would not be repeatable");
         }
         const shot = await orcaJson(orcaPath, ["screenshot", "--page", page, "--format", "png"]);
         const shotPath = str(shot.path);
-        if (!shotPath) throw new Error("orca screenshot returned no path");
+        if (!shotPath) throw new CaptureInfrastructureError("orca screenshot returned no path");
         let stored;
         try {
           stored = input.store.putFile(`${input.name}.png`, shotPath);
@@ -318,7 +320,7 @@ export async function withVerificationProfile<T>(opts: ProfileOptions, use: (bro
   try {
     result = await use(browser);
   } catch (err) {
-    await finish().catch(() => undefined);
+    await finish();
     throw err;
   }
   await finish();

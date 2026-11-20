@@ -6,26 +6,27 @@ import { loadDispatchConfig } from "../dispatch";
 import { commandCheck, teardownCheck } from "../verify/checks";
 import { loadVerifyConfig, PreviewError, startPreview, tail, type Preview, type VerifyConfig } from "../verify/preview";
 import { check, type Check } from "../verify/verdict";
-import type { Attempt, Task } from "./store";
+import { reproductionFile, type Attempt, type Task } from "./store";
 import { Uncertain } from "./machine";
 
 /** Works on persisted results as well as fresh checks. Infrastructure failures require owner attention. */
 export function requireHealthyInfrastructure(checks: readonly Check[]) {
   for (const c of checks) {
     if (c.pass) continue;
-    if (/teardown$|^complete browser verification$|verification profile signed out$|install same reproduction/.test(c.name) ||
+    if (/teardown$|^complete browser verification$|^verification infrastructure$|verification profile signed out$|install same reproduction/.test(c.name) ||
         /^(exit (126|127)\b|killed by a signal|timed_out|cancelled)|; left behind:|operation not permitted|permission denied|command not found|sandbox(?:-exec)?:.*deny/i.test(c.detail))
       throw new Uncertain(`factory infrastructure failed during ${c.name}: ${c.detail.slice(0, 800)}`);
   }
 }
 
 /** Evaluate Bun's JUnit document independently of the test's stdout and stderr. */
-export function junitReproduction(xml: string, base: boolean) {
+export function junitReproduction(xml: string, base: boolean, file: string) {
+  if (!/^repro(?:-issue-[1-9][0-9]*)?\.test\.ts$/.test(file)) return false;
   if (!xml || Buffer.byteLength(xml) > 65_536 || /<!/.test(xml)) return false;
   const failure = base ? "count(failure)=1 and failure/@type='AssertionError'" : "not(failure)";
   const one = "count(//testcase)=1 and count(//testsuite)=1 and not(//error | //skipped)";
   const testcase = `/testsuites[@tests=1 and @failures=${Number(base)} and @skipped=0]/testsuite/testcase[` +
-    `@file='repro.test.ts' and (@name='AC-1' or starts-with(@name,'AC-1 ')) and @assertions>0 and ${failure}]`;
+    `@file='${file}' and (@name='AC-1' or starts-with(@name,'AC-1 ')) and @assertions>0 and ${failure}]`;
   const result = Bun.spawnSync(["/usr/bin/xmllint", "--nonet", "--xpath", `boolean(${one} and ${testcase})`, "-"], {
     stdin: Buffer.from(xml), stdout: "pipe", stderr: "pipe", timeout: 3_000,
   });
@@ -85,7 +86,7 @@ export class ProjectChecks {
         sha: revision,
         logDir,
         project: config.pilot.commands,
-        setupTimeoutMs: 120_000,
+        setupTimeoutMs: config.pilot.installTimeoutMs,
         readyTimeoutMs: 30_000,
         maxLifetimeMs: 300_000,
       },
@@ -99,6 +100,7 @@ export class ProjectChecks {
   }
 
   async test(task: Task, attempt: Attempt, baseTest?: string) {
+    const file = reproductionFile(task.issue);
     const sha = baseTest ? task.base : task.head;
     const checks: Check[] = [];
     const logs = join(this.stateRoot, "project-logs", attempt.id);
@@ -118,8 +120,8 @@ export class ProjectChecks {
             [
               "bun",
               "-e",
-              'require("fs").writeFileSync("repro.test.ts",Buffer.from(process.argv[1],"base64"),{flag:"wx"})',
-              baseTest,
+              'require("fs").writeFileSync(process.argv[2],Buffer.from(process.argv[1],"base64"),{flag:"wx"})',
+              baseTest, file,
             ],
             { name: "install-reproduction", network: "none", timeoutMs: 10_000 },
           );
@@ -127,7 +129,7 @@ export class ProjectChecks {
           if (!checks[0]?.pass) return;
         }
         const report = `factory-junit-${crypto.randomUUID()}.xml`;
-        const result = await p.run(["bun", "test", "--reporter=junit", `--reporter-outfile=${report}`, "./repro.test.ts"], {
+        const result = await p.run(["bun", "test", "--reporter=junit", `--reporter-outfile=${report}`, `./${file}`], {
           name: "reproduction",
           network: "none",
           timeoutMs: 30_000,
@@ -139,7 +141,7 @@ export class ProjectChecks {
         requireHealthyInfrastructure([commandCheck("read JUnit", read)]);
         const xml = read.exitCode === 0 && statSync(read.logPath).size <= 65_536 ? readFileSync(read.logPath, "utf8") : "";
         const assertion = /error: expect\(/.test(output);
-        const ok = read.exitCode === 0 && junitReproduction(xml, !!baseTest) &&
+        const ok = read.exitCode === 0 && junitReproduction(xml, !!baseTest, file) &&
           (baseTest ? result.exitCode === 1 && assertion : result.exitCode === 0);
         checks.push(check(baseTest ? "AC-1 fails on base" : "AC-1 passes on head", ok,
           `exit ${result.exitCode}; JUnit ${ok ? "confirmed" : "did not confirm"} the required AC-1 result\n${output}`));

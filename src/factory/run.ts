@@ -1,19 +1,23 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
-import { config } from "../../factory.config";
+import { config, pilotBase } from "../../factory.config";
 import { assertPrivateDir } from "../dispatch/config";
 import { Publisher, issueNumber } from "./github";
 import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, type Review } from "./gates";
 import { buildPrompt, reviewPrompt, specPrompt } from "./prompts";
 import { checkAbandonedPreviews, ProjectChecks, requireHealthyInfrastructure } from "./checks";
-import { verdict, check, type Check } from "../verify/verdict";
+import { retryableVerification, verdict, check, type Check } from "../verify/verdict";
 import { fenced, redact, type EvidenceSummary } from "../github/summary";
 import { collectFeedback } from "../usage/feedback";
 import { verifyPilot } from "./verify";
-import { Store, type Attempt, type Task } from "./store";
-import { dispatchWorker, protectsChecks, WorkerLoginError } from "./worker";
+import { reproductionFile, Store, type Attempt, type Task } from "./store";
+import { dispatchWorker, protectsChecks, WorkerLoginError, type WorkerOutput } from "./worker";
 
-import { drive, effect } from "./machine";
+import { loadDispatchConfig } from "../dispatch/config";
+import { requiredMembers } from "../dispatch/brief";
+import { requireSkillProofs, SkillProofMissing } from "../dispatch/skill-launch";
+import { InvalidSkillOutput } from "./skill-validation";
+import { drive, effect, Uncertain } from "./machine";
 
 export type Observer = (event: string, id: string) => void;
 type StagePublisher = Pick<Publisher, "boundPull" | "fetch" | "commit" | "draft" | "comment" | "comments" | "pages" |
@@ -24,9 +28,31 @@ interface Services {
   test: ProjectChecks["test"];
   verify: (task: Task, attempt: Attempt, prior: Check[]) => Promise<EvidenceSummary>;
   dispatch: typeof dispatchWorker;
+  authorizeTeam?: typeof requireSkillProofs;
   observe: Observer;
 }
 
+function submittedText(output: WorkerOutput, path: string) {
+  const file = output.collection?.files.find(f => f.path === path);
+  if (!file) throw new Uncertain("missing authenticated skill output " + path);
+  return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(file.base64, "base64"));
+}
+
+export async function skillEffect<T>(store: Store, task: Task, action: string, intent: unknown, execute: (a: Attempt) => Promise<T>) {
+  let feedback: string;
+  try { return await effect(store, task, action, intent, execute); }
+  catch (error) {
+    if (!(error instanceof InvalidSkillOutput)) throw error;
+    feedback = error.feedback;
+  }
+  try {
+    return await effect(store, task, action + "-validation-retry", intent, a => execute({ ...a, validationFeedback: feedback }));
+  }
+  catch (error) {
+    if (!(error instanceof InvalidSkillOutput)) throw error;
+    throw new Uncertain("skill output failed validation twice: " + error.message);
+  }
+}
 function repair(store: Store, task: Task, reason: string) {
   if (task.repairCount) return store.move(task, "escalated", { reason });
   return store.move(task, "building", { reason, repairCount: 1 });
@@ -38,21 +64,24 @@ async function build(store: Store, task: Task, { git, dispatch, test, observe }:
     .get(task.id, task.spec);
   if (!approved) throw new Error("spec has no owner approval");
   const prompt = buildPrompt(task);
-  const files = await effect(store, task, "dispatch-builder", { base: task.base, head: task.head, prompt }, async (a) => {
+  const files = await skillEffect(store, task, "dispatch-builder", { base: task.base, head: task.head, prompt }, async (a) => {
     await git.boundPull(task);
     await git.fetch(task.head);
-    return (await dispatch(store, task, a, "builder", prompt, observe)).files;
+    const output = await dispatch(store, task, a, "builder", prompt, observe);
+    submittedText(output, "build-report.json");
+    return output.files;
   });
   const protectedFile = files.find((f) => protectsChecks(f.path));
   if (protectedFile) return store.move(task, "escalated", { reason: `builder changed check configuration: ${protectedFile.path}` });
-  const repro = files.find((f) => f.path === "repro.test.ts");
+  const file = reproductionFile(task.issue);
+  const repro = files.find((f) => f.path === file);
   if ((!repro || files.length === 0) && !task.repairCount)
-    return store.move(task, "failed", { reason: "builder omitted repro.test.ts" });
+    return store.move(task, "failed", { reason: `builder omitted ${file}` });
   const existing = git.basePaths(task.base);
   if (files.some((f) => existing.has(f.path) && /(?:^|\/)(?:test|tests)\/|\.(?:spec|test)\.[a-z]+$/.test(f.path)))
     return store.move(task, "escalated", { reason: "builder changed an existing test" });
   const content =
-    repro?.content ?? git.reproduction(task.head);
+    repro?.content ?? git.reproduction(task.head, file);
   const proof = await effect(store, task, "base-reproduction", { base: task.base, content }, (a) =>
     test(task, a, content),
   );
@@ -113,10 +142,11 @@ async function review(store: Store, task: Task, { git, dispatch, observe }: Serv
   };
   const prompt = reviewPrompt(task, observation("base-reproduction", "AC-1 fails on base", task.base),
     observation("head-checks", "AC-1 passes on head", task.head));
-  const result = await effect(store, task, "code-review", { base: task.base, head: task.head, prompt }, async (a) => {
+  const result = await skillEffect(store, task, "code-review", { base: task.base, head: task.head, prompt }, async (a) => {
     await git.boundPull(task);
     const output = await dispatch(store, task, a, "reviewer", prompt, observe);
-    return { base: task.base, head: task.head, ...reviewVerdict(output.result.resultText ?? "") };
+    const submitted = JSON.parse(submittedText(output, "verdicts/code-reviewer.json"));
+    return { base: task.base, head: task.head, ...reviewVerdict(JSON.stringify({ verdict: submitted.verdict, rationale: submitted.summary })) };
   });
   return result.verdict === "approve" ? store.move(task, "verifying") : repair(store, task, result.rationale);
 }
@@ -124,7 +154,7 @@ async function review(store: Store, task: Task, { git, dispatch, observe }: Serv
 function latest<T>(store: Store, task: Task, action: string): T {
   const row = store.db
     .query<{ result: string }, [number, string]>(
-      "SELECT result FROM attempts WHERE task=? AND action=? AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
+      "SELECT result FROM attempts WHERE task=? AND action IN (?2,?2 || '-validation-retry') AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
     )
     .get(task.id, action);
   if (!row) throw new Error(`missing required evidence: ${action}`);
@@ -158,16 +188,27 @@ async function verify(store: Store, task: Task, services: Services) {
     ...after.checks.map((c) => ({ ...c, name: `head ${c.name}` })),
     check("opposite vendor code review", true, review.rationale),
   ];
-  const evidence = await effect(store, task, "verify", { base: task.base, head: task.head }, (a) =>
-    services.verify(task, a, prior),
-  );
+  const capture = (action: string) => effect(store, task, action, { base: task.base, head: task.head }, async a => {
+    await services.git.boundPull(task);
+    const result = await services.verify(task, a, prior);
+    if (result.attemptId !== a.id || result.base !== task.base || result.head !== task.head || result.pr !== task.pr)
+      throw new Uncertain("verification receipt does not match its attempt");
+    return result;
+  });
+  let evidence = await capture("verify");
+  if (retryableVerification(evidence.checks)) {
+    // An uncleared preview leaves the failed receipt available for an owner-authorized retry after cleanup.
+    try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }
+    catch (error) { throw new Uncertain("factory infrastructure failed during preview cleanup: " + String(error)); }
+    evidence = await capture("verify-infra-retry");
+  }
   return afterVerification(store, task, evidence);
 }
 
 async function gateTwo(store: Store, git: StagePublisher, task: Task) {
   await git.boundPull(task);
-  const evidence = latest<EvidenceSummary>(store, task, "verify");
-  if (evidence.base !== task.base || evidence.head !== task.head || !verdict(evidence.checks).pass)
+  const evidence = store.verificationReceipt(task, task.visit - 1);
+  if (!evidence || evidence.base !== task.base || evidence.head !== task.head || !verdict(evidence.checks).pass)
     throw new Error("missing verification of current head");
   const comment = await effect(store, task, "publish-evidence", { pr: task.pr, attempt: evidence.attemptId }, () =>
     git.summary(evidence),
@@ -217,6 +258,7 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
     return null;
   }
   await git.boundPull(task);
+  const failed = store.verificationReceipt(task, task.visit - 1)!;
   const command = `/reverify ${task.head}`;
   const id = await effect(
     store,
@@ -227,7 +269,7 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
       git.comment(
         task.pr,
         a.id,
-        `Verification escalated. ${task.reason}. After resolving the cause, the owner may request a fresh capture of this head with \`${command}\`.`,
+        `Verification escalated on this reviewed head.\n\n${fenced(redact(task.reason))}\n\nAfter resolving the cause, the owner may request a fresh capture with \`${command}\`.`,
       ),
   );
   store.db.run("INSERT OR IGNORE INTO factory_comments VALUES(?,?)", [id, task.id]);
@@ -235,26 +277,62 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
   const pull = await git.boundPull(task);
   return store.db.transaction(() => {
     const resolution = pendingReverification(store, task, comments, id, pull.headSha);
-    return resolution ? store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution) : null;
+    if (!resolution) return null;
+    try { checkAbandonedPreviews(stateRoot, failed.attemptId); }
+    catch { return null; }
+    return store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution);
   })();
 }
 
-async function draft(store: Store, task: Task, { git, dispatch, observe }: Services) {
-  const prompt = specPrompt(task);
-  const writeSpec = (action: string) =>
-    effect(store, task, action, { head: task.head, prompt }, async (a) => {
-      await git.fetch(task.head);
-      const output = await dispatch(store, task, a, "spec", prompt, observe);
-      const text = output.result.resultText?.trim() ?? "";
-      if (!text.includes("AC-1") || text.length > 32_000) throw new Error("invalid spec writer output");
-      return `${text}\n`;
+class TeamHandoff extends Error {
+  constructor(readonly members: ReturnType<typeof requiredMembers>) { super("team required"); }
+}
+function parseHandoff(text: string) {
+  const tier = /\btier\s*[:=]?\s*([SML])\b/i.exec(text)?.[1]?.toUpperCase() as "S" | "M" | "L" | undefined;
+  if (!tier) throw new Uncertain("spec team required: ambiguous confirmed tier");
+  const members = requiredMembers(tier, /\bsecurity\b/i.test(text), false);
+  if (!members.length || !members.every(m => text.includes(m))) throw new Uncertain("spec team required: incomplete specialist list");
+  return members;
+}
+async function draft(store: Store, task: Task, { git, dispatch, observe, authorizeTeam = requireSkillProofs }: Services) {
+  if (!task.spec) {
+    await skillEffect(store, task, "dispatch-triage", { base: task.base, revision: task.issue.revision }, async a => {
+      await git.fetch(task.base);
+      const output = await dispatch(store, task, a, "triage", "{}", observe);
+      submittedText(output, "triage.json");
+      return a.id;
     });
+  }
+  const prompt = specPrompt(task);
+  const writeSpec = (action: string, team: ReturnType<typeof requiredMembers> = []) => {
+    const context = team.length ? JSON.stringify({...JSON.parse(prompt), team}) : prompt;
+    return skillEffect(store, task, action, { head: task.head, prompt: context }, async (a) => {
+      await git.fetch(task.head);
+      const output = await dispatch(store, task, a, "spec", context, observe);
+      const text = output.result.resultText?.trim() ?? "";
+      if (text.startsWith("BLOCKED: team required")) {
+        if (team.length) throw new Uncertain("spec team required again after fresh team launch");
+        throw new TeamHandoff(parseHandoff(text.slice(0, 1000)));
+      }
+      if (text.startsWith("BLOCKED: ")) throw new Uncertain("spec lead blocked: " + text.slice(9, 609));
+      return submittedText(output, "spec.md");
+    });
+  };
   let spec: string;
   try {
-    spec = await writeSpec("dispatch-spec");
+    try { spec = await writeSpec("dispatch-spec"); }
+    catch (e) {
+      if (!(e instanceof WorkerLoginError)) throw e;
+      spec = await writeSpec("dispatch-spec-after-login");
+    }
   } catch (e) {
-    if (!(e instanceof WorkerLoginError)) throw e;
-    spec = await writeSpec("dispatch-spec-after-login");
+    if (!(e instanceof TeamHandoff)) throw e;
+    try { authorizeTeam(config.agents.spec.harness, "spec-lead", e.members); }
+    catch (denied) {
+      if (!(denied instanceof SkillProofMissing)) throw denied;
+      throw new Uncertain("spec team required but no proven team-capable launch is available: " + denied.message);
+    }
+    spec = await writeSpec("dispatch-spec-with-team", e.members);
   }
   const head = await effect(store, task, "commit-spec", { head: task.head, spec }, (a) =>
     git.commit(
@@ -325,11 +403,12 @@ export async function run(url: string, observe: Observer = (event, id) => consol
     const git = new Publisher();
     const issue = await git.issue(number);
     store.requireSlot(issue);
-    const base = await git.ref(config.pilot.base);
+    const base = await git.ref(pilotBase(number));
     if (!base) throw new Error("missing base branch");
     const task = store.intake(issue, base);
     if (task.issue.revision !== issue.revision) throw new Error("issue changed since intake, owner respec required");
     return await runStages(store, task, { git, stateRoot: project.stateRoot, dispatch: dispatchWorker, observe,
+      authorizeTeam: (harness,role,members) => requireSkillProofs(harness,role,members,"spec",loadDispatchConfig({agentWriteRoots:[config.workspaceRoot]})),
       test: (t, a, content) => project.test(t, a, content),
       verify: (t, a, prior) => verifyPilot(t, a, project, prior),
     });

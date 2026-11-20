@@ -1,6 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { previewId } from "../../src/factory/checks";
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../../factory.config";
+import { InvalidSkillOutput } from "../../src/factory/skill-validation";
 import { Uncertain } from "../../src/factory/machine";
 import { runStages } from "../../src/factory/run";
 import { Store, type Task, type Attempt } from "../../src/factory/store";
@@ -107,20 +109,34 @@ try {
   if (scenario === "feedback-store") s.db.exec("CREATE TRIGGER bad_feedback BEFORE INSERT ON owner_feedback BEGIN SELECT RAISE(ABORT, 'fixture write refused'); END;");
   const final = await runStages(s, initial, {
     git, stateRoot: root, observe: () => {},
+    ...(scenario.startsWith("eligible-") ? {authorizeTeam: () => {}} : {}),
     dispatch: async (_s, t, a, role, prompt) => {
+      if (a.action === "code-review" && scenario === "retry-review") throw new InvalidSkillOutput("wrong spec digest");
+      if (role === "reviewer" && scenario === "invalid-verdict") throw new InvalidSkillOutput("wrong spec digest");
+      if (role === "reviewer" && scenario === "replacement") throw new Uncertain("skill output integrity escalation: output bytes changed after authenticated final write");
       if (scenario === "login" && a.action === "dispatch-spec") {
         remote(a.action, "login refused", a.id);
         throw new WorkerLoginError("fixture login");
       }
-      if (scenario === "revision" && t.state === "spec_drafting" &&
+      if (role !== "triage" && scenario === "revision" && t.state === "spec_drafting" &&
           (role !== "spec" || config.agents[role].model !== "claude-opus-5-5" || config.agents[role].effort !== "high"))
         throw Error("the spec and its revision require Opus high");
-      const body = role === "spec" ? "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
+      const teamHandoff = a.action === "dispatch-spec-with-team" ? null : scenario.endsWith("tier-L") ? "tier L, members architect, infra, frontend, threat-modeler" :
+        scenario.endsWith("security-M") ? "tier M, security flag, member threat-modeler" : null;
+      if (a.action === "dispatch-spec-with-team") {
+        const expected = scenario === "eligible-tier-L" ? ["architect", "infra", "frontend", "threat-modeler"] : ["threat-modeler"];
+        if (JSON.stringify(JSON.parse(prompt).team) !== JSON.stringify(expected)) throw new Error("wrong fresh team");
+      }
+      const body = role === "spec" ? teamHandoff ? `BLOCKED: team required, ${teamHandoff}, affects AC-1` : "AC-1 stock" : role === "builder" ? "fixed" : '{"verdict":"approve","rationale":"AC-1 reviewed"}';
       if (role === "reviewer" && (!prompt.includes("base-observation") || !prompt.includes("head-observation")))
         throw Error("reviewer did not see both reproduction results");
-      const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro.test.ts", content: "eA==" }] : [];
+      const files = role === "builder" && scenario !== "missing-repro" ? [{ path: "repro-issue-4.test.ts", content: "eA==" }] : [];
       if (role === "builder" && scenario === "edited-test") files.push({ path: "app.test.ts", content: "eA==" });
-      return remote(a.action, { result: { resultText: body } as WorkerOutput["result"], files }, a.id);
+      const [path, content] = role === "triage" ? ["triage.json", "{}"] : role === "spec" ? ["spec.md", body] :
+        role === "builder" ? ["build-report.json", "{}"] : ["verdicts/code-reviewer.json", '{"verdict":"approve","summary":"AC-1 reviewed"}'];
+      const collection = { attempt: a.id, role, round: 1, base: t.base, head: t.head, bundleHash: "fixture",
+        files: [{ path, base64: Buffer.from(content).toString("base64"), session: "fixture", role, sha256: "fixture" }] };
+      return remote(a.action, { collection, result: { resultText: role === "spec" && teamHandoff ? body : "completed" } as WorkerOutput["result"], files }, a.id);
     },
     test: async (t, a, content) => {
       interruptOnce(a, content ? "resume-base" : "resume-check");
@@ -131,9 +147,19 @@ try {
     },
     verify: async (t, a, prior) => {
       interruptOnce(a, "resume-capture");
-      const passes = scenario !== "reverify" || !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
-      return remote("verify", { pr: 5, base: t.base, head: t.head, checks: [...prior, { name: "AC-1 capture", pass: passes, detail: "stock" }],
-        captures: [], attemptId: a.id, evidenceDir: root }, a.id);
+      const passes = scenario === "flaky-ac" ? !!s.db.query("SELECT id FROM attempts WHERE action='verify' AND result IS NOT NULL").get() :
+        scenario !== "reverify" || !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
+      const recovered = !!s.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").get();
+      const retryable = scenario === "capture-transient" ? a.action === "verify" :
+        ["capture-outage","capture-lease"].includes(scenario) && !recovered;
+      if (scenario === "capture-lease" && retryable) {
+        mkdirSync(join(root, "ports"), {recursive:true});
+        writeFileSync(join(root, "ports", "fixture.lease"), JSON.stringify({attempt: previewId(a.id, "before")}));
+      }
+      const check = retryable ? {name: "verification infrastructure", pass: false, detail: "preview not ready"} :
+        {name: "AC-1 capture", pass: passes, detail: "stock"};
+      return remote(a.action, { pr: 5, base: t.base, head: t.head, checks: [...prior, check],
+        captures: [], attemptId: scenario === "foreign-capture" ? crypto.randomUUID() : a.id, evidenceDir: root }, a.id);
     },
   });
   if (scenario === "crash" && final.state !== "done") throw Error("unexpected state " + final.state);

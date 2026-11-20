@@ -1,3 +1,4 @@
+import { discoveryRegex } from "../dispatch/discovery";
 /**
  * The sandbox for project commands (setup, preview, and later test, lint, and typecheck): a Seatbelt profile the factory
  * writes itself and applies with `/usr/bin/sandbox-exec`, chosen over `codex sandbox` and Claude's sandbox runtime in
@@ -60,6 +61,7 @@ export interface ProjectSandbox {
   /** Canonical roots the command may read and write: the worktree and the preview's private home. */
   writable: readonly string[];
   network: NetworkMode;
+  protectDiscovery?: boolean;
 }
 
 function assertAbsolute(kind: string, paths: readonly string[]): void {
@@ -165,6 +167,7 @@ export function sandboxProfile(s: ProjectSandbox): { profile: string; params: st
     // The dispatch deny-list again, so a readable root can never reopen a credential store or the state root.
     ...(s.denyRead.length > 0 ? [`(deny file-read* file-write* ${param("DENY_READ_", s.denyRead).join(" ")})`] : []),
     ...(s.denyWrite.length > 0 ? [`(deny file-write* ${param("DENY_WRITE_", s.denyWrite).join(" ")})`] : []),
+    ...(s.protectDiscovery ? [`(deny file-write* (regex #"${discoveryRegex}"))`] : []),
     ...networkRules(s.network),
   ];
   return { profile: `${lines.join("\n")}\n`, params };

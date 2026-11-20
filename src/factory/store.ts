@@ -1,9 +1,14 @@
+import type { EvidenceSummary } from "../github/summary";
+import { retryableVerification, verdict } from "../verify/verdict";
+import { migrateSkillStore } from "./skill-store";
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { migrateFeedbackFailures, migrateUsage } from "../usage/store";
 import { config } from "../../factory.config";
 
 export interface Issue {
+  /** Factory assignment frozen at intake. Older task snapshots used repro.test.ts. */
+  reproductionFile?: string;
   source: "github";
   repoId: number;
   issueId: number;
@@ -13,6 +18,17 @@ export interface Issue {
   sender: number;
   revision: string;
   url: string;
+}
+
+function assignedReproduction(number: number) {
+  if (!Number.isSafeInteger(number) || number < 1) throw new Error("invalid issue number for reproduction");
+  return `repro-issue-${number}.test.ts`;
+}
+export function reproductionFile(issue: Issue) {
+  if (issue.reproductionFile === undefined) return "repro.test.ts";
+  const file = assignedReproduction(issue.number);
+  if (file !== issue.reproductionFile) throw new Error("invalid stored reproduction assignment");
+  return file;
 }
 
 export const edges = {
@@ -43,6 +59,7 @@ export interface Task {
 }
 export type Update = Partial<Pick<Task, "base" | "head" | "spec" | "pr" | "reason" | "repairCount">>;
 export interface Attempt {
+  validationFeedback?: string;
   id: string;
   action: string;
   result: string | null;
@@ -65,9 +82,20 @@ export class Store {
     this.db
       .transaction(() => {
         const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version;
-        if (version === 3) return;
-        if (version === 2) return migrateFeedbackFailures(this.db);
-        if (version === 1) return migrateUsage(this.db);
+        if (version === 4) return;
+        if (version === 2 && !this.db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='usage_captures'").get()) {
+          // Step 4b's pre-merge v2 contained skills and predated usage accounting.
+          const skills = this.db.query("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('skill_tasks','skill_collections','skill_files')").all();
+          if (skills.length !== 3) throw new Error("unrecognized v2 factory schema");
+          migrateUsage(this.db);
+          this.db.exec("PRAGMA user_version=4");
+          return;
+        }
+        if (version === 1 || version === 2 || version === 3) {
+          if (version === 1) migrateUsage(this.db);
+          if (version === 2) migrateFeedbackFailures(this.db);
+          return migrateSkillStore(this.db);
+        }
         if (version !== 0) throw new Error(`unsupported factory database version ${version}`);
         this.db.exec(`
         CREATE TABLE tasks (id INTEGER PRIMARY KEY, source TEXT NOT NULL, repo_id INTEGER NOT NULL,
@@ -88,6 +116,7 @@ export class Store {
         PRAGMA user_version=1;
       `);
         migrateUsage(this.db);
+        migrateSkillStore(this.db);
       })
       .immediate();
   }
@@ -110,7 +139,7 @@ export class Store {
       if (row) return this.task(row.id);
       const { lastInsertRowid } = this.db.run(
         "INSERT INTO tasks(source,repo_id,issue_id,issue,state,base,head) VALUES(?,?,?,?,'received',?,?)",
-        [issue.source, issue.repoId, issue.issueId, JSON.stringify(issue), base, base],
+        [issue.source, issue.repoId, issue.issueId, JSON.stringify({...issue, reproductionFile: assignedReproduction(issue.number)}), base, base],
       );
       const id = Number(lastInsertRowid);
       this.db.run("INSERT INTO transitions(task,visit,state,reason) VALUES(?,0,'received','owner-authorized issue')", [id]);
@@ -128,15 +157,25 @@ export class Store {
     return { ...raw, issue: JSON.parse(raw.issue) };
   }
 
+  verificationReceipt(task: Task, visit: number) {
+    const row = this.db.query<{id: string; result: string | null}, [number, number]>(
+      "SELECT id,result FROM attempts WHERE task=? AND visit=? AND action IN ('verify','verify-infra-retry') " +
+      "ORDER BY CASE action WHEN 'verify-infra-retry' THEN 0 ELSE 1 END LIMIT 1").get(task.id, visit);
+    if (!row?.result) return null;
+    const receipt: EvidenceSummary = JSON.parse(row.result);
+    return receipt.attemptId === row.id && receipt.base === task.base && receipt.head === task.head &&
+      receipt.pr === task.pr && Array.isArray(receipt.checks) ? receipt : null;
+  }
+
   canReverify(task: Task): boolean {
     const persisted = this.task(task.id);
     if (
       task.state !== "escalated" ||
       persisted.visit !== task.visit ||
       persisted.state !== "escalated" ||
+      persisted.pr !== task.pr ||
       persisted.head !== task.head ||
-      persisted.base !== task.base ||
-      !persisted.reason.startsWith("failed verification:")
+      persisted.base !== task.base
     )
       return false;
     const previous = this.db
@@ -144,10 +183,14 @@ export class Store {
       .get(task.id, task.visit);
     const reviewed = this.db
       .query<{ result: string }, [number]>(
-        "SELECT result FROM attempts WHERE task=? AND action='code-review' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
+        "SELECT result FROM attempts WHERE task=? AND action IN ('code-review','code-review-validation-retry') AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
       )
       .get(task.id);
     if (previous?.previous !== "verifying" || !reviewed) return false;
+    const receipt = this.verificationReceipt(persisted, persisted.visit - 1);
+    if (!receipt || !receipt.checks.length || verdict(receipt.checks).pass) return false;
+    if (!persisted.reason.startsWith("failed verification:") &&
+        !(persisted.reason.startsWith("factory infrastructure failed during ") && retryableVerification(receipt.checks))) return false;
     const result = JSON.parse(reviewed.result);
     return result.base === persisted.base && result.head === persisted.head && result.verdict === "approve";
   }
@@ -161,7 +204,7 @@ export class Store {
       "SELECT a.id,a.action,t.state,t.reason FROM attempts a JOIN transitions t USING(task,visit) " +
       "WHERE a.id=? AND a.task=? AND a.visit=? AND a.result IS NULL").get(match[2]!, task.id, task.visit - 1);
     if (!row) return null;
-    const valid = match[1] === "browser capture" ? row.action === "verify" && row.state === "verifying" :
+    const valid = match[1] === "browser capture" ? (row.action === "verify" || row.action === "verify-infra-retry") && row.state === "verifying" :
       (row.action === "base-reproduction" && row.state === "building") || (row.action === "head-checks" && row.state === "checks");
     return valid ? row : null;
   }
@@ -243,7 +286,7 @@ export class Store {
       // Reuse that exact dispatch, including its original UUID and audit, across repeated owner-authorized restarts.
       if (action === "dispatch-builder" && this.db.query("SELECT 1 FROM transitions WHERE task=? AND visit=? AND previous='escalated' AND state='building'").get(task.id, task.visit)) {
         const saved = this.db.query<{ id: string; result: string; intent: string }, [number, number]>(
-          "SELECT id,result,intent FROM attempts WHERE task=? AND visit<? AND action='dispatch-builder' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1"
+          "SELECT id,result,intent FROM attempts WHERE task=? AND visit<? AND action IN ('dispatch-builder','dispatch-builder-validation-retry') AND result IS NOT NULL ORDER BY visit DESC LIMIT 1"
         ).get(task.id, task.visit);
         if (!saved || saved.intent !== json) throw new Error("interrupted base proof lost its completed builder");
         return { id: saved.id, result: saved.result, action, fresh: false };

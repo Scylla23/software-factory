@@ -36,12 +36,26 @@ export const fixture = (name: string) => join(FIXTURES, name);
 const FAKE_CLI = `#!/bin/sh
 for last; do :; done
 arg="\${last#*:}"
+session=""
+previous=""
+for word; do
+  if [ "$previous" = "--session-id" ]; then session="$word"; fi
+  previous="$word"
+done
+if [ -n "$session" ]; then
+  mkdir -p "$CLAUDE_CONFIG_DIR/projects/test"
+  echo '{"type":"api-request-shape","shape":{"system":[{"type":"text","text":"Test instructions"}]}}' > "$CLAUDE_CONFIG_DIR/projects/test/$session.jsonl"
+fi
+replay() {
+  if [ -n "$session" ]; then sed "s/04fdfd03-327c-4f04-8a7c-b1d5df6a3357/$session/g" "$1"; else cat "$1"; fi
+}
 case "$last" in
-  replay:*) cat "$arg" ;;
-  dump:*) printf '%s\\n' "$@" > "$arg/argv"; printf '%s\\0' "$@" > "$arg/argv0"; env > "$arg/env"; cat "${fixture("claude-headless.stream.jsonl")}" ;;
-  started:*) : > "$arg"; cat "${fixture("claude-headless.stream.jsonl")}" ;;
+  home-change:*) : > "$CLAUDE_CONFIG_DIR/CLAUDE.md"; replay "${fixture("claude-headless.stream.jsonl")}" ;;
+  replay:*) replay "$arg" ;;
+  dump:*) printf '%s\\n' "$@" > "$arg/argv"; printf '%s\\0' "$@" > "$arg/argv0"; env > "$arg/env"; replay "${fixture("claude-headless.stream.jsonl")}" ;;
+  started:*) : > "$arg"; replay "${fixture("claude-headless.stream.jsonl")}" ;;
   hang:*)
-    echo '{"type":"system","subtype":"init","session_id":"s","model":"m"}'
+    head -n 1 "${fixture("claude-headless.stream.jsonl")}" | sed "s/04fdfd03-327c-4f04-8a7c-b1d5df6a3357/$session/g"
     sleep 300 &
     echo $! > "$arg"
     wait ;;
@@ -55,7 +69,7 @@ case "$last" in
     # and session of its own, with its cwd still the worktree; the CLI exits once the pid is written.
     /usr/bin/perl -MPOSIX -e 'exit 0 if fork; POSIX::setsid(); exit 0 if fork; open(my $f, ">", $ARGV[0]); print $f $$; close $f; exec "/bin/sleep", "304"' "$arg"
     while [ ! -s "$arg" ]; do sleep 0.05; done
-    cat "${fixture("claude-headless.stream.jsonl")}" ;;
+    replay "${fixture("claude-headless.stream.jsonl")}" ;;
   orphan:*)
     (sleep 302 & echo $! > "$arg")
     sleep 300 &

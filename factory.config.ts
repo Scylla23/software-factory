@@ -8,9 +8,16 @@ export const config = {
   workspaceRoot: join(home, "orca/workspaces"),
   stateRoot: join(home, ".software-factory"),
   agents: {
+    triage: { harness: "claude", model: "claude-sonnet-5-5", effort: "low", timeoutMs: 900_000 },
     spec: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
     builder: { harness: "codex", model: "gpt-6.2-sol", effort: "high", timeoutMs: 900_000 },
     reviewer: { harness: "claude", model: "claude-opus-5-5", effort: "high", timeoutMs: 900_000 },
+  },
+  specTeam: {
+    architect: { model: "claude-opus-5-5", effort: "high" },
+    infra: { model: "claude-sonnet-5-5", effort: "high" },
+    frontend: { model: "claude-sonnet-5-5", effort: "high" },
+    "threat-modeler": { model: "claude-sonnet-5-5", effort: "high" },
   },
   pilot: {
     owner: "Scylla23",
@@ -27,9 +34,10 @@ export const config = {
       readyPath: "/health",
       portRange: [4100, 4199],
       test: ["bun", "test"],
-      lint: ["bun", "run", "lint"],
-      typecheck: ["bun", "run", "typecheck"],
+      lint: ["node", "--run", "lint"],
+      typecheck: ["node", "--run", "typecheck"],
     },
+    installTimeoutMs: 300_000,
     fixtures: {
       inventory: {
         issue: 4,
@@ -44,3 +52,20 @@ export const config = {
     },
   },
 } as const;
+
+export const headingPilot = {
+  issues: [6, 7, 9, 11],
+  base: "factory/pilot-4b-heading-base",
+  heading: { before: "Price", after: "Stock count" },
+} as const;
+
+export function pilotBase(issue: number) {
+  return headingPilot.issues.some(n => n === issue) ? headingPilot.base : config.pilot.base;
+}
+
+export function inventoryFixture(issue: number) {
+  const inventory = config.pilot.fixtures.inventory;
+  return pilotBase(issue) === headingPilot.base
+    ? { ...inventory, issue, heading: headingPilot.heading, rows: inventory.rows.map(row => ({ ...row, before: row.after })) }
+    : { ...inventory, heading: undefined };
+}

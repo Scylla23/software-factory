@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { verificationErrorCheck } from "../src/factory/verify";
+import { config } from "../factory.config";
+import { createAttempt } from "../src/dispatch/attempt";
+import { agentEnv, effectiveDenyRead } from "../src/dispatch/policy";
+import { skillPolicy } from "../src/dispatch/skill-policy";
+import { codexConfigArgs, codexReadable } from "../src/dispatch/codex";
 import { Readable } from "node:stream";
 import { join } from "node:path";
-import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
+import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, prepareAgentCheckout, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
 import { portIsFree } from "../src/verify/port";
 import { gone } from "./helpers";
 import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, settlingTest, spawnBounded, type VerifyEnv } from "./verify-helpers";
@@ -353,9 +359,19 @@ setInterval(() => {}, 1000);
     const s = spec(repo.path, repo.shas[0]!, { setup: [["/bin/sh", "-c", "echo boom >&2; exit 7"]] });
     const err = await startError(s);
     expect(err.message).toContain("setup command 0 (/bin/sh) did not succeed: exit 7");
+    expect(verificationErrorCheck(err).name).toBe("complete browser verification");
     expect(err.logTail).toContain("boom");
     expect(err.teardown).toMatchObject({ removed: true, quarantineReasons: [] });
     expect(readdirSync(previews())).toEqual([]);
+  });
+
+  it("a setup timeout with a clean teardown allows verification to retry", async () => {
+    const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x") }]);
+    const s = spec(repo.path, repo.shas[0]!, {setup: [["/bin/sleep", "20"]]});
+    const err = await startError({...s, setupTimeoutMs: 100});
+    expect(err.message).toContain("timed_out");
+    expect(verificationErrorCheck(err).name).toBe("verification infrastructure");
+    expect(err.teardown).toMatchObject({removed: true, noKnownSurvivors: true});
   });
 
   it("a setup command that leaves a detached process fails the preview, and the process is killed", async () => {
@@ -383,6 +399,7 @@ setInterval(() => {}, 1000);
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x", { healthStatus: 503 }) }]);
     const t0 = Date.now();
     const err = await startError(spec(repo.path, repo.shas[0]!));
+    expect(verificationErrorCheck(err).name).toBe("verification infrastructure");
     expect(err.message).toContain("last probe: status 503");
     expect(Date.now() - t0).toBeLessThan(15_000);
     expect(err.teardown).toMatchObject({ noKnownSurvivors: true, removed: true });
@@ -393,6 +410,7 @@ setInterval(() => {}, 1000);
     const repo = makeRepo(env.repos, "app", [{ "server.ts": serverSource("x", { exitCode: 3 }) }]);
     const t0 = Date.now();
     const err = await startError({ ...spec(repo.path, repo.shas[0]!), readyTimeoutMs: 10_000 });
+    expect(verificationErrorCheck(err).name).toBe("preview starts");
     expect(err.message).toContain("the preview process exited");
     expect(Date.now() - t0).toBeLessThan(8_000);
   });
@@ -526,3 +544,88 @@ describe("bounded reads", () => {
     copy.close(); // idempotent
   });
 });
+
+test("retryable preview errors require removal and a clean process sweep", () => {
+  for (const [removed, noKnownSurvivors] of [[false, true], [true, false]] as const) {
+    const teardown = {cleanup: null, removed, noKnownSurvivors, quarantineReasons: ["pending"]};
+    const error = new PreviewError("timeout", teardown, "", "infrastructure");
+    expect(verificationErrorCheck(error).name).toBe("complete browser verification");
+  }
+});
+
+test("scratch dependency setup sees the registry proxy only during setup and leaves the pinned checkout available", async () => {
+  const scratch = join(env.home, "scratch");
+  mkdirSync(scratch);
+  const checkout = makeRepo(scratch, "repo", [{"source.txt": "pinned"}]);
+  const id = crypto.randomUUID();
+  await prepareAgentCheckout(env.config, {id, checkout: checkout.path, scratch, logDir: env.logDir, setupTimeoutMs: 10_000,
+    commands: {setup: [["/bin/sh", "-c", 'test -n "$HTTPS_PROXY" && echo prepared > setup-ran']], egress: ["registry.npmjs.org"]}});
+  expect(readFileSync(join(checkout.path, "source.txt"), "utf8")).toBe("pinned");
+  expect(readFileSync(join(checkout.path, "setup-ran"), "utf8")).toBe("prepared\n");
+  expect(existsSync(join(scratch, "setup-home"))).toBe(false);
+  expect(readdirSync(env.logDir).sort()).toEqual([id + ".scratch-egress.log", id + ".scratch-setup-0.log"]);
+});
+
+test("dependency setup cannot write discovery files in a writable checkout", async () => {
+  const scratch = join(env.home, "scratch");
+  mkdirSync(scratch);
+  const checkout = makeRepo(scratch, "repo", [{"AGENTS.md": "factory instructions"}]);
+  mkdirSync(join(checkout.path, ".claude"));
+  const id = crypto.randomUUID();
+  const script = [
+    "(echo replaced > AGENTS.md)",
+    "(echo planted > .claude/x)",
+    "echo installed > setup-ran",
+  ].join("\n");
+  await prepareAgentCheckout(env.config, {
+    id, checkout: checkout.path, scratch, logDir: env.logDir, setupTimeoutMs: 10_000,
+    commands: {setup: [["/bin/sh", "-c", script]], egress: []},
+  });
+  expect(readFileSync(join(checkout.path, "setup-ran"), "utf8")).toBe("installed\n");
+  expect(readFileSync(join(checkout.path, "AGENTS.md"), "utf8")).toBe("factory instructions");
+  expect(existsSync(join(checkout.path, ".claude/x"))).toBe(false);
+  const log = readFileSync(join(env.logDir, id + ".scratch-setup-0.log"), "utf8");
+  for (const target of ["AGENTS.md", ".claude/x"])
+    expect(log.split("\n").some(line => line.includes(target) && /operation not permitted|permission denied/i.test(line))).toBe(true);
+});
+
+test("builder installs local tools before dispatch and runs both registered scripts without network", async () => {
+  const checkout = makeRepo(env.repos, "builder", [{
+    "package.json": JSON.stringify({ scripts: { lint: "local-check lint", typecheck: "local-check typecheck" } }),
+  }]);
+  const id = crypto.randomUUID();
+  const dirs = createAttempt({ accountHome: env.home, stateRoot: env.stateRoot, runRoot: join(env.home, "runs"),
+    project: checkout.path, attemptId: id, role: "builder", stage: "build" });
+  const setup = [
+    'test -n "$HTTPS_PROXY"',
+    'if (echo changed > .git/setup-write) 2>/dev/null; then exit 1; fi',
+    'mkdir -p node_modules/.bin',
+    `printf '%s\\n' '#!/bin/sh' 'test -z "$HTTPS_PROXY" && echo "installed $1"' > node_modules/.bin/local-check`,
+    'chmod +x node_modules/.bin/local-check',
+  ].join("\n");
+  await prepareAgentCheckout({...env.config, untrustedRoots: [...env.config.untrustedRoots, env.repos]}, {
+    id, scratch: dirs.scratchDir, checkout: dirs.worktree, builderWorkspaceRoot: env.repos, logDir: env.logDir, setupTimeoutMs: 10_000,
+    commands: {setup: [["/bin/sh", "-ec", setup]], egress: []},
+  });
+  const cli = Bun.which("codex")!;
+  const harnessHome = join(env.home, "codex-home");
+  mkdirSync(harnessHome, {mode: 0o700});
+  const deny = effectiveDenyRead({accountHome: env.home, stateRoot: env.stateRoot, harnessHomes: [harnessHome]});
+  const policy = skillPolicy(dirs, deny, config.pilot.toolDirs, codexReadable(cli, deny), "/usr/bin/git");
+  const childEnv = agentEnv({}, {harness: "codex", harnessHome, accountHome: env.home,
+    trustedPath: [...config.pilot.toolDirs, "/usr/bin", "/bin"].join(":")});
+  const run = (argv: readonly string[]) => Bun.spawnSync([cli, "sandbox", "-P", "factory", ...codexConfigArgs(policy), "--", ...argv],
+    {cwd: dirs.worktree, env: childEnv, timeout: 10_000});
+  for (const name of ["lint", "typecheck"] as const) {
+    const result = run(config.pilot.commands[name]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString().trim()).toBe("installed " + name);
+  }
+  expect(run(["/bin/sh", "-c", "echo x >node_modules/.bin/local-check"]).exitCode).not.toBe(0);
+  expect(run(["/bin/cat", join(env.home, ".ssh/id_test")]).exitCode).not.toBe(0);
+  const listener = Bun.listen({hostname: "127.0.0.1", port: 0, socket: {data() {}}});
+  try {
+    const result = run(["node", "-e", `require("net").connect(${listener.port},"127.0.0.1").on("connect",()=>process.exit(1)).on("error",e=>console.log(e.code))`]);
+    expect(result.stdout.toString().trim()).toBe("EPERM");
+  } finally { listener.stop(true); }
+}, 30_000);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { config } from "../factory.config";
+import { config, headingPilot, inventoryFixture, pilotBase } from "../factory.config";
 import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, specDecision } from "../src/factory/gates";
 import capturedInventory from "./fixtures/pilot-inventory-captures.json";
 import { issueNumber, readIssue } from "../src/factory/github";
@@ -8,7 +8,8 @@ import { InstallationToken } from "../src/github/app";
 import { afterVerification, reviewVerdict } from "../src/factory/run";
 import { requireHealthyInfrastructure } from "../src/factory/checks";
 import { Uncertain, effect } from "../src/factory/machine";
-import { Store, type Approval, type Issue, type Task } from "../src/factory/store";
+import { reproductionFile, Store, type Approval, type Issue, type Task } from "../src/factory/store";
+import { retryableVerification } from "../src/verify/verdict";
 import { inventoryMatches } from "../src/factory/verify";
 
 const old = "a".repeat(40);
@@ -38,11 +39,14 @@ test("intake binds source, repository and issue ids independently of mutable iss
   const s = new Store(":memory:");
   try {
     const t = s.intake(issue, old);
+    expect(reproductionFile(t.issue)).toBe("repro-issue-4.test.ts");
+    expect(reproductionFile(issue)).toBe("repro.test.ts");
+    expect(() => reproductionFile({...t.issue, reproductionFile: "../outside"})).toThrow("assignment");
     expect(s.intake({ ...issue, title: "renamed", number: 999 }, current)).toEqual(t);
     expect(s.intake({ ...issue, repoId: 12 }, old).id).not.toBe(t.id);
     expect(s.intake({ ...issue, issueId: 23 }, old).id).not.toBe(t.id);
     expect(s.db.query("SELECT * FROM transitions").all()).toHaveLength(3);
-    expect(s.db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+    expect(s.db.query("PRAGMA user_version").get()).toEqual({ user_version: 4 });
   } finally {
     s.db.close();
   }
@@ -262,6 +266,19 @@ test("browser evidence checks the values beside all three inventory names", () =
   expect(inventoryMatches(`${captured}\nMeasuring tapesUncounted`, "after")).toBe(false);
 });
 
+test("the heading pilot binds its isolated base, column heading and unchanged inventory", () => {
+  const f = inventoryFixture(6);
+  const page = "ItemPrice\nBench vises4\nMeasuring tapes0\nTool chestsUncounted";
+  expect(pilotBase(6)).toBe(headingPilot.base);
+  expect(pilotBase(9)).toBe(headingPilot.base);
+  expect(pilotBase(11)).toBe(headingPilot.base);
+  expect(pilotBase(4)).toBe("main");
+  expect(inventoryMatches(page, "before", f.rows, f.heading)).toBe(true);
+  expect(inventoryMatches(page, "after", f.rows, f.heading)).toBe(false);
+  expect(inventoryMatches(page.replace("ItemPrice", "Item | Stock count"), "after", f.rows, f.heading)).toBe(true);
+  expect(inventoryMatches(page.replace("tapes0", "tapes1"), "before", f.rows, f.heading)).toBe(false);
+});
+
 for (const capture of capturedInventory.captures) {
   test(`Orca saved inventory rows: ${capture.name}`, () => {
     const phase = capture.name.startsWith("before-") ? "before" : "after";
@@ -269,6 +286,11 @@ for (const capture of capturedInventory.captures) {
     expect(inventoryMatches(capture.pageText, phase === "before" ? "after" : "before")).toBe(false);
     expect(capture.commitSha).toBe(phase === "before" ? capturedInventory.base : capturedInventory.head);
   });
+}
+
+function failedCapture(s: Store, t: Task, name: string, detail = "fixture failed", head = t.head, pass = false) {
+  const a = s.plan(t, "verify", {});
+  s.finish(a.id, {pr: t.pr, base: t.base, head, attemptId: a.id, checks: [{name, pass, detail}]});
 }
 
 test("re-verification requires a fresh owner comment on the same reviewed head after verification escalation", () => {
@@ -282,6 +304,7 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
     const cmd = (id: number, sha = current, actor: number = owner) => ({ ...comment(id, sha, actor), body: `/reverify ${sha}` });
     const valid = cmd(30);
     expect(pendingReverification(s, t, [valid], 20, current)).toBeNull();
+    failedCapture(s, t, "table rows");
     t = s.move(t, "escalated", { reason: "failed verification: table rows" });
     expect(pendingReverification(s, t, [valid], 20, old)).toBeNull();
     s.db.run("INSERT INTO factory_comments VALUES(?,?)", [25, t.id]);
@@ -316,6 +339,7 @@ test("re-verification requires a fresh owner comment on the same reviewed head a
     expect(() => s.move(t, "verifying", { repairCount: 0 }, event)).toThrow();
     t = s.move(t, "verifying", {}, event);
     expect(t.repairCount).toBe(1);
+    failedCapture(s, t, "still failing");
     t = s.move(t, "escalated", { reason: "failed verification: still failing" });
     expect(pendingReverification(s, t, [valid, cmd(31)], 20, current)).toBeNull();
     expect(() => s.move(t, "verifying", {}, event)).toThrow("consumed");
@@ -361,7 +385,7 @@ test("owner resume replaces only the interrupted read-only attempt and preserves
     const s = new Store(":memory:");
     try {
       let t = s.move(spec(s), "building", { repairCount: 1, reason: "fix fixture" }, approved);
-      const builder = s.plan(t, "dispatch-builder", "intent");
+      const builder = s.plan(t, action === "base-reproduction" ? "dispatch-builder-validation-retry" : "dispatch-builder", "intent");
       s.finish(builder.id, ["original patch"]);
       if (action !== "base-reproduction") t = s.move(t, "checks");
       if (action === "verify") t = s.move(s.move(t, "code_review"), "verifying");
@@ -388,7 +412,7 @@ test("owner resume replaces only the interrupted read-only attempt and preserves
 });
 
 test("reverification authority requires the persisted escalation and a matching approved code review", () => {
-  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review"]) {
+  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review", "missing-receipt", "stale-receipt", "green-receipt", "non-infra", "infra"]) {
     const s = new Store(":memory:");
     try {
       let t = s.move(spec(s), "building", {}, approved);
@@ -399,14 +423,26 @@ test("reverification authority requires the persisted escalation and a matching 
           base: variation === "review-base" ? current : t.base, head: variation === "review-head" ? old : t.head });
       }
       if (variation !== "previous") t = s.move(t, "verifying");
-      t = s.move(t, "escalated", { reason: variation === "reason" ? "worker disappeared" : "failed verification: AC-1" });
+      const infra = variation === "infra" || variation === "non-infra";
+      if (variation !== "missing-receipt") failedCapture(s, t, variation === "infra" ? "verification infrastructure" : "AC-1",
+        "fixture failed", variation === "stale-receipt" ? old : t.head, variation === "green-receipt");
+      t = s.move(t, "escalated", { reason: infra ? "factory infrastructure failed during verification infrastructure: fixture failed" :
+        variation === "reason" ? "worker disappeared" : "failed verification: AC-1" });
       const command = { ...comment(82, current), body: "/reverify " + current };
-      expect(s.canReverify(t)).toBe(variation === "valid");
-      expect(!!pendingReverification(s, t, [command], 65, current)).toBe(variation === "valid");
+      expect(s.canReverify(t)).toBe(variation === "valid" || variation === "infra");
+      expect(!!pendingReverification(s, t, [command], 65, current)).toBe(variation === "valid" || variation === "infra");
       if (variation === "valid") {
         for (const stale of [{ ...t, visit: t.visit - 1 }, { ...t, base: current }, { ...t, head: old }, { ...t, state: "verifying" as const }])
           expect(s.canReverify(stale)).toBe(false);
       }
     } finally { s.db.close(); }
   }
+});
+
+test("a historical setup timeout qualifies only with a clean verification receipt", () => {
+  const timeout = {name: "complete browser verification", pass: false, detail: "Error: setup command 0 (bun) did not succeed: timed_out"};
+  expect(retryableVerification([timeout])).toBe(true);
+  expect(retryableVerification([timeout, {name: "before teardown", pass: false, detail: "survivor"}])).toBe(false);
+  expect(retryableVerification([{...timeout, name: "AC-1 capture"}])).toBe(false);
+  expect(retryableVerification([{...timeout, detail: "the page left the preview origin"}])).toBe(false);
 });

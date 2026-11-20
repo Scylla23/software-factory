@@ -39,7 +39,7 @@
         {"id": "threats", "kind": "deterministic", "check": "checks.threatModel.present == true && checks.threatModel.threatsChecked == 4 && checks.threatModel.unmitigated contains \"T-1\", \"T-2\", and \"T-3\" and does not contain \"T-4\""},
         {"id": "worktree-clean", "kind": "deterministic", "check": "git status --porcelain in the worktree is empty after the run"},
         {"id": "path-stated", "kind": "judge", "check": "Does the owner-check finding state the actor, the action, and the consequence: a signed-in user, another user's task id, and the task being returned or changed?"},
-        {"id": "proven", "kind": "judge", "check": "Does each blocking finding quote the offending line or the result of a probe, rather than only asserting the weakness?"},
+        {"id": "proven", "kind": "judge", "check": "For each blocking finding, does the cited evidence establish the reported behavior, either by tracing the path from the entry point to the relevant operation with each step cited, or by quoting a recorded test result that shows the behavior?"},
         {"id": "privileged-field", "kind": "judge", "check": "Does the mass-assignment finding say that the caller can set ownerId, id, or another field the spec does not allow?"}
       ],
       "pass": "All checks pass.",

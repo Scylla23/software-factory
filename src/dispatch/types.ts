@@ -5,6 +5,7 @@ export type Harness = "claude" | "codex";
 
 export interface RunSpec {
   harness: Harness;
+  skill?: import("./skill-launch").SkillLaunch;
   /** Absolute path of the Orca-created worktree the agent works in. */
   worktreePath: string;
   prompt: string;
@@ -16,6 +17,10 @@ export interface RunSpec {
   runId: string;
   timeoutMs: number;
   signal?: AbortSignal;
+  /** Approved evaluation stop rule backstops for one Claude session. */
+  /** A Claude evaluation judge receives its entire submission in the prompt. */
+  toolFreeJudge?: true;
+  evaluationLimits?: { maxTurns: number; maxUsd: number };
   /**
    * The project's instruction files (usually AGENTS.md and CLAUDE.md), passed to the harness explicitly and
    * identically, or null for none. Read before spawn as tracked blobs at the approved base commit, never from a
@@ -63,6 +68,9 @@ export interface CodexUsage {
 }
 
 export interface RunResult {
+  bundleHash?: string;
+  /** Hash of the dispatched prompt, composed instructions and selected team definition revision. */
+  promptRevision?: string;
   harness: Harness;
   runId: string;
   /** Claude session id or Codex thread id, as reported by the CLI. */

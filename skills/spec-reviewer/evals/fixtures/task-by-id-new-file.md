@@ -28,8 +28,8 @@ The client needs `GET /api/tasks/:id` and `PATCH /api/tasks/:id` to show and edi
 
 - Tag: test
 - Fixture: user 1 owns one task titled `mine`.
-- Action: `PATCH /api/tasks/<id>` as user 1 with body `{"title":"renamed","due":"2026-12-01"}`.
-- Expected: status 200 and a body whose task has the submitted title and due date.
+- Action: `PATCH /api/tasks/<id>` as user 1 with body `{"title":"renamed","due":"2026-12-01"}`, then independently `GET /api/tasks/<id>` as user 1.
+- Expected: both responses have status 200 and the subsequent GET returns the submitted title and due date.
 
 ### AC-3: Another user's task is not found
 

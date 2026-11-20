@@ -63,9 +63,9 @@ export async function recordUsage(db: Database, task: Task, job: MeterJob, run: 
     // Receipt adoption is idempotent. A later final receipt can settle an uncertain supervisor.
     const record = db.run(`INSERT INTO audit(attempt,task,stage,session,requested_model,observed_model,effort,prompt_revision,base,head,outcome,usage)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(attempt) DO UPDATE SET session=excluded.session,
-      observed_model=excluded.observed_model,requested_model=excluded.requested_model,outcome=excluded.outcome,usage=excluded.usage WHERE audit.outcome='uncertain'`,
+      observed_model=excluded.observed_model,requested_model=excluded.requested_model,prompt_revision=excluded.prompt_revision,outcome=excluded.outcome,usage=excluded.usage WHERE audit.outcome='uncertain'`,
       [job.id, task.id, task.state, session, run.requestedModel, observed, job.agent.effort,
-        createHash("sha256").update(job.prompt).digest("hex"), job.base, job.head, run.outcome, JSON.stringify(run.usage)]);
+        (run.promptRevision && /^[a-f0-9]{64}$/.test(run.promptRevision) ? run.promptRevision : createHash("sha256").update(job.prompt).digest("hex")), job.base, job.head, run.outcome, JSON.stringify(run.usage)]);
     if (record.changes) putCapture(db, job.id, run.requestedModel, observed, capture);
   }).immediate();
 }

@@ -1,3 +1,4 @@
+import { checkDiscoverySources } from "../dispatch/discovery";
 /**
  * Preview lifecycle: materialize an exact commit, run the project's setup commands sandboxed with egress only through
  * the factory's proxy, start its preview command sandboxed with only its own loopback port, wait until it answers, check that the listener
@@ -144,8 +145,16 @@ export interface CommandResult {
 }
 
 export class PreviewError extends Error {
-  constructor(message: string, readonly teardown: TeardownReport | null, readonly logTail: string) {
+  constructor(message: string, readonly teardown: TeardownReport | null, readonly logTail: string, private readonly causeOfStart: "infrastructure" | "project" | "unknown" = "unknown") {
     super(message);
+  }
+
+  get retryableStart() {
+    return this.startFailure === "infrastructure";
+  }
+
+  get startFailure() {
+    return this.teardown?.removed && this.teardown.noKnownSurvivors ? this.causeOfStart : "unknown";
   }
 }
 
@@ -328,6 +337,49 @@ export function reserveAttempt(config: Pick<VerifyConfig, "stateRoot" | "untrust
   return dir;
 }
 
+/** Install in the pinned reviewer copy or the assigned builder worktree before dispatch. */
+export async function prepareAgentCheckout(config: VerifyConfig, input: {
+  id: string; checkout: string; scratch: string; builderWorkspaceRoot?: string; logDir: string; setupTimeoutMs: number; commands: Pick<ProjectCommands, "setup" | "egress">;
+}) {
+  const { checkout, scratch, builderWorkspaceRoot } = input;
+  if (!UUID.test(input.id) || realpathSync(scratch) !== scratch || realpathSync(checkout) !== checkout)
+    throw new Error("invalid setup location");
+  if (builderWorkspaceRoot !== undefined) {
+    if (realpathSync(builderWorkspaceRoot) !== builderWorkspaceRoot || !config.untrustedRoots.includes(builderWorkspaceRoot) ||
+        checkout === builderWorkspaceRoot || !isUnder(checkout, builderWorkspaceRoot) || isUnder(checkout, scratch) || isUnder(scratch, checkout))
+      throw new Error("invalid builder checkout");
+  } else if (checkout !== join(scratch, "repo")) throw new Error("invalid scratch checkout");
+  checkDiscoverySources(input.checkout);
+  assertEgressHosts(input.commands.egress);
+  const home = join(input.scratch, "setup-home");
+  mkdirSync(home, { mode: 0o700 });
+  mkdirSync(join(home, "tmp"), { mode: 0o700 });
+  const gitDirs = gitWriteProtectedPaths(config.executables.git, input.checkout);
+  if (!gitDirs.length) throw new Error("missing scratch git database");
+  const log = openLog(config, input.logDir, input.id + ".scratch-egress.log");
+  let proxy: EgressProxy | undefined;
+  try {
+    proxy = config.egress.startPhase({allow: input.commands.egress, logFd: log.fd});
+    const policy: ProjectSandbox = { writable: [input.checkout, home], readable: [...gitDirs, ...config.toolRoots],
+      protectDiscovery: true, denyWrite: gitDirs, denyRead: effectiveDenyRead(config), network: {kind: "proxy", port: proxy.port} };
+    const env = projectEnv({home, path: config.toolPath, user: userInfo().username, proxy: proxy.url});
+    for (const [i, argv] of input.commands.setup.entries()) {
+      const dest = openLog(config, input.logDir, input.id + ".scratch-setup-" + i + ".log");
+      const run = spawnSandboxed(config, policy, argv, input.checkout, env, dest.fd, input.setupTimeoutMs);
+      try {
+        const result = await run.supervised;
+        const sweep = await settle(config, result.unverified, builderWorkspaceRoot ? [checkout, scratch] : [scratch]);
+        if (result.stopped || result.status?.code !== 0 || !sweep.noKnownSurvivors || sweep.quarantineReasons.length)
+          throw new Error("scratch dependency setup failed or left processes, see " + dest.path);
+      } finally { await closeOutput(run); }
+    }
+  } finally {
+    proxy?.stop();
+    closeSync(log.fd);
+  }
+  rmSync(home, { recursive: true });
+}
+
 /**
  * Materializes `spec.sha`, runs setup, starts the preview, and returns once it answers 200 on the ready path from a
  * listener inside the preview's own process tree. On any failure everything started is torn down before it throws.
@@ -388,9 +440,9 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     return report;
   };
 
-  const fail = async (message: string, logPath: string | null): Promise<never> => {
+  const fail = async (message: string, logPath: string | null, cause: PreviewError["startFailure"]): Promise<never> => {
     const t = await teardown();
-    throw new PreviewError(message, t, logPath ? tail(logPath) : "");
+    throw new PreviewError(message, t, logPath ? tail(logPath) : "", cause);
   };
 
   try {
@@ -467,7 +519,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
           const r = await runCommand(argv, { network: { kind: "proxy", port: proxy.port }, proxy: proxy.url, name: `setup-${i}`, timeoutMs: spec.setupTimeoutMs });
           if (r.stopped || r.exitCode !== 0 || r.quarantineReasons.length > 0) {
             const why = r.stopped ?? `exit ${r.exitCode ?? "by signal"}`;
-            return await fail(`setup command ${i} (${argv[0]}) did not succeed: ${why}${r.quarantineReasons.length ? `; ${r.quarantineReasons.join("; ")}` : ""}`, r.logPath);
+            return await fail(`setup command ${i} (${argv[0]}) did not succeed: ${why}${r.quarantineReasons.length ? `; ${r.quarantineReasons.join("; ")}` : ""}`, r.logPath, r.stopped === "timed_out" && !r.quarantineReasons.length ? "infrastructure" : "unknown");
           }
         }
       } finally {
@@ -496,6 +548,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       readyMs = Date.now() - started;
       if (owned.ok) break;
       const failed = preview;
+      const exitedBeforeTeardown = failed.proc.exitedAt() !== null;
       failed.abort.abort();
       retired.push(...(await failed.supervised).unverified);
       await closeOutput(failed);
@@ -505,7 +558,8 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       lease = null;
       if (!lost || round >= PORT_ROUNDS) {
         const what = ready.ok ? `port ${port} is not served by the preview: ${owned.reason}` : `preview not ready: ${owned.reason}`;
-        return await fail(`${what}${lost ? ` (another process holds port ${port}; ${round} ports tried)` : ""}`, logPath);
+        const cause = lost ? "infrastructure" : ready.ok ? "unknown" : exitedBeforeTeardown ? "project" : "infrastructure";
+        return await fail(`${what}${lost ? ` (another process holds port ${port}; ${round} ports tried)` : ""}`, logPath, cause);
       }
     }
     // From here the server ending, by itself or at the maximum lifetime, ends the preview: worktree and home go with it.

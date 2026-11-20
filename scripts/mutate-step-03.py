@@ -70,6 +70,19 @@ group("factory/store", "reverification authority", [
     ("persisted.head !== task.head", "false"),
     ("persisted.base !== task.base", "false"),
 ])
+group("factory/store", "reverification authority", [
+    ("receipt.head === task.head", "true"),
+    ("|| verdict(receipt.checks).pass", ""),
+    ("&& retryableVerification(receipt.checks)", "&& true"),
+])
+group("factory/run", "verification retries infrastructure once", [
+    ('    try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }', '    try { }'),
+    ('try { checkAbandonedPreviews(stateRoot, failed.attemptId); }', 'try { }'),
+], "factory-crash")
+group("factory/run", "a foreign capture receipt", [("result.attemptId !== a.id || ", "")], "factory-crash")
+group("factory/run", "a failed AC capture", [
+    ("if (retryableVerification(evidence.checks))", "if (!verdict(evidence.checks).pass)"),
+], "factory-crash")
 group("factory/run", "one failed verification", [
     ("if (task.repairCount) return", "if (false) return"),
     ("evidence.pr !== task.pr || evidence.head !== task.head", "evidence.pr !== task.pr"),
@@ -107,6 +120,7 @@ group("factory/worker", "builder changes to commands", [
 ], "factory-worker")
 group("factory/worker", "worker, project check and capture receipts", [
     ("result.runId !== attempt.id", "false"),
+    ("c.head !== task.head", "false"),
 ], "factory-receipts")
 
 
@@ -146,6 +160,13 @@ def main():
             shutil.copytree(ROOT / "src", directory / "src")
             shutil.copytree(ROOT / "test", directory / "test", ignore=shutil.ignore_patterns(".state"))
             shutil.copy(ROOT / "factory.config.ts", directory)
+            (directory / "node_modules").symlink_to(ROOT / "node_modules", target_is_directory=True)
+            subprocess.run(["git", "init", "-q", "--template="], cwd=directory, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Factory", "-c", "user.email=test@example.invalid",
+                 "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-qm", "Fixture"],
+                cwd=directory, check=True,
+            )
         for test_file, case in sorted({(t, c) for _, t, c, _, _ in cases}):
             baseline = run(directory, test_file, case)
             if baseline.returncode or not any("(pass)" in l and case in l for l in baseline.stdout.splitlines()):

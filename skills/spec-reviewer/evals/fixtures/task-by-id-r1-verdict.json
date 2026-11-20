@@ -4,7 +4,7 @@
   "stage": "spec",
   "taskId": "eval-tasklist-task-by-id",
   "round": 1,
-  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "b1d7f5787df8821b7617b99ff3b62fc2aab8c8d717af8c28380a7fab828bcf2b"},
   "verdict": "changes",
   "summary": "The spec is grounded and correctly tiered, but the criterion that guards against cross-user access has no observable expected result.",
   "findings": [

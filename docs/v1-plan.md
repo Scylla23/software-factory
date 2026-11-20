@@ -1,6 +1,7 @@
 # Software Factory - v1 Plan
 
 Design: [design.md](design.md).
+The [testing policy](testing-policy.md) governs coverage, proofs, evals, and reviews for every step from 4b onward.
 Each step ships as its own PR on the factory repo, built by one Opus 5.5 Orca worker in sequence, and reviewed cross-vendor by Codex before the owner merges.
 Every step with non-trivial logic ships with `bun test` coverage.
 

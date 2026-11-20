@@ -4,7 +4,7 @@
   "stage": "spec",
   "taskId": "eval-tasklist-task-by-id",
   "round": 1,
-  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "covers": {"baseSha": "0000000000000000000000000000000000000000", "specSetSha256": "0e99cceeabd1a308764ad0eedf5ed1c5ac9f8c8c50c964f3d4fc99e09e1c1439"},
   "verdict": "changes",
   "summary": "The cross-user threats are covered by a negative criterion. The threat of a user writing a task's owner or id through the update body is rated high and has no criterion, and the plan applies the body's fields directly.",
   "findings": [

@@ -6,7 +6,7 @@
     {
       "id": "verifier-01-plan-by-tag",
       "purpose": "Mode plan. Each criterion is planned by its tag: named tests with the reproduction marked, a before and after capture at both viewports with expectations taken from the criterion, and an owner checklist item. Nothing is left out or quietly downgraded.",
-      "pilot": "The pilot has a task list page at /tasks that honors sort and dir query parameters, a declared fixture named seeded-tasks holding tasks due 2 Nov, 10 Nov, and 20 Nov, and a built fix for the due-date sort whose tests are named by criterion id. The spec is the worked example of spec-lead/references/spec-format.md (AC-1 to AC-3 test, AC-4 browser at /tasks?sort=due&dir=asc) with one more criterion added: AC-5, tag manual, asking the owner to confirm the sort on their own production data.",
+      "pilot": "The pilot has a task list page at /tasks that honors sort and dir query parameters, a declared fixture named seeded-tasks holding tasks due 2 Nov, 10 Nov, and 20 Nov, and a built fix for the due-date sort whose tests are named by criterion id. Use the pinned due-date-sort spec with three named test criteria, a browser criterion for the task list and a manual owner check.",
       "input": {
         "brief": {
           "role": "verifier",
@@ -14,7 +14,12 @@
           "round": 1,
           "project": {"isNew": false, "commands": {"test": "bun test", "preview": "bun run dev"}, "fixtures": ["seeded-tasks"]}
         },
-        "files": {}
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "spec.md": "fixtures/due-date-sort/spec.md",
+          "spec-lead.json": "fixtures/due-date-sort/spec-lead.json",
+          "build-report.json": "fixtures/due-date-sort/sort.build-report.json"
+        }
       },
       "expect": [
         {"id": "schema", "kind": "deterministic", "check": "verification/plan.json validates against verifier/plan.schema.json"},
@@ -192,7 +197,12 @@
           "round": 1,
           "project": {"isNew": false, "commands": {"test": "bun test", "preview": "bun run dev"}, "fixtures": ["seeded-tasks"]}
         },
-        "files": {}
+        "files": {
+          "task.json": "../../_shared/evals/tasklist/taskdirs/sort/task.json",
+          "spec.md": "fixtures/due-date-sort/spec.md",
+          "spec-lead.json": "fixtures/due-date-sort/spec-lead.json",
+          "build-report.json": "fixtures/due-date-sort/sort.build-report.json"
+        }
       },
       "answerKey": [
         "AC-4 fails: rubric R2 (and R1) at the mobile viewport, and R7 for the new console error.",

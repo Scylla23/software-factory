@@ -18,7 +18,7 @@ Nothing here has been run yet.
 | `answerKey` | Optional: the defects planted in the case's fixtures. It is for the runner and the judge and is never placed among the agent's inputs. |
 | `expect` | Properties the output must have. Output paths are relative to the run's `outDir`. |
 | `pass` | The rule that turns the checks into pass or fail. |
-| `variants` | Optional: the inputs the case is tried against. Each variant has its own `id`, `input`, and `expect`, and may have `answerKey` and `pass`; the case then has no `input` of its own, and its `expect`, when present, applies to every variant as well. Each variant is run and judged as a case: three runs, all passing. |
+| `variants` | Optional: the inputs the case is tried against. Each variant has its own `id`, `input`, and `expect`, and may have `answerKey` and `pass`; the case then has no `input` of its own, and its `expect`, when present, applies to every variant as well. Run and judge each variant independently. |
 | `controls` | Optional canned responses graded against this case or variant; each named check must exist and fail in every variant to which the control applies. |
 
 ## How a case is judged
@@ -32,7 +32,7 @@ Every `expect` item has a `kind`.
   A judge answer without a supporting quote counts as no.
 
 A case passes when every deterministic check passes and every judge check is answered yes, unless its `pass` field says otherwise.
-Run each case three times; a skill is trusted on a case only when all three runs pass, because a case that passes two times in three hides the failure it was written to catch.
+Run one trial per case or variant and rerun a failure once, following the [testing policy](../../docs/testing-policy.md).
 
 A fixture that stands for an earlier stage's output, such as a previous verdict or build report, uses forty zeros for `baseSha` and forty ones for `headSha`.
 The runner replaces them with the fixture repository's real commit ids before the run.

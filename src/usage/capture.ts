@@ -53,4 +53,4 @@ export function primary(usage: unknown, model: string | null, outcome: string): 
   return summarize([], "unknown", false);
 }
 
-export type RunUsage = Pick<RunResult, "harness" | "runId" | "sessionId" | "requestedModel" | "observedModel" | "usage" | "reportedCostUsd"> & { outcome: RunResult["outcome"] | "uncertain" };
+export type RunUsage = Pick<RunResult, "harness" | "runId" | "sessionId" | "requestedModel" | "observedModel" | "usage" | "reportedCostUsd"> & { promptRevision?: string; outcome: RunResult["outcome"] | "uncertain" };
