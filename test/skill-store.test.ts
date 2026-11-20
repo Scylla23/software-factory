@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { outputDigest } from "../src/dispatch/output";
 import { acceptedCollections, archiveCollection, pinFactoryCommit, readCollection } from "../src/factory/skill-store";
 import { Store, type Issue } from "../src/factory/store";
@@ -23,4 +26,18 @@ test("skill pins survive revisions and collections are atomic, immutable, and st
     store.finish(attempt.id, "accepted");
     expect(acceptedCollections(store.db, t.id)).toEqual([c]);
   } finally { store.db.close(); }
+});
+
+test("the pre-merge skill-only v2 keeps its pinned revision when usage accounting is installed", () => {
+  const dir=mkdtempSync(join(tmpdir(),"factory-v2-"));
+  let s=new Store(join(dir,"state.sqlite"));
+  try {
+    s.db.exec("DROP TABLE feedback_failures; DROP TABLE owner_feedback; DROP TABLE usage_captures; PRAGMA user_version=2");
+    s.db.exec("INSERT INTO tasks(id,source,repo_id,issue_id,issue,state,base,head) VALUES(1,'github',1,1,'{}','done','','')");
+    s.db.run("INSERT INTO skill_tasks(task,factory_commit) VALUES(1,?)",["a".repeat(40)]);
+    s.db.close(); s=new Store(join(dir,"state.sqlite"));
+    expect(s.db.query("PRAGMA user_version").get()).toEqual({user_version:4});
+    expect(s.db.query("SELECT factory_commit FROM skill_tasks").get()).toEqual({factory_commit:"a".repeat(40)});
+    expect(s.db.query("SELECT count(*) AS count FROM usage_captures").get()).toEqual({count:0});
+  } finally {s.db.close();rmSync(dir,{recursive:true,force:true});}
 });

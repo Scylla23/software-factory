@@ -273,7 +273,7 @@ export async function dispatchWorker(
   if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;
   if (result.runId !== attempt.id) throw new Uncertain("worker receipt belongs to another attempt");
-  const failure = workerFailure(result, dir);
+  const failure = dispatchedFailure(result, dir);
   try { await recordUsage(store.db, task, snapshot(), result, stateRoot); }
   catch (cause) {
     if (!failure) throw cause;
@@ -301,7 +301,7 @@ export async function dispatchWorker(
   }
   return reply.output;
 }
-function workerFailure(result: RunResult, dir: string) {
+function dispatchedFailure(result: RunResult, dir: string) {
   if (result.outcome === "failed" && !result.quarantineWorktree && result.resultText?.startsWith("Not logged in"))
     return new WorkerLoginError("factory harness needs its dedicated login");
   if (result.quarantineWorktree || result.outcome === "timed_out")

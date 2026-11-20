@@ -94,7 +94,7 @@ test("a live launcher can take longer than five seconds to claim its attempt", a
   }
 }, 15_000);
 
-test("post-submission byte mismatch survives the supervisor receipt without a ledger or verdict", async () => {
+test("post-submission byte mismatch records interrupted usage without accepting a skill collection or verdict", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "factory-output-receipt-")));
   const s = new Store(":memory:");
   try {
@@ -115,7 +115,7 @@ test("post-submission byte mismatch survives the supervisor receipt without a le
     }
     await expect(dispatchWorker(s,t,a,"reviewer","{}",() => {},root)).rejects.toThrow("skill output integrity escalation: output bytes changed");
     expect(s.db.query("SELECT attempt FROM skill_collections").all()).toEqual([]);
-    expect(s.db.query("SELECT attempt FROM audit").all()).toEqual([]);
+    expect(s.db.query("SELECT outcome FROM audit").all()).toEqual([{outcome:"uncertain"}]);
     expect(s.db.query("SELECT id FROM approvals").all()).toEqual([]);
   } finally { s.db.close(); rmSync(root, {recursive: true, force: true}); }
 });

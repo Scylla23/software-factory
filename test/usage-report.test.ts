@@ -40,12 +40,15 @@ test("interruption, final receipt and replay preserve one audit with the frozen 
   const dispatch = () => dispatchWorker(store,task,a,"builder",j.prompt,() => {},root);
   await expect(dispatch()).rejects.toThrow("supervisor failed");
   expect(costReport(store.db,"task").groups[0]).toMatchObject({ runs:1, tokens:null, apiEquivalentUsd:null });
-  const result = { ...run(j), observedModel:"gpt-6.2-sol", resultText:"ok", quarantineWorktree:false };
-  writeFileSync(join(dir,"result.json"),JSON.stringify({ output:{ result, files:[] } }));
+  const result = { ...run(j), observedModel:"gpt-6.2-sol", resultText:"ok", quarantineWorktree:false, promptRevision:"c".repeat(64), bundleHash:"b".repeat(64) };
+  writeFileSync(join(dir,"result.json"),JSON.stringify({ output:{ result, files:[], collection:{
+    attempt:j.id, base:j.base, head:j.head, role:"builder",round:1,bundleHash:result.bundleHash,
+    files:[{path:"build-report.json",role:"builder",session:result.sessionId,sha256:new Bun.CryptoHasher("sha256").update("{}").digest("hex"),base64:"e30="}],
+  } } }));
   await dispatch();
   await dispatch();
   expect(store.db.query("SELECT * FROM audit").all()).toMatchObject([{ attempt:j.id, task:task.id, stage:"spec_drafting", session:result.sessionId,
-    requested_model:"gpt-6-luna", observed_model:"gpt-6.2-sol", effort:"low", prompt_revision:new Bun.CryptoHasher("sha256").update("fixture").digest("hex"),
+    requested_model:"gpt-6-luna", observed_model:"gpt-6.2-sol", effort:"low", prompt_revision:result.promptRevision,
     base:j.base,head:j.head,outcome:"completed" }]);
   expect(costReport(store.db,"stage").groups).toMatchObject([{ stage:"spec_drafting",runs:1,tokens:120 }]);
   expect(costReport(store.db,"project").groups).toMatchObject([{ project:"Scylla23/factory-pilot",runs:1,tokens:120 }]);
@@ -130,10 +133,10 @@ for (const [name, elapsed, pid, message] of [
   ["missing launcher", 5_001, undefined, "worker startup is uncertain"],
   ["disappeared worker", 5_001, 2_147_483_647, "unsettled worker disappeared"],
 ] as const) test("dispatch records uncertain usage for " + name, async () => {
-  const attempt = store.plan(task, "dispatch-spec", {});
+  const attempt = store.plan(task, "dispatch-triage", {});
   const clock = spyOn(Date, "now").mockReturnValueOnce(1000).mockReturnValue(1000 + elapsed);
   try {
-    const error = await dispatchWorker(store,task,attempt,"spec","probe",() => {},root,() => pid).catch(e => e);
+    const error = await dispatchWorker(store,task,attempt,"triage","{}",() => {},root,() => pid).catch(e => e);
     expect(error).toBeInstanceOf(Uncertain);
     expect(error.message).toContain(message);
     expect(store.db.query("SELECT attempt,outcome FROM audit").all()).toEqual([{ attempt:attempt.id, outcome:"uncertain" }]);

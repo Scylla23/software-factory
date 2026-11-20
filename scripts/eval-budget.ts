@@ -1,6 +1,7 @@
 // This database belongs to the approved evaluation batch, separate from factory tasks and production usage.
 import { chmodSync } from "node:fs";
 import { Database } from "bun:sqlite";
+import { primary } from "../src/usage/capture";
 import type { ClaudeUsage } from "../src/dispatch/types";
 
 export const batchLimit = { input: 800_000, output: 120_000 } as const;
@@ -77,14 +78,10 @@ export class EvalBudget {
   }
   settle(id: string, usage: ClaudeUsage | null, outcome: string) {
     if (!usage || !Object.keys(usage.byModel).length) throw new Error("unmeasured Claude session; batch stopped");
-    let input = 0,
-      output = 0;
-    for (const u of Object.values(usage.byModel)) {
-      const counts = [u.inputTokens, u.cacheReadInputTokens, u.cacheCreationInputTokens, u.outputTokens];
-      if (!counts.every((v) => Number.isSafeInteger(v) && v >= 0)) throw new Error("invalid Claude usage; batch stopped");
-      input += u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens;
-      output += u.outputTokens;
-    }
+    const capture = primary(usage,null,outcome);
+    if (capture.coverage !== "complete") throw new Error("invalid Claude usage; batch stopped");
+    const input = capture.lines.reduce((sum,u) => sum + u.input + u.cacheRead + (u.cacheWrite ?? 0), 0);
+    const output = capture.lines.reduce((sum,u) => sum + u.output, 0);
     if (!Number.isSafeInteger(input) || !Number.isSafeInteger(output) || input === 0)
       throw new Error("incomplete Claude usage; batch stopped");
     if (
