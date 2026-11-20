@@ -41,6 +41,25 @@ test("judges cannot reserve an unapproved model and overshoot stops even an inex
   }
 });
 
+test("the owner's $5 completion allowance persists and cannot reset after a budget stop", () => {
+  const ledger = new DollarBudget(":memory:");
+  const reserve = (id: string) => ledger.reserve(id, id, id, "judge", "claude-sonnet-5-5");
+  try {
+    reserve("prior");
+    ledger.db.run("INSERT INTO batch_stop VALUES(1,?)", ["owner handover: no new sessions"]);
+    expect(() => ledger.activateCompletionBudget()).toThrow("unsettled");
+    ledger.settle("prior", usage(18), "completed");
+    expect(ledger.activateCompletionBudget()).toBe(23);
+    reserve("new");
+    ledger.settle("new", usage(4.9), "completed");
+    expect(() => reserve("over")).toThrow("dollar stop");
+    expect(ledger.activateCompletionBudget()).toBe(23);
+    expect(() => reserve("still stopped")).toThrow("dollar stop");
+  } finally {
+    ledger.db.close();
+  }
+});
+
 test("team notification accounting joins the same session, index and unchanged model charge", async () => {
   const { repeatedTeamCharge } = await import("../scripts/eval-measurements");
   const session = crypto.randomUUID(),

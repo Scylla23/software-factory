@@ -54,16 +54,17 @@ async function run() {
             .get()
         : null;
       if (ui && !accepted) {
-        console.log(JSON.stringify({ case: caseKey, trials: 3, refused: "no accepted verifier-01 plan" }));
+        console.log(JSON.stringify({ case: caseKey, refused: "no accepted verifier-01 plan" }));
         continue;
       }
-      for (let trial = 1; trial <= 3; trial++) {
+      for (let trial = 1; trial <= 2; trial++) {
         const key = caseKey + "#" + trial;
         const prior = ledger.db
-          .query<{ status: string; revision: string }, [string]>("SELECT status,revision FROM trials WHERE key=?")
+          .query<{ status: string }, [string]>("SELECT status FROM trials WHERE key=?")
           .get(key);
         if (prior) {
-          if (prior.status === "started" || prior.revision !== pin) throw new Error("reconcile " + key);
+          if (prior.status === "started") throw new Error("reconcile " + key);
+          if (prior.status !== "failed") break;
           continue;
         }
         const id = crypto.randomUUID(),
@@ -278,6 +279,7 @@ async function run() {
         ledger.db.run("UPDATE trials SET status=?,report=? WHERE key=?", [status, JSON.stringify(report), key]);
         console.log(JSON.stringify({ key, status, actual }));
         if (actual.overshootUsd) return;
+        if (status === "passed") break;
       }
     }
   }

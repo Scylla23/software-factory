@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { config } from "../factory.config";
 import { assertPrivateDir, loadDispatchConfig } from "../src/dispatch/config";
 import { judgeGrades, parseJudgeGrades } from "./batch-one-cases";
@@ -18,13 +18,22 @@ const load = (dir: string, name: string) => JSON.parse(readFileSync(join(dir, na
 try {
   const origin = process.argv[2];
   if (origin !== "1" && origin !== "2") throw new Error("choose the batch containing the frozen submissions");
+  const trial = Number(process.argv[3] ?? "1");
+  if (process.argv.length > 4 || (trial !== 1 && trial !== 2)) throw new Error("choose trial 1 or 2");
   const contestants = join(evals, "v1-step-4b-batch-" + origin, "codex");
   for (const entry of readdirSync(contestants).sort()) {
     const source = join(contestants, entry);
     if (!existsSync(join(source, "grade-v2.json"))) continue;
     assertPrivateDir(source, dispatch.stateRoot);
     const grade = load(source, "grade-v2.json");
-    if (grade.status !== "unjudged" || !Object.values(grade.deterministic).every((v) => v === true)) continue;
+    if (grade.trial !== trial || grade.status !== "unjudged" || !Object.values(grade.deterministic).every((v) => v === true)) continue;
+    if (trial === 2) {
+      const first = entry.replace(/-2(?=-[a-f0-9]{12}$|$)/, "-1");
+      const result = ["result-v2.json", "result.json"].map(name => join(root, "judge-" + origin + "-" + first, name)).find(existsSync);
+      const firstGrade = join(contestants, first, "grade-v2.json");
+      if (result ? load(dirname(result), basename(result)).passed !== false
+        : !existsSync(firstGrade) || load(dirname(firstGrade), "grade-v2.json").status !== "failed") continue;
+    }
     const destination = join(root, "judge-" + origin + "-" + entry);
     if (existsSync(join(destination, "result-v2.json"))) continue;
     const setup = load(source, "start.json"),
@@ -54,7 +63,10 @@ try {
     if (existsSync(destination)) throw new Error("incomplete prior judge, reconcile before retry: " + entry);
     mkdirSync(destination, { mode: 0o700 });
     const decision = await judge(ledger, setup, destination, packet.checks, packet.candidate, packet.fixtures);
-    if (decision.status === "stopped") break;
+    if (decision.status === "stopped") {
+      rmdirSync(destination);
+      break;
+    }
     const checks = judgeGrades(
       decision.grades,
       packet.checks,
