@@ -558,6 +558,29 @@ test("scratch dependency setup sees the registry proxy only during setup and lea
   expect(readdirSync(env.logDir).sort()).toEqual([id + ".scratch-egress.log", id + ".scratch-setup-0.log"]);
 });
 
+test("dependency setup cannot write discovery files in a writable checkout", async () => {
+  const scratch = join(env.home, "scratch");
+  mkdirSync(scratch);
+  const checkout = makeRepo(scratch, "repo", [{"AGENTS.md": "factory instructions"}]);
+  mkdirSync(join(checkout.path, ".claude"));
+  const id = crypto.randomUUID();
+  const script = [
+    "(echo replaced > AGENTS.md)",
+    "(echo planted > .claude/x)",
+    "echo installed > setup-ran",
+  ].join("\n");
+  await prepareAgentCheckout(env.config, {
+    id, checkout: checkout.path, scratch, logDir: env.logDir, setupTimeoutMs: 10_000,
+    commands: {setup: [["/bin/sh", "-c", script]], egress: []},
+  });
+  expect(readFileSync(join(checkout.path, "setup-ran"), "utf8")).toBe("installed\n");
+  expect(readFileSync(join(checkout.path, "AGENTS.md"), "utf8")).toBe("factory instructions");
+  expect(existsSync(join(checkout.path, ".claude/x"))).toBe(false);
+  const log = readFileSync(join(env.logDir, id + ".scratch-setup-0.log"), "utf8");
+  for (const target of ["AGENTS.md", ".claude/x"])
+    expect(log.split("\n").some(line => line.includes(target) && /operation not permitted|permission denied/i.test(line))).toBe(true);
+});
+
 test("builder installs local tools before dispatch and runs both registered scripts without network", async () => {
   const checkout = makeRepo(env.repos, "builder", [{
     "package.json": JSON.stringify({ scripts: { lint: "local-check lint", typecheck: "local-check typecheck" } }),

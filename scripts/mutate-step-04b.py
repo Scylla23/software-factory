@@ -38,6 +38,7 @@ MUTANTS = [
     ("claude", "skill-policy", "policy.discoveryRoots ? discoveryGlobs", "false ? discoveryGlobs"),
     ("brief", "skill-brief", '), "Read", "Edit", "Write", "Glob", "Grep"]', '), "Bash", "Read", "Edit", "Write", "Glob", "Grep"]'),
     ("../factory/worker", "factory-worker", "isDiscoveryPath(path) ||", "false ||"),
+    ("../verify/preview", "verify-preview:dependency setup cannot write discovery", "protectDiscovery: true", "protectDiscovery: false"),
     ("broker", "skill-broker", "protectDiscovery:true", "protectDiscovery:false"),
     ("home-proof", "home-proof", 'child.effort === "medium"', "true"),
     ("home-proof", "home-proof", 'child.model === "claude-sonnet-5-5"', "true"),
@@ -95,8 +96,12 @@ MUTANTS = [
 
 
 def run(directory, test):
+    filename, _, pattern = test.partition(":")
+    args = ["bun", "test", f"test/{filename}.test.ts"]
+    if pattern:
+        args.extend(["--test-name-pattern", pattern])
     return subprocess.run(
-        ["bun", "test", f"test/{test}.test.ts"], cwd=directory,
+        args, cwd=directory,
         capture_output=True, text=True, timeout=60,
     )
 
