@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { brokerCommands } from "../src/dispatch/broker";
 import { reviewChecks } from "../scripts/eval-review-checks";
 
 const expected = {
@@ -17,6 +18,9 @@ test("review eval approvals join both revisions and require an observed test", (
   expect(reviewChecks(key, verdict, expected, true, true)).toMatchObject({ identity: true, "ran-tests": true, coverage: true });
   expect(reviewChecks(key, { ...verdict, covers: { ...expected, headSha: "old" } }, expected, true, false))
     .toMatchObject({ identity: false, "ran-tests": false });
+  const broker = { ...verdict, checks: { ...verdict.checks, commands: [{ command: brokerCommands().test!, exitCode: 0 }] } };
+  expect(reviewChecks(key, broker, expected, true, true)).toMatchObject({ "ran-tests": true });
+  expect(reviewChecks(key, broker, expected, true, false)).toMatchObject({ "ran-tests": false });
 });
 
 test("the deletion variant requires a blocking test finding and credits the unchanged behavior", () => {
