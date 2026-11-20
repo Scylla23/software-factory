@@ -53,7 +53,7 @@ export function prepareBroker(dirs: AttemptDirectories, dispatch: DispatchConfig
   const args = ["-i","PATH=/usr/bin:/bin","/bin/sh","-c",'cd "$1" && exec "$2" "$3" "$4"',"broker",
     logDir,realpathSync(process.execPath),import.meta.path,manifestPath];
   writeFileSync(mcpPath,JSON.stringify({mcpServers:{factory:{type:"stdio",command:"/usr/bin/env",args}}}),{flag:"wx",mode:0o400});
-  return {mcpPath,manifestPath};
+  return {mcpPath,manifestPath,runTest: () => runCheck(manifest,"test")};
 }
 
 async function runCheck(m: Manifest, name: Operation) {

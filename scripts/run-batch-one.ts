@@ -18,13 +18,15 @@ import { EvalBudget } from "./eval-budget";
 import { caseInput, stageBlindInputs } from "./eval-inputs";
 import { evalCheckout, pinnedFixture } from "./eval-checkout";
 import { plantPilot } from "./eval-pilot";
+import { probePersonalSources } from "./probe-personal-sources";
+import { verifiedPersonalProbe } from "../src/dispatch/home-proof";
 import { runHomeProofs } from "./run-home-proofs";
 import { runCodexJudge } from "./eval-codex-judge";
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const git = dispatch.executables.git,
   factory = realpathSync(join(import.meta.dir, ".."));
-const pin = runGit(git, factory, ["rev-parse", "HEAD"]).toString().trim();
+const pin = runGit(git, factory, ["log", "-1", "--format=%H", "HEAD", "--", "skills"]).toString().trim();
 const dry = process.argv[2] === "--preflight";
 if (process.argv.slice(2).some((a) => a !== "--preflight")) throw new Error("only --preflight is accepted");
 const batch = join(dispatch.stateRoot, "evaluations", "v1-step-4b-batch-1");
@@ -67,9 +69,8 @@ async function inspectBlindStream(stdoutPath: string, canary: string, worktree: 
 
 async function batchOne() {
   if (!dry) for (const h of ["claude", "codex"] as const) {
-    const home=runHomeProofs(h,dispatch);
-    console.log(JSON.stringify(home));
-    if(h==="claude" && !home.failures?.includes("claude proof credential not provisioned")) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
+    if (!verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(await probePersonalSources(h,dispatch)));
+    if (h === "claude" && verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
   }
 
   let skipped = 0;

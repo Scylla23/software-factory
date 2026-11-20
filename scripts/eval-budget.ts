@@ -18,6 +18,7 @@ export class EvalBudget {
     this.db = new Database(path);
     if (path !== ":memory:") chmodSync(path, 0o600);
     this.db.exec(`PRAGMA busy_timeout=5000;
+      CREATE TABLE IF NOT EXISTS batch_stop (id INTEGER PRIMARY KEY CHECK(id=1), reason TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS trials (key TEXT PRIMARY KEY, revision TEXT NOT NULL, id TEXT NOT NULL, status TEXT NOT NULL, report TEXT);
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY, trial TEXT NOT NULL, case_key TEXT NOT NULL, model TEXT NOT NULL,
@@ -37,6 +38,7 @@ export class EvalBudget {
   reserve(id: string, trial: string, key: string, kind: string, model: string, register?: { revision: string; id: string }) {
     this.db.exec("BEGIN IMMEDIATE");
     try {
+      if (this.db.query("SELECT id FROM batch_stop").get()) throw new Error("batch token stop rule reached");
       const fallback = initial[kind];
       const approvedModel = kind === "judge" || kind === "triage" ? "claude-sonnet-5-5" : "claude-opus-5-5";
       if (!fallback || !Object.hasOwn(initial, kind) || model !== approvedModel)
@@ -50,8 +52,11 @@ export class EvalBudget {
         .get(key)!;
       const input = prior.i ?? fallback.input,
         output = prior.o ?? fallback.output;
-      if (total.input + input > batchLimit.input || total.output + output > batchLimit.output)
+      if (total.input + input > batchLimit.input || total.output + output > batchLimit.output) {
+        this.db.run("INSERT INTO batch_stop VALUES(1,?)", [key]);
+        this.db.exec("COMMIT");
         throw new Error("batch token stop rule reached");
+      }
       this.db.run("INSERT INTO sessions(id,trial,case_key,model,estimate_input,estimate_output) VALUES(?,?,?,?,?,?)", [
         id,
         trial,
@@ -66,7 +71,7 @@ export class EvalBudget {
       this.db.exec("COMMIT");
       return { maxTurns: fallback.turns, maxUsd: Math.max(0.01, Math.ceil((input * rate.i + output * rate.o) / 10000) / 100) };
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      if (this.db.inTransaction) this.db.exec("ROLLBACK");
       throw error;
     }
   }
@@ -93,6 +98,7 @@ export class EvalBudget {
     )
       throw new Error("unknown or settled Claude evaluation session");
     const actual = this.totals();
+    if (actual.input > batchLimit.input || actual.output > batchLimit.output) this.db.run("INSERT OR IGNORE INTO batch_stop VALUES(1,?)", [id]);
     return {
       ...actual,
       overshootInput: Math.max(0, actual.input - batchLimit.input),
