@@ -31,7 +31,10 @@ The run brief's `stage` is your mode, and the mode decides where the worktree st
 | `repair` | `headSha`: your earlier work, committed by the factory, exactly as it was reviewed. | `headSha` | `previous.buildReport`, `previous.findings` (every verdict, failed check, and verification result that sent the work back), and `previous.ownerFeedback` when the owner commented. |
 | `resume` | `headSha`: your partial work plus the dependency the factory installed, committed by the factory. | `headSha` | `previous.buildReport`, whose `install-needed` blocker this run continues from. |
 
-Confirm with `git rev-parse HEAD` that the worktree is at that commit and clean before you change anything, and stop under Blocked runs if it is not.
+Before editing, confirm that `git rev-parse HEAD` matches the expected input SHA.
+Use the trusted run brief's `cleanCheckoutAt` as the factory's Git status result for that SHA.
+The factory checks tracked and untracked files after setup, including protected instruction files that the sandbox hides from Git.
+If either SHA differs or the factory's clean result is missing, stop under Blocked runs.
 A repair never starts over from base: the reviewed diff is the thing being repaired.
 
 ## Order of authority
