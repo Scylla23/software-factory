@@ -43,3 +43,10 @@ test("frontend and threat tables must link their own named rows", () => {
     "high-verified": false,
   });
 });
+
+test("architect citations distinguish code paths from qualified identifiers", () => {
+  const doc = "Use `tasks.assignee` and `db.exec`. Read `src/view.ts` and create `src/new.ts`.";
+  expect(grade("architect", doc, "cites-code")["cites-code"]).toBe(true);
+  expect(grade("architect", doc.replace("create", "reuse"), "cites-code")["cites-code"]).toBe(false);
+  expect(grade("architect", doc.replace("src/view.ts", "missing.ts"), "cites-code")["cites-code"]).toBe(false);
+});
