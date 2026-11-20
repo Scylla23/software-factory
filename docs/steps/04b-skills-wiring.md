@@ -566,3 +566,80 @@ The testing cleanup resumed evals before the coordinator narrowed its scope.
 The coordinator's scope change stopped the database auditor's in-flight third case before judgment and restored the owner hold on further sessions.
 The private ledger has zero unsettled charges and records $2.524338 of additional Claude API-equivalent spend after the original handover.
 The private receipts include completed Codex and Claude judgments, four code-review variants, two database-auditor variants, and the interrupted database-auditor attempt.
+
+
+## Final eval results
+
+Of 44 case variants, 25 passed, five failed on both the first trial and retry, one ended without a submission, and 13 were deferred.
+The result column uses the first valid trial and one retry after failure.
+The spend columns include every recorded contestant and judge session, including historical extra trials, native team members and invalid fixtures.
+The costs are in API-equivalent USD and sum the displayed five-decimal session charges, so rounding can affect the last digits.
+The corrected solo lead, spec-reviewer creation target and revision fixtures use their previously recorded results.
+
+| Case or variant | First trial / failure retry | Claude USD | Codex USD |
+| --- | --- | ---: | ---: |
+| triage-01-single-area-bug | pass | 0.17031 | 0.19685 |
+| triage-02-schema-change-called-tiny | pass | 0.14571 | 0.23121 |
+| triage-03-injected-instructions | pass | 0.18075 | 0.00000 |
+| builder-01-bug-reproduce-first | pass | 0.08551 | 0.42930 |
+| builder-02-security-criteria | pass | 0.14445 | 0.61882 |
+| builder-03-repair-fix-and-dispute | pass | 0.14820 | 0.53612 |
+| spec-lead-01-draft-and-revise/bug-reproduce-first | pass | 1.53132 | 0.33511 |
+| spec-lead-01-draft-and-revise/revision-answers-both-reviewers | pass | 1.35138 | 0.35035 |
+| spec-lead-02-tier-promotion-runs-team | fail / fail | 3.09227 | 0.00000 |
+| spec-lead-03-ac-changing-conflict-escalates | fail / fail | 8.20708 | 0.00000 |
+| spec-reviewer-01-planted-defects/four-defects | pass | 0.04047 | 1.54108 |
+| spec-reviewer-01-planted-defects/requirement-moved-to-non-goals | fail / pass | 0.08033 | 1.38393 |
+| spec-reviewer-02-clean-spec-approves/bug-spec | pass | 0.02611 | 1.18322 |
+| spec-reviewer-02-clean-spec-approves/plan-creates-a-file | pass | 0.00000 | 1.83238 |
+| spec-reviewer-03-revision-breaks-something-else | pass | 0.04348 | 1.33760 |
+| security-auditor-01-cross-user-access-in-diff | fail / fail | 0.09377 | 0.93168 |
+| security-auditor-02-safe-diff-approves | pass | 0.04072 | 0.45789 |
+| security-auditor-03-spec-stage/lead-dropped-a-mitigation | pass | 0.09864 | 1.20877 |
+| security-auditor-03-spec-stage/revision-edits-only-the-threat-model | pass | 0.05074 | 2.65272 |
+| code-reviewer-01-good-fix-approves | pass | 0.35585 | 0.06642 |
+| code-reviewer-02-untested-unmet-criterion | pass | 0.31840 | 0.07212 |
+| code-reviewer-03-test-integrity/undeclared-skip | pass | 0.28514 | 0.07792 |
+| code-reviewer-03-test-integrity/declared-deletion | pass | 0.26421 | 0.14540 |
+| database-auditor-01-unsafe-migration | pass | 0.47807 | 0.08161 |
+| database-auditor-02-safe-migration-approves | pass | 0.39466 | 0.07302 |
+| database-auditor-03-edited-applied-migration | failed: no submission, retry deferred | 0.18687 | 0.00000 |
+| architect-01-new-project | pass | 1.25121 | 0.21903 |
+| architect-02-split-temptation | pass | 0.98031 | 0.25304 |
+| architect-03-existing-project-delta | fail / fail | 1.54668 | 0.25600 |
+| verifier-01-plan-by-tag | pass | 0.17016 | 0.13834 |
+| verifier-02-judge-test-evidence/missing-and-contrary-evidence | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| verifier-02-judge-test-evidence/stale-evidence | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| verifier-02-judge-test-evidence/base-fails-for-the-wrong-reason | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| verifier-02-judge-test-evidence/sound-evidence | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| verifier-03-judge-ui-capture | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| frontend-01-new-project | fail / fail | 0.73213 | 0.14192 |
+| frontend-02-palette-and-ai-surface | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| frontend-03-gap-not-substitute | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| infra-01-new-project | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| infra-02-catalog-gap | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| infra-03-existing-project-wins | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| threat-modeler-01-per-user-data | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| threat-modeler-02-mitigation-changes-criteria | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+| threat-modeler-03-small-flagged-task | not run under the step 4b Claude cap; covered by the pilot and real use | 0.00000 | 0.00000 |
+
+The two batch reports reconcile to $39.24679 across both vendors, approximately $22.49495 Claude and $16.75184 Codex.
+The original handover had already spent about $18.93 on Claude.
+Of the additional $5.00, the cleanup used $2.524338 and the resumed run used $1.036786, leaving $1.438876 under the ledger's conservative rounding.
+The first paid session in this dispatch reserved $0.15 for a Sonnet-low judgment.
+Both Sonnet-high specialist cases, including the one frontend retry, reserved $1.00 before each launch.
+The owner ended the authorized case list after frontend-01, with zero pending reservations.
+The unrun disposition records the owner's coverage plan and gives those variants no passing grade. [Deferred variants, #49](https://github.com/Scylla23/software-factory/issues/49)
+
+- Both Codex security-auditor inputs passed all deterministic checks on the first trial.
+  The planted defect trial and retry both failed the Sonnet judge's requirement to quote evidence for each blocking finding.
+  The clean diff passed its judgment.
+  These code-stage trials used static source evidence and the registered test suite.
+- The native lead promotion and conflict trials retain their recorded failures for the handoff and repeated result events. [Native handoff follow-up, #47](https://github.com/Scylla23/software-factory/issues/47)
+- The interrupted database-auditor session emitted no final file write and saved no authenticated verdict or grading packet.
+  Its $0.18687 charge was already included in the cleanup spend.
+- The corrected architect citation check still failed on all three historical frozen submissions when applied to each saved source inventory.
+- The verifier plan passed all ten deterministic checks and its Codex judgment.
+  Frontend failed the route and per-screen state checks twice, and the retry also failed the viewport check.
+- Step 3 already dispatched the triage, spec-lead, builder and code-reviewer skills through its normal worker.
+  The remaining functions in `src/factory/prompts.ts` serialize observations for the staged attachments.
