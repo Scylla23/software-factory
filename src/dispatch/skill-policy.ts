@@ -1,4 +1,4 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { SYSTEM_READ } from "../verify/sandbox";
 import type { AttemptDirectories } from "./attempt";
@@ -28,7 +28,11 @@ export function skillPolicy(
     if (!binaryRoots.includes(path) && deny.some(d => path === d || path.startsWith(d + "/")))
       throw new Error(`skill read root inside a mandatory denial: ${path}`);
   }
-  const denyWrite = [...new Set([...gitDirs, dirs.skillsDir, dirs.taskDir, ...(builder ? [] : [dirs.worktree])])];
+  const dependencies = join(dirs.worktree, "node_modules");
+  const installed = builder && existsSync(dependencies);
+  if (installed && (!lstatSync(dependencies).isDirectory() || realpathSync(dependencies) !== dependencies))
+    throw new Error("installed tools must be inside the builder worktree");
+  const denyWrite = [...new Set([...(installed ? [dependencies] : []), ...gitDirs, dirs.skillsDir, dirs.taskDir, ...(builder ? [] : [dirs.worktree])])];
   const discoveryRoots = [dirs.worktree, dirs.outDir, dirs.scratchDir, dirs.skillsDir, dirs.taskDir];
   if (discoveryRoots.some(root => /[?*\[\]{}\\]/.test(root))) throw new Error("workspace cannot be represented by a literal discovery root");
   for (const root of discoveryRoots) checkDiscoverySources(root);

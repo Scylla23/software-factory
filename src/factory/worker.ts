@@ -34,7 +34,7 @@ import { archiveCollection, pinFactoryCommit, type Collection } from "./skill-st
 import { expectedFiles, skillInputs, skillRoles, stageInputs } from "./skill-inputs";
 import { brokerCommands } from "../dispatch/broker";
 import { InvalidSkillOutput, validateSkillOutput } from "./skill-validation";
-import { loadVerifyConfig, prepareScratchRepo } from "../verify/preview";
+import { loadVerifyConfig, prepareAgentCheckout } from "../verify/preview";
 import { AgentFailed, Uncertain } from "./machine";
 
 type Role = keyof typeof config.agents;
@@ -116,12 +116,17 @@ async function work(id: string) {
       attemptId: id, role: job.input.role, stage: job.input.stage });
     try {
       if (!wt) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.worktree);
-      if (dirs.scratchRepo) {
-        checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.scratchRepo);
+      if (dirs.scratchRepo) checkoutSnapshot(dispatch.executables.git, config.pilot.path, job.input.inputSha, dirs.scratchRepo);
+      const setupCheckout = wt?.path ?? dirs.scratchRepo;
+      if (setupCheckout) {
+        const pinned = runGit(dispatch.executables.git, setupCheckout, ["rev-parse", "HEAD"]).toString().trim();
+        if (pinned !== job.input.inputSha) throw new Uncertain("dependency checkout does not match intended skill input");
         const verify = loadVerifyConfig(dispatch, {toolDirs: config.pilot.toolDirs, toolRoots: config.pilot.toolDirs, agentWriteRoots: [config.workspaceRoot]});
-        try { await prepareScratchRepo(verify, {id, checkout: dirs.scratchRepo, scratch: dirs.scratchDir, logDir: dir, commands: config.pilot.commands}); }
-        catch (error) { throw new Uncertain("scratch setup requires inspection: " + (error as Error).message); }
+        try { await prepareAgentCheckout(verify, {id, checkout: setupCheckout, scratch: dirs.scratchDir, logDir: dir,
+          ...(wt ? {builderWorkspaceRoot: config.workspaceRoot} : {}), commands: config.pilot.commands}); }
+        catch (error) { throw new Uncertain("dependency setup requires inspection: " + (error as Error).message); }
         finally { verify.egress.close(); }
+        if (wt && changes(wt.path).length) throw new Uncertain("dependency setup changed builder source files");
       }
       const current = runGit(dispatch.executables.git, dirs.worktree, ["rev-parse", "HEAD"]).toString().trim();
       if (current !== job.input.inputSha) throw new Uncertain("checkout does not match intended skill input");

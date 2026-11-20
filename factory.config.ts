@@ -34,8 +34,8 @@ export const config = {
       readyPath: "/health",
       portRange: [4100, 4199],
       test: ["bun", "test"],
-      lint: ["bun", "run", "lint"],
-      typecheck: ["bun", "run", "typecheck"],
+      lint: ["node", "--run", "lint"],
+      typecheck: ["node", "--run", "typecheck"],
     },
     fixtures: {
       inventory: {

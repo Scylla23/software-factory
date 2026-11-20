@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { config } from "../factory.config";
+import { createAttempt } from "../src/dispatch/attempt";
+import { agentEnv, effectiveDenyRead } from "../src/dispatch/policy";
+import { skillPolicy } from "../src/dispatch/skill-policy";
+import { codexConfigArgs, codexReadable } from "../src/dispatch/codex";
 import { Readable } from "node:stream";
 import { join } from "node:path";
-import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, prepareScratchRepo, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
+import { copyCapped, listenerOwnership, MAX_LOG_BYTES, type Preview, PreviewError, type PreviewSpec, prepareAgentCheckout, reserveAttempt, startPreview, tail, toolchainRoots, waitReady } from "../src/verify/preview";
 import { portIsFree } from "../src/verify/port";
 import { gone } from "./helpers";
 import { bounded, BUN_DIR, makeRepo, makeVerifyEnv, probingServerSource, serverSource, settlingTest, spawnBounded, type VerifyEnv } from "./verify-helpers";
@@ -532,10 +537,51 @@ test("scratch dependency setup sees the registry proxy only during setup and lea
   mkdirSync(scratch);
   const checkout = makeRepo(scratch, "repo", [{"source.txt": "pinned"}]);
   const id = crypto.randomUUID();
-  await prepareScratchRepo(env.config, {id, checkout: checkout.path, scratch, logDir: env.logDir,
+  await prepareAgentCheckout(env.config, {id, checkout: checkout.path, scratch, logDir: env.logDir,
     commands: {setup: [["/bin/sh", "-c", 'test -n "$HTTPS_PROXY" && echo prepared > setup-ran']], egress: ["registry.npmjs.org"]}});
   expect(readFileSync(join(checkout.path, "source.txt"), "utf8")).toBe("pinned");
   expect(readFileSync(join(checkout.path, "setup-ran"), "utf8")).toBe("prepared\n");
   expect(existsSync(join(scratch, "setup-home"))).toBe(false);
   expect(readdirSync(env.logDir).sort()).toEqual([id + ".scratch-egress.log", id + ".scratch-setup-0.log"]);
 });
+
+test("builder installs local tools before dispatch and runs both registered scripts without network", async () => {
+  const checkout = makeRepo(env.repos, "builder", [{
+    "package.json": JSON.stringify({ scripts: { lint: "local-check lint", typecheck: "local-check typecheck" } }),
+  }]);
+  const id = crypto.randomUUID();
+  const dirs = createAttempt({ accountHome: env.home, stateRoot: env.stateRoot, runRoot: join(env.home, "runs"),
+    project: checkout.path, attemptId: id, role: "builder", stage: "build" });
+  const setup = [
+    'test -n "$HTTPS_PROXY"',
+    'if (echo changed > .git/setup-write) 2>/dev/null; then exit 1; fi',
+    'mkdir -p node_modules/.bin',
+    `printf '%s\\n' '#!/bin/sh' 'test -z "$HTTPS_PROXY" && echo "installed $1"' > node_modules/.bin/local-check`,
+    'chmod +x node_modules/.bin/local-check',
+  ].join("\n");
+  await prepareAgentCheckout({...env.config, untrustedRoots: [...env.config.untrustedRoots, env.repos]}, {
+    id, scratch: dirs.scratchDir, checkout: dirs.worktree, builderWorkspaceRoot: env.repos, logDir: env.logDir,
+    commands: {setup: [["/bin/sh", "-ec", setup]], egress: []},
+  });
+  const cli = Bun.which("codex")!;
+  const harnessHome = join(env.home, "codex-home");
+  mkdirSync(harnessHome, {mode: 0o700});
+  const deny = effectiveDenyRead({accountHome: env.home, stateRoot: env.stateRoot, harnessHomes: [harnessHome]});
+  const policy = skillPolicy(dirs, deny, config.pilot.toolDirs, codexReadable(cli, deny), "/usr/bin/git");
+  const childEnv = agentEnv({}, {harness: "codex", harnessHome, accountHome: env.home,
+    trustedPath: [...config.pilot.toolDirs, "/usr/bin", "/bin"].join(":")});
+  const run = (argv: readonly string[]) => Bun.spawnSync([cli, "sandbox", "-P", "factory", ...codexConfigArgs(policy), "--", ...argv],
+    {cwd: dirs.worktree, env: childEnv, timeout: 10_000});
+  for (const name of ["lint", "typecheck"] as const) {
+    const result = run(config.pilot.commands[name]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString().trim()).toBe("installed " + name);
+  }
+  expect(run(["/bin/sh", "-c", "echo x >node_modules/.bin/local-check"]).exitCode).not.toBe(0);
+  expect(run(["/bin/cat", join(env.home, ".ssh/id_test")]).exitCode).not.toBe(0);
+  const listener = Bun.listen({hostname: "127.0.0.1", port: 0, socket: {data() {}}});
+  try {
+    const result = run(["node", "-e", `require("net").connect(${listener.port},"127.0.0.1").on("connect",()=>process.exit(1)).on("error",e=>console.log(e.code))`]);
+    expect(result.stdout.toString().trim()).toBe("EPERM");
+  } finally { listener.stop(true); }
+}, 30_000);

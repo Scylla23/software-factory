@@ -329,12 +329,18 @@ export function reserveAttempt(config: Pick<VerifyConfig, "stateRoot" | "untrust
   return dir;
 }
 
-/** Prepare dependencies in the reviewer's disposable checkout before any harness starts. */
-export async function prepareScratchRepo(config: VerifyConfig, input: {
-  id: string; checkout: string; scratch: string; logDir: string; commands: Pick<ProjectCommands, "setup" | "egress">;
+/** Install in the pinned reviewer copy or the assigned builder worktree before dispatch. */
+export async function prepareAgentCheckout(config: VerifyConfig, input: {
+  id: string; checkout: string; scratch: string; builderWorkspaceRoot?: string; logDir: string; commands: Pick<ProjectCommands, "setup" | "egress">;
 }) {
-  if (!UUID.test(input.id) || realpathSync(input.scratch) !== input.scratch || realpathSync(input.checkout) !== join(input.scratch, "repo"))
-    throw new Error("invalid scratch checkout");
+  const { checkout, scratch, builderWorkspaceRoot } = input;
+  if (!UUID.test(input.id) || realpathSync(scratch) !== scratch || realpathSync(checkout) !== checkout)
+    throw new Error("invalid setup location");
+  if (builderWorkspaceRoot !== undefined) {
+    if (realpathSync(builderWorkspaceRoot) !== builderWorkspaceRoot || !config.untrustedRoots.includes(builderWorkspaceRoot) ||
+        checkout === builderWorkspaceRoot || !isUnder(checkout, builderWorkspaceRoot) || isUnder(checkout, scratch) || isUnder(scratch, checkout))
+      throw new Error("invalid builder checkout");
+  } else if (checkout !== join(scratch, "repo")) throw new Error("invalid scratch checkout");
   checkDiscoverySources(input.checkout);
   assertEgressHosts(input.commands.egress);
   const home = join(input.scratch, "setup-home");
@@ -354,7 +360,7 @@ export async function prepareScratchRepo(config: VerifyConfig, input: {
       const run = spawnSandboxed(config, policy, argv, input.checkout, env, dest.fd, 120_000);
       try {
         const result = await run.supervised;
-        const sweep = await settle(config, result.unverified, [input.scratch]);
+        const sweep = await settle(config, result.unverified, builderWorkspaceRoot ? [checkout, scratch] : [scratch]);
         if (result.stopped || result.status?.code !== 0 || !sweep.noKnownSurvivors || sweep.quarantineReasons.length)
           throw new Error("scratch dependency setup failed or left processes, see " + dest.path);
       } finally { await closeOutput(run); }
