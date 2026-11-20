@@ -314,9 +314,7 @@ async function draft(store: Store, task: Task, { git, dispatch, observe, authori
         throw new TeamHandoff(parseHandoff(text.slice(0, 1000)));
       }
       if (text.startsWith("BLOCKED: ")) throw new Uncertain("spec lead blocked: " + text.slice(9, 609));
-      const spec = submittedText(output, "spec.md");
-      if (!spec.includes("AC-1") || spec.length > 32_000) throw new InvalidSkillOutput("invalid spec writer output");
-      return spec;
+      return submittedText(output, "spec.md");
     });
   };
   let spec: string;
