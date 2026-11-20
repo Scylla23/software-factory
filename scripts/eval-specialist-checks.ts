@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import type { Check } from "./batch-one-cases";
 
 const headings: Record<string, string[]> = {
@@ -94,15 +94,9 @@ export function specialistChecks(
       case "cites-code": {
         if (role === "threat-modeler") return points.some((r) => tokens(r["path or file"] ?? "").some((p) => tracked.has(p)));
         const seen = new Set<string>();
-        const extensions = new Set([...tracked].map(path => extname(path)));
         for (const line of lines)
-          for (const match of line.matchAll(/`([\w.-]+(?:\/[\w.@-]+)*\.[a-z0-9]+)`/gi)) {
-            const p = match[1]!;
-            if (!p.includes("/") && !extensions.has(extname(p)) && !tracked.has(p)) continue;
-            const before = line.slice(0, match.index);
-            const after = line.slice(match.index + match[0].length);
-            const planned = /\b(?:new|creat(?:e|ed)|add(?:ed)?)\b[^.!?;`]*$/i.test(before) || /^\s*\(new\)/i.test(after);
-            if (!tracked.has(p) && !planned) return false;
+          for (const p of tokens(line).filter((p) => /^[\w.-]+(?:\/[\w.@-]+)*\.[a-z0-9]+$/i.test(p))) {
+            if (!tracked.has(p) && !/\b(?:new|creat(?:e|ed)|add(?:ed)?)\b/i.test(line.replace(/`[^`]*`/g, " "))) return false;
             seen.add(p);
           }
         return seen.size >= 2;

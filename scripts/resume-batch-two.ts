@@ -9,13 +9,14 @@ import { judgeGrades } from "./batch-one-cases";
 import { runCodexJudge } from "./eval-codex-judge";
 import { DollarBudget } from "./eval-dollar-budget";
 
-const mode = process.argv[2];
-if (process.argv.length !== 3 || !["--activate-completion-budget", "--judge-held"].includes(mode!))
-  throw new Error("choose --activate-completion-budget or --judge-held");
+if (process.argv.length !== 3 || process.argv[2] !== "--release-owner-handover") throw new Error("explicit handover release required");
 const d = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const root = assertPrivateDir(join(d.stateRoot, "evaluations", "v1-step-4b-batch-2"), d.stateRoot);
 const ledger = new DollarBudget(join(root, "usage.sqlite"));
-async function judgeHeld() {
+try {
+  if (ledger.totals().pending) throw new Error("unsettled Claude reservation");
+  const stop = ledger.db.query<{ reason: string }, []>("SELECT reason FROM batch_stop").get();
+  if (stop && stop.reason !== "owner handover: no new sessions") throw new Error("budget stop remains active");
   const rows = ledger.db
     .query<{ key: string; id: string; report: string }, []>("SELECT key,id,report FROM trials WHERE status='awaiting-judge'")
     .all();
@@ -49,13 +50,8 @@ async function judgeHeld() {
       row.id,
     ]);
   }
-}
-try {
-  if (mode === "--activate-completion-budget") {
-    console.log(JSON.stringify({ ceilingUsd: ledger.activateCompletionBudget(), ...ledger.totals() }));
-  } else {
-    await judgeHeld();
-  }
+  // Clear only the owner's temporary hold. A dollar stop cannot be released here.
+  ledger.db.run("DELETE FROM batch_stop WHERE reason=?", ["owner handover: no new sessions"]);
 } finally {
   ledger.db.close();
 }

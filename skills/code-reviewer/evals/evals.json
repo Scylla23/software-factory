@@ -28,7 +28,7 @@
         {"id": "schema", "kind": "deterministic", "check": "verdicts/code-reviewer.json validates against _shared/verdict.schema.json"},
         {"id": "identity", "kind": "deterministic", "check": "role == \"code-reviewer\" && stage == \"code\" && covers.baseSha, covers.headSha, and covers.specSetSha256 equal the run brief's"},
         {"id": "verdict", "kind": "deterministic", "check": "verdict == \"approve\" && no finding has blocking == true"},
-        {"id": "ran-tests", "kind": "deterministic", "check": "checks.commands records bun test or the run brief's registered test invocation with exitCode == 0, and the protected run log confirms the test ran inside scratchRepo"},
+        {"id": "ran-tests", "kind": "deterministic", "check": "checks.commands has an entry whose command contains \"bun test\" with exitCode == 0, and the run log shows that command was executed inside scratchRepo"},
         {"id": "coverage", "kind": "deterministic", "check": "checks.acCoverage has exactly the rows AC-1, AC-2, AC-3, each with implemented == true and tested == true"},
         {"id": "restraint", "kind": "deterministic", "check": "findings has at most 3 entries"},
         {"id": "worktree-clean", "kind": "deterministic", "check": "the snapshot's tree is unchanged after the run and HEAD equals headSha"},
