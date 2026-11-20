@@ -158,6 +158,10 @@ Choose the tag by how the result can be observed:
 
 For a bug, follow the reproduce-first path: `AC-1` is the failing reproduction, tagged `test`, written so that it fails on `baseSha` for the reported reason and passes once fixed.
 State the observed wrong result in the fixture or action so the builder can write the test before the fix.
+When the run brief supplies `reproductionFile`, give AC-1 its own Markdown heading beginning with `### AC-1`.
+Under that heading include the line `- Reproduction file: PATH`, replacing PATH with the exact repository-relative path from the brief.
+Reserve that new file for one asserted test named `AC-1` or beginning with `AC-1 `.
+Keep every existing test file intact and put any additional tests in separate new files.
 
 ## Revisions
 

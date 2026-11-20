@@ -57,6 +57,7 @@ Each names what makes a finding blocking; anything short of that is non-blocking
 4. **Coverage** (`lost-requirement`).
    List what the Task asks for, in your own words, and map each item to a criterion.
    For a bug, `AC-1` must be a reproduction that fails on base for the reported reason.
+   When the brief assigns a `reproductionFile`, block a spec that omits it under AC-1, names another test file there, or assigns additional tests to that file.
    A non-goal does not cover a requirement; it removes one.
    An outcome the Task explicitly asks for may be excluded only with the owner's authority: a blocking open question that asks the owner to confirm the exclusion (with `status: "needs-owner"`), or owner feedback from a gate that already said so, cited in `spec-lead.json` `changes`.
    Blocking when something the Task asks for appears nowhere, or appears only as a non-goal the owner did not authorize.

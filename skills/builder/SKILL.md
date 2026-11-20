@@ -54,6 +54,7 @@ When a criterion cannot be met as written, stop and report a `spec-defect` block
    Write the `AC-1` test exactly as its Fixture, Action, and Expected lines describe, before touching the code under test.
    Run it and confirm it fails for the reason `AC-1` states, not because of a typo, an import error, or a different assertion.
    Record the command, the nonzero exit code, and the failing assertion in `reproduction`.
+   When the brief assigns a `reproductionFile`, create that exact file for the single asserted AC-1 case and put additional tests in separate new files.
    If it passes on the unfixed code, stop with a `bug-not-reproduced` blocker: a fix for a bug you cannot show is unverifiable.
    The order is checked, not taken on your word: the factory reads the run's own record of your edits and commands, and it reruns the head's tests on the base's code itself.
    A red run reported after the fix was already written fails the run.
