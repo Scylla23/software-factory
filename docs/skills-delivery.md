@@ -315,7 +315,7 @@ It was global mutable state inside the credential home, with no crash-safe clean
 The factory contract's section 2 is the rule: reads are closed by default for every agent run, agents execute project commands directly in that sandbox, and a code-stage reviewer or auditor reads the reviewed commit from a read-only snapshot and runs commands only in a disposable copy.
 There is no command broker in the normal path.
 
-Step 4b must prove both harnesses work that way before any skill is trusted (tests R1 to R3).
+The [testing policy](testing-policy.md) defines the required harness safety proofs.
 If one harness cannot be closed by default, that harness alone falls back to a factory broker for project commands, under step 2's Seatbelt profile with `scratch/repo/` as its only writable root, and its agents lose direct execution.
 The skills do not change in that case, since they only ever run the commands the brief names.
 
@@ -453,7 +453,7 @@ In the existing `bun test` setup, with no model calls:
 
 1. The run root with its safety checks and the attempt directory: `skills/`, `task/`, `out/`, `scratch/`, `snapshot/`, `scratch/repo/`, and for the spec lead `agents/`.
 2. Role-aware write roots in both harnesses, replacing the unconditional `assertWorktreeWritable`, with the write-root tests.
-3. Closed-by-default reads in both harnesses, with tests R1 to R3, or the per-harness broker fallback where a harness cannot be closed.
+3. Closed-by-default reads in both harnesses or the per-harness broker fallback where a harness cannot be closed, with safety proofs from the [testing policy](testing-policy.md).
 4. The bundle materializer and its hash check before and after the run.
 5. The instruction composer, replacing the project-instructions-only text in both `claudeArgs` and `codexArgs`.
 6. Agent types before launch: no subagent tool for non-leads in both harnesses, the `--agent` allowlist and generated definitions with child run briefs for the Claude spec lead, and the refusal of a Codex lead with a team.
@@ -472,7 +472,7 @@ Section 10 of the factory contract assigns the rebase to the factory because age
 ## Open risks
 
 - **Facts 6b, 6c, 7, 13a, 13b, 14, and 15 are unverified.**
-  Each has its own test, and each failure has a stated consequence: a refusal to dispatch, never a weaker check.
+  The [testing policy](testing-policy.md) defines which proofs gate dispatch and which belong in deferred issues.
 - **A Claude lead started with `--agent` has a different base prompt.**
   Its system prompt is the definition's, not Claude Code's default with text appended, so the lead may behave differently from the other roles in ways the skill did not anticipate.
   The lead's eval cases are run in this mode for that reason.

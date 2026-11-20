@@ -80,6 +80,17 @@ test("Claude checks submitted agent types in addition to the prelaunch allowlist
   expect(await check("architect", null, [])).toBe(false);
 });
 
+test("launch proof requirements preserve owner protections without gating on D3 or R3 receipts", () => {
+  expect(requiredProofs("claude", "spec-lead", ["architect"], "spec")).toEqual(["factory personal-source probe"]);
+  for (const role of ["code-reviewer", "database-auditor", "security-auditor"] as const) {
+    expect(requiredProofs("claude", role, [], "code")).toEqual(["factory personal-source probe"]);
+  }
+  expect(requiredProofs("codex", "code-reviewer", [], "code")).toEqual([
+    "factory personal-source probe",
+    "native file tool write-root matrix for code-reviewer",
+  ]);
+});
+
 test("a discovery source cannot share its bytes with an independently writable filename", () => {
   const dir=join(sb.worktree,".claude","rules");mkdirSync(dir,{recursive:true});
   const ordinary=join(sb.worktree,"ordinary.md");writeFileSync(ordinary,"fixture");
