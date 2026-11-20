@@ -254,8 +254,12 @@ After validating the lock and the two pinned-executable aliases, the factory res
 All six repository files cited in the reused-files section existed.
 The literal path checker also treated the HTTP route `/tasks` in the explanation as a repository path.
 The recorded check remains failed.
-The proposed rubric change would check the repo-relative file naming each reuse entry and allow HTTP routes in its explanation.
-The pinned skill and rubric retain their original wording.
+The coordinator approved checking the repo-relative file naming each reuse entry and allowing HTTP routes in the explanation.
+The spec-lead skill defines each entry as an existing file or pattern and a description of what to reuse.
+Its spec format puts the repo-relative path before the colon and illustrates that the description may contain other inline code.
+The archived batch 1 report retains the score under the original rubric.
+Offline rescoring of session `ef42a55b-4268-4af3-a0ea-43bad489ca9d` changed the result from 11/12 checks and a failed trial to 12/12 checks and a passed trial.
+The rescore used the authenticated submission and its saved project file list and retained all eleven other recorded checks.
 
 All 15 eligible Codex contestants finished.
 The native file-tool gate refused 15 spec-reviewer trials and R3 refused six code-stage auditor trials before launch.

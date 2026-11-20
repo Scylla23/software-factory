@@ -66,7 +66,7 @@
             {"id": "sections", "kind": "deterministic", "check": "spec.md has the level 2 headings Problem, Non-goals, Acceptance criteria, Design choices, Reused files, Implementation plan, Risks, Open questions, once each, in that order"},
             {"id": "ac-shape", "kind": "deterministic", "check": "every '### AC-n' block has Tag, Fixture, Action, and Expected lines, ids are AC-1..AC-k without gaps, and the ids and tags equal spec-lead.json acceptanceCriteria"},
             {"id": "ac1-test", "kind": "deterministic", "check": "AC-1 has Tag: test"},
-            {"id": "paths-exist", "kind": "deterministic", "check": "every backticked path under Reused files exists in the pilot repository at baseSha"},
+            {"id": "paths-exist", "kind": "deterministic", "check": "each Reused files entry names a repo-relative file present at baseSha; HTTP routes and other inline code in its reuse explanation are allowed"},
             {"id": "no-team-files", "kind": "deterministic", "check": "none of team-brief.md, architecture.md, infra.md, frontend.md, threat-model.md exists in outDir"},
             {"id": "no-dashes", "kind": "deterministic", "check": "spec.md contains no U+2013 or U+2014 character"},
             {"id": "reproduction", "kind": "judge", "check": "Is AC-1 a reproduction of the reported bug whose Expected line states both the correct order and how it fails on the unfixed code?"},

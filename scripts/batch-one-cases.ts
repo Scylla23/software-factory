@@ -46,6 +46,14 @@ function sections(body: string, name: string) {
   return lines.slice(index + 1, end < 0 ? lines.length : end).join("\n");
 }
 
+export function reusedFilesExist(markdown: string, tracked: ReadonlySet<string>) {
+  const entries = sections(markdown, "Reused files").split("\n").filter((line) => /^\s*[-*+]\s+/.test(line));
+  return entries.length > 0 && entries.every((line) => {
+    const path = /^\s*[-*+]\s+`([^`]+)`\s*:\s*\S/.exec(line)?.[1];
+    return !!path && tracked.has(path);
+  });
+}
+
 const decisionFiles = {
   architect: "architecture.md",
   infra: "infra.md",
@@ -216,9 +224,7 @@ export function deterministicBatchOne(context: GradeContext) {
       case "ac1-test":
         return /^[-* ]*Tag:\s*test\s*$/im.test(acBlocks[0]?.[2] ?? "");
       case "paths-exist":
-        return [...sections(md, "Reused files").matchAll(/`([^`]+)`/g)]
-          .filter((m) => m[1]!.includes("/") || /^[\w-]+\.[\w-]+$/.test(m[1]!))
-          .every((m) => context.tracked.has(m[1]!));
+        return reusedFilesExist(md, context.tracked);
       case "no-team-files":
       case "only-own-files":
         return files.size === 2 && files.has("spec.md") && files.has("spec-lead.json") && !context.children;

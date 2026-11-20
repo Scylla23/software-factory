@@ -1,13 +1,21 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { deterministicBatchOne, exposesAnswer, flattenCases, judgeGrades, type Check } from "../scripts/batch-one-cases";
+import { deterministicBatchOne, exposesAnswer, flattenCases, judgeGrades, reusedFilesExist, type Check } from "../scripts/batch-one-cases";
 import type { runBrief } from "../src/dispatch/brief";
 
 const skills = join(import.meta.dir, "../skills");
 const fixture = join(skills, "_shared/evals/tasklist/taskdirs/sort");
 const lead = JSON.parse(readFileSync(join(skills, "spec-lead/evals/evals.json"), "utf8")).cases;
 const check = (id: string, kind: Check["kind"] = "deterministic"): Check => ({ id, kind, check: id });
+
+test("each reuse entry identifies an existing file independently of its explanation", () => {
+  const tracked = new Set(["src/routes.ts"]);
+  const grade = (line: string) => reusedFilesExist("## Reused files\n\n" + line, tracked);
+  expect(grade("- `src/routes.ts`: renders `/tasks` using `handle()`.")).toBe(true);
+  for (const line of ["", "- `/tasks`: see `src/routes.ts`.", "- `missing.ts`: serves `/tasks`.", "- no file"])
+    expect(grade(line)).toBe(false);
+});
 
 test("the spec grade compares each acceptance criterion to the digest-bound document and the staged task", () => {
   const spec = readFileSync(join(fixture, "spec.md"));
