@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { outputDigest } from "../src/dispatch/output";
 import { acceptedCollections, archiveCollection, pinFactoryCommit, readCollection } from "../src/factory/skill-store";
-import { Store, type Issue } from "../src/factory/store";
+import { Store } from "../src/factory/store";
 
 test("skill pins survive revisions and collections are atomic, immutable, and staged only after acceptance", () => {
   const store = new Store(":memory:");
   try {
     const sha = "a".repeat(40);
-    const t = store.intake({ source: "github", repoId: 1, issueId: 1 } as Issue, sha);
+    const t = store.intake({ source: "github", repoId: 1, issueId: 1, number: 1,
+      title: "pinned spec", body: "", sender: 1, revision: "one", url: "" }, sha);
     const attempt = store.plan(t, "dispatch-spec", {});
     expect(pinFactoryCommit(store.db, t.id, sha)).toBe(sha);
     expect(pinFactoryCommit(store.db, t.id, "b".repeat(40))).toBe(sha);
