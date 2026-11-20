@@ -29,6 +29,8 @@ test("worker, project check and capture receipts are adopted only for the intend
     const save = (value: unknown) => writeFileSync(join(job, "result.json"), JSON.stringify(value));
     save({ output: { result, files: [] } });
     await expect(dispatch()).rejects.toThrow("authenticated skill collection");
+    save({ output: { result, files: [], collection: { ...triageOutput(a.id, t.base, "one"), head: "f".repeat(40) } } });
+    await expect(dispatch()).rejects.toThrow("authenticated skill collection");
     events.length = 0;
     save({ output: { result, files: [], collection: triageOutput(a.id, t.base, "one") } });
     expect((await dispatch()).result.sessionId).toBe("one");

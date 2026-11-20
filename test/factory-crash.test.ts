@@ -53,6 +53,18 @@ for (const scenario of ["missing-repro", "edited-test", "infra"]) test("real sta
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("a foreign capture receipt cannot settle verification", async () => {
+  const root = mkdtempSync(join(tmpdir(), "foreign-capture-"));
+  try {
+    expect(await invoke(root, "foreign-capture")).toBe(true);
+    const store = new Store(join(root, "state.sqlite"));
+    try {
+      expect(store.task(1).reason).toContain("verification receipt does not match its attempt");
+      expect(store.db.query("SELECT result FROM attempts WHERE action='verify'").get()).toEqual({result: null});
+    } finally { store.db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("a failed AC capture spends a repair before capturing again", async () => {
   const root = mkdtempSync(join(tmpdir(), "factory-ac-repair-"));
   try {

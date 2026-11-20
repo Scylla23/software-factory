@@ -545,6 +545,14 @@ describe("bounded reads", () => {
   });
 });
 
+test("retryable preview errors require removal and a clean process sweep", () => {
+  for (const [removed, noKnownSurvivors] of [[false, true], [true, false]] as const) {
+    const teardown = {cleanup: null, removed, noKnownSurvivors, quarantineReasons: ["pending"]};
+    const error = new PreviewError("timeout", teardown, "", "infrastructure");
+    expect(verificationErrorCheck(error).name).toBe("complete browser verification");
+  }
+});
+
 test("scratch dependency setup sees the registry proxy only during setup and leaves the pinned checkout available", async () => {
   const scratch = join(env.home, "scratch");
   mkdirSync(scratch);

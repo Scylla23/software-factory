@@ -36,7 +36,7 @@ export function verificationErrorCheck(error: unknown): Check {
   if (error instanceof PreviewError && error.startFailure === "project")
     return check("preview starts", false, String(error));
   const retryable = error instanceof CaptureInfrastructureError || error instanceof OrcaError ||
-    (error instanceof PreviewError && error.startFailure === "infrastructure");
+    (error instanceof PreviewError && error.retryableStart);
   return check(retryable ? "verification infrastructure" : "complete browser verification", false, String(error));
 }
 

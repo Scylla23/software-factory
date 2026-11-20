@@ -72,12 +72,14 @@ group("factory/store", "reverification authority", [
 ])
 group("factory/store", "reverification authority", [
     ("receipt.head === task.head", "true"),
+    ("|| verdict(receipt.checks).pass", ""),
     ("&& retryableVerification(receipt.checks)", "&& true"),
 ])
 group("factory/run", "verification retries infrastructure once", [
     ('    try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }', '    try { }'),
     ('try { checkAbandonedPreviews(stateRoot, failed.attemptId); }', 'try { }'),
 ], "factory-crash")
+group("factory/run", "a foreign capture receipt", [("result.attemptId !== a.id || ", "")], "factory-crash")
 group("factory/run", "a failed AC capture", [
     ("if (retryableVerification(evidence.checks))", "if (!verdict(evidence.checks).pass)"),
 ], "factory-crash")
@@ -118,6 +120,7 @@ group("factory/worker", "builder changes to commands", [
 ], "factory-worker")
 group("factory/worker", "worker, project check and capture receipts", [
     ("result.runId !== attempt.id", "false"),
+    ("c.head !== task.head", "false"),
 ], "factory-receipts")
 
 

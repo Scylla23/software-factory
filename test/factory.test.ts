@@ -288,9 +288,9 @@ for (const capture of capturedInventory.captures) {
   });
 }
 
-function failedCapture(s: Store, t: Task, name: string, detail = "fixture failed", head = t.head) {
+function failedCapture(s: Store, t: Task, name: string, detail = "fixture failed", head = t.head, pass = false) {
   const a = s.plan(t, "verify", {});
-  s.finish(a.id, {pr: t.pr, base: t.base, head, attemptId: a.id, checks: [{name, pass: false, detail}]});
+  s.finish(a.id, {pr: t.pr, base: t.base, head, attemptId: a.id, checks: [{name, pass, detail}]});
 }
 
 test("re-verification requires a fresh owner comment on the same reviewed head after verification escalation", () => {
@@ -412,7 +412,7 @@ test("owner resume replaces only the interrupted read-only attempt and preserves
 });
 
 test("reverification authority requires the persisted escalation and a matching approved code review", () => {
-  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review", "missing-receipt", "stale-receipt", "non-infra", "infra"]) {
+  for (const variation of ["valid", "changes", "previous", "review-base", "review-head", "reason", "no-review", "missing-receipt", "stale-receipt", "green-receipt", "non-infra", "infra"]) {
     const s = new Store(":memory:");
     try {
       let t = s.move(spec(s), "building", {}, approved);
@@ -425,7 +425,7 @@ test("reverification authority requires the persisted escalation and a matching 
       if (variation !== "previous") t = s.move(t, "verifying");
       const infra = variation === "infra" || variation === "non-infra";
       if (variation !== "missing-receipt") failedCapture(s, t, variation === "infra" ? "verification infrastructure" : "AC-1",
-        "fixture failed", variation === "stale-receipt" ? old : t.head);
+        "fixture failed", variation === "stale-receipt" ? old : t.head, variation === "green-receipt");
       t = s.move(t, "escalated", { reason: infra ? "factory infrastructure failed during verification infrastructure: fixture failed" :
         variation === "reason" ? "worker disappeared" : "failed verification: AC-1" });
       const command = { ...comment(82, current), body: "/reverify " + current };

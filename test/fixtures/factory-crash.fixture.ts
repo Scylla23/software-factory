@@ -159,7 +159,7 @@ try {
       const check = retryable ? {name: "verification infrastructure", pass: false, detail: "preview not ready"} :
         {name: "AC-1 capture", pass: passes, detail: "stock"};
       return remote(a.action, { pr: 5, base: t.base, head: t.head, checks: [...prior, check],
-        captures: [], attemptId: a.id, evidenceDir: root }, a.id);
+        captures: [], attemptId: scenario === "foreign-capture" ? crypto.randomUUID() : a.id, evidenceDir: root }, a.id);
     },
   });
   if (scenario === "crash" && final.state !== "done") throw Error("unexpected state " + final.state);

@@ -145,8 +145,16 @@ export interface CommandResult {
 }
 
 export class PreviewError extends Error {
-  constructor(message: string, readonly teardown: TeardownReport | null, readonly logTail: string, readonly startFailure: "infrastructure" | "project" | "unknown" = "unknown") {
+  constructor(message: string, readonly teardown: TeardownReport | null, readonly logTail: string, private readonly causeOfStart: "infrastructure" | "project" | "unknown" = "unknown") {
     super(message);
+  }
+
+  get retryableStart() {
+    return this.startFailure === "infrastructure";
+  }
+
+  get startFailure() {
+    return this.teardown?.removed && this.teardown.noKnownSurvivors ? this.causeOfStart : "unknown";
   }
 }
 
@@ -434,7 +442,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
 
   const fail = async (message: string, logPath: string | null, cause: PreviewError["startFailure"]): Promise<never> => {
     const t = await teardown();
-    throw new PreviewError(message, t, logPath ? tail(logPath) : "", t.removed && t.noKnownSurvivors ? cause : "unknown");
+    throw new PreviewError(message, t, logPath ? tail(logPath) : "", cause);
   };
 
   try {
