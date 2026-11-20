@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
-import { config } from "../../factory.config";
+import { config, headingPilot, pilotBase } from "../../factory.config";
 import { assertPrivateDir } from "../dispatch/config";
 import { Publisher, issueNumber } from "./github";
 import { headDecision, pendingRevision, pendingResume, pendingReverification, pendingSpec, type Review } from "./gates";
@@ -383,8 +383,9 @@ export async function run(url: string, observe: Observer = (event, id) => consol
     const git = new Publisher();
     const issue = await git.issue(number);
     store.requireSlot(issue);
-    const base = await git.ref(config.pilot.base);
+    const base = await git.ref(pilotBase(number));
     if (!base) throw new Error("missing base branch");
+    if (number === headingPilot.issue && base !== headingPilot.seed) throw new Error("heading pilot seed moved");
     const task = store.intake(issue, base);
     if (task.issue.revision !== issue.revision) throw new Error("issue changed since intake, owner respec required");
     return await runStages(store, task, { git, stateRoot: project.stateRoot, dispatch: dispatchWorker, observe,

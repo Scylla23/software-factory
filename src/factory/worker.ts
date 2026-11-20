@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { userInfo } from "node:os";
-import { config } from "../../factory.config";
+import { config, headingPilot } from "../../factory.config";
 import { loadDispatchConfig, runAgent, type RunResult } from "../dispatch";
 import { assertPrivateDir } from "../dispatch/config";
 import { isDiscoveryPath } from "../dispatch/discovery";
@@ -49,6 +49,7 @@ interface Job {
   base: string;
   prompt: string;
   agent?: (typeof config.agents)[Role];
+  evaluationLimits?: { maxUsd: number; maxTurns: number };
 }
 export interface WorkerOutput {
   collection?: Collection;
@@ -127,7 +128,7 @@ async function work(id: string) {
       if (agent.harness === "claude" && dirs.scratchRepo) job.input.brief.project.commands = brokerCommands();
       const brief = stageInputs(dirs, job.input);
       const result = await runAgent({
-        ...agent, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",
+        ...agent, evaluationLimits: job.evaluationLimits, runId: id, worktreePath: dirs.worktree, logDir: dir, prompt: "",
         skill: { brief, dirs, members: job.input.members, toolDirs: config.pilot.toolDirs, factoryRepo, factoryCommit: job.factoryCommit },
         instructions: { repo: config.pilot.path, baseSha: job.base, paths: PROJECT_INSTRUCTION_PATHS },
       }, dispatch);
@@ -192,6 +193,29 @@ function launchSupervisor(dir: string, id: string, stateRoot: string) {
 }
 
 export class WorkerLoginError extends Error {}
+export function pilotSessionLimits(store: Store, task: Task, id: string, role: Role, team: boolean, stateRoot: string) {
+  if (task.issue.number !== headingPilot.issue || config.agents[role].harness !== "claude") return undefined;
+  // Reservations are serialized by the controller lock. An unmetered prior paid job blocks a new one.
+  const prior = store.db.query<{ id: string; capture: string | null }, [number, string]>(
+    "SELECT a.id,u.capture FROM attempts a LEFT JOIN usage_captures u ON u.attempt=a.id WHERE a.task=? AND a.id<>?",
+  ).all(task.id, id);
+  let remaining = 2_000_000;
+  for (const attempt of prior) {
+    const path = join(jobDir(attempt.id, stateRoot), "job.json");
+    if (!existsSync(path)) continue;
+    const job = JSON.parse(readFileSync(path, "utf8"));
+    if (job.agent.harness !== "claude") continue;
+    const capture = attempt.capture && JSON.parse(attempt.capture);
+    if (capture?.coverage !== "complete" || !Number.isFinite(capture.costUsd) || capture.costUsd < 0) {
+      throw new Uncertain("pilot Claude spend requires reconciliation");
+    }
+    remaining -= Math.ceil(capture.costUsd * 1_000_000);
+  }
+  const estimate = team ? 4_000_000 : role === "triage" ? 150_000 : role === "spec" ? 850_000 : 750_000;
+  if (estimate > remaining) throw new Uncertain("next Claude session exceeds the $2 heading pilot cap");
+  return { maxUsd: estimate / 1_000_000, maxTurns: 32 };
+}
+
 export async function dispatchWorker(
   store: Store,
   task: Task,
@@ -230,6 +254,7 @@ export async function dispatchWorker(
     const testPassed = !!(proof && proof.base === task.base && proof.tested === task.head && proof.head === task.head &&
       proof.checks.some((c: {name: string; pass: boolean; detail: string}) => c.name === "test" && c.pass && c.detail.startsWith("exit 0\n")));
     const job: Job = { id: attempt.id, role, base: task.base, head: task.head, prompt, agent: config.agents[role], input,
+      evaluationLimits: pilotSessionLimits(store, task, attempt.id, role, !!input.members.length, stateRoot),
       factoryCommit: pinFactoryCommit(store.db, task.id, commit), testPassed };
     if (!existsSync(path)) {
       const tmp = join(dir, `job-${process.pid}.tmp`);
@@ -238,7 +263,8 @@ export async function dispatchWorker(
     } else {
       const published: Job = JSON.parse(readFileSync(path, "utf8"));
       if (published.base !== job.base || published.head !== job.head || published.prompt !== prompt || published.role !== role ||
-          published.factoryCommit !== job.factoryCommit || JSON.stringify(published.input) !== JSON.stringify(input) || published.testPassed !== testPassed)
+          published.factoryCommit !== job.factoryCommit || JSON.stringify(published.input) !== JSON.stringify(input) ||
+          JSON.stringify(published.evaluationLimits) !== JSON.stringify(job.evaluationLimits) || published.testPassed !== testPassed)
         throw new Uncertain("worker job identity changed");
     }
     launcherPid = launch(dir, attempt.id, stateRoot);

@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { config } from "../../factory.config";
+import { config, inventoryFixture } from "../../factory.config";
 import type { AttemptDirectories } from "../dispatch/attempt";
 import { requiredMembers, type BriefInput } from "../dispatch/brief";
 import { outputDigest } from "../dispatch/output";
@@ -40,7 +40,7 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
   text("task.json", { source: task.issue.source, externalId, project: config.pilot.repo, kind: "bug", title: task.issue.title,
     body: task.issue.body, attachments: [{ path: "pilot-checks.json" }], sender: String(task.issue.sender), revision: 1 });
   text("pilot-checks.json", { reproduction: { file: "repro.test.ts", criterion: "AC-1", result: "named assertion failure on base and pass on head" },
-    fixture: config.pilot.fixtures.inventory, stageObservations });
+    fixture: inventoryFixture(task.issue.number), stageObservations });
   const requireCollection = (c: Collection | undefined, name: string) => {
     if (!c || c.base !== task.base) throw new Uncertain("missing validated skill input: " + name);
     for (const f of c.files) files[f.path] = f.base64;

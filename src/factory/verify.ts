@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "../../factory.config";
+import { config, inventoryFixture } from "../../factory.config";
 import type { EvidenceSummary } from "../github/summary";
 import { withVerificationProfile } from "../verify/browser";
 import { commandCheck } from "../verify/checks";
@@ -16,9 +16,14 @@ export function inventoryMatches(
   text: string,
   stage: "before" | "after",
   rows: readonly { name: string; before: string; after: string }[] = inventory.rows,
+  heading?: { before: string; after: string },
 ) {
   // Orca's reader keeps row boundaries but may concatenate adjacent table cells.
   const lines = text.split(/\r?\n/).map((s) => s.replace(/\|/g, " ").trim().replace(/\s+/g, " "));
+  if (heading) {
+    const headers = lines.filter(line => line.startsWith("Item"));
+    if (headers.length !== 1 || headers[0]!.slice(4).trim() !== heading[stage]) return false;
+  }
   return rows.every((row) => {
     const cells = lines.filter((line) => line.startsWith(row.name));
     return cells.length === 1 && cells[0]?.slice(row.name.length).trim() === row[stage];
@@ -31,7 +36,8 @@ export async function verifyPilot(
   project: ProjectChecks,
   prior: Check[],
 ): Promise<EvidenceSummary> {
-  if (task.issue.number !== inventory.issue) throw new Error("no registered verification fixture for this issue");
+  const fixture = inventoryFixture(task.issue.number);
+  if (task.issue.number !== fixture.issue) throw new Error("no registered verification fixture for this issue");
   const dir = join(project.stateRoot, "evidence", attempt.id);
   if (!attempt.fresh && existsSync(dir)) {
     const receipt = join(dir, "records.json");
@@ -86,7 +92,7 @@ export async function verifyPilot(
               checks.push(
                 check(
                   `AC-1 ${name} stock counts`,
-                  !record.truncated.pageText && inventoryMatches(record.pageText, phase),
+                  !record.truncated.pageText && inventoryMatches(record.pageText, phase, fixture.rows, fixture.heading),
                   record.pageText,
                 ),
               );
