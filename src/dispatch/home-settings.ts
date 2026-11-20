@@ -14,5 +14,5 @@ export const claudeHomeSettings = {
 
 export const codexHomeSettings = {
   skills: { include_instructions: false, bundled: { enabled: false } },
-  features: {plugins: false, remote_plugin: false, apps: false, hooks: false},
+  features: { plugins: false, remote_plugin: false, apps: false, hooks: false },
 };

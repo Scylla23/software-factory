@@ -28,7 +28,8 @@ const git = dispatch.executables.git,
   factory = realpathSync(join(import.meta.dir, ".."));
 const pin = runGit(git, factory, ["log", "-1", "--format=%H", "HEAD", "--", "skills"]).toString().trim();
 const dry = process.argv[2] === "--preflight";
-if (process.argv.slice(2).some((a) => a !== "--preflight")) throw new Error("only --preflight is accepted");
+const codexOnly = process.argv[2] === "--codex-only";
+if (process.argv.slice(2).some((a) => a !== "--preflight" && a !== "--codex-only")) throw new Error("select --preflight or --codex-only");
 const batch = join(dispatch.stateRoot, "evaluations", "v1-step-4b-batch-1");
 mkdirSync(batch, { recursive: true, mode: 0o700 });
 assertPrivateDir(batch, dispatch.stateRoot);
@@ -68,6 +69,13 @@ async function inspectBlindStream(stdoutPath: string, canary: string, worktree: 
 }
 
 async function batchOne() {
+  if (codexOnly) {
+    const {collectCodexTrials} = await import("./eval-codex-trials");
+    const {gradeCodexTrials} = await import("./grade-codex-trials");
+    await collectCodexTrials();
+    await gradeCodexTrials(true);
+    return;
+  }
   if (!dry) for (const h of ["claude", "codex"] as const) {
     if (!verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(await probePersonalSources(h,dispatch)));
     if (h === "claude" && verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
@@ -95,7 +103,7 @@ async function batchOne() {
           .query<{ revision: string; status: string }, [string]>("SELECT revision,status FROM trials WHERE key=?")
           .get(trialKey);
         if (previous) {
-          if (previous.revision !== pin || previous.status === "started")
+          if (runGit(git,factory,["rev-parse",previous.revision+":skills"]).toString() !== runGit(git,factory,["rev-parse",pin+":skills"]).toString() || previous.status === "started")
             throw new Error("previous trial requires reconciliation: " + trialKey);
           console.log(JSON.stringify({ trial: trialKey, reused: previous.status }));
           continue;
@@ -292,6 +300,7 @@ async function batchOne() {
                   .map((p) => [p, runGit(git, repo, ["show", refs.base + ":" + p]).toString()]),
               ),
             };
+            writeFileSync(join(log,"grading-input.json"),JSON.stringify({fixtures,output,checks,judgeChecks}),{flag:"wx",mode:0o600});
             const judge = judgeChecks.length ? await runCodexJudge(dispatch, judgeDir, log, fixtures, output, judgeChecks) : undefined;
             const graded = { ...checks, ...judgeGrades(judge?.grades, row.checks, files) };
             passed = Object.keys(graded).length === row.checks.length && Object.values(graded).every(Boolean);

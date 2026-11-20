@@ -31,6 +31,13 @@ function spec(harness: RunSpec["harness"], prompt: string, extra: Partial<RunSpe
 }
 
 describe("runAgent", () => {
+  test("successful model output is quarantined and metered if a new home source appeared", async () => {
+    const result=await runAgent(spec("claude","home-change:"),sb.config);
+    expect(result.outcome).toBe("failed");
+    expect(result.quarantineWorktree).toBe(true);
+    expect(result.usage?.harness).toBe("claude");
+    expect(result.quarantineReasons).toContainEqual(expect.stringContaining("unexpected factory home location: CLAUDE.md"));
+  });
   test("claude: completed run with observed model, usage, and clean diagnostics", async () => {
     const r = await runAgent(spec("claude", `replay:${fixture("claude-headless.stream.jsonl")}`), sb.config);
     expect(r).toMatchObject({ outcome: "completed", exitCode: 0, requestedModel: "requested", observedModel: "claude-haiku-5-5", resultText: "PELICAN", diagnostics: [], cleanup: null });

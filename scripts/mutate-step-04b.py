@@ -7,9 +7,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
     ("home-inventory", "home-inventory", "stat.nlink !== 1", "false"),
-    ("home-inventory", "home-inventory", "Object.keys(value).every(k => accountKeys.has(k))", "true"),
+    ("home-inventory", "home-inventory", "Object.keys(value).every((k) => accountKeys.has(k))", "true"),
     ("home-inventory", "home-inventory", "!table[dirname(normalized)]?.includes", "false && !table[dirname(normalized)]?.includes"),
-    ("home-inventory", "home-inventory", '!patterns.some(re => re.test(path))', 'false'),
+    ("home-inventory", "home-inventory", '!patterns.some((re) => re.test(path))', 'false'),
     ("home-session", "home-inventory", '!before.locations.has(path)', 'false'),
     ("home-session", "home-inventory", '|| e[k].length', '|| false'),
     ("home-session", "home-inventory", 'n && forbidden.has(n)', 'false'),

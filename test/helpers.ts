@@ -50,6 +50,7 @@ replay() {
   if [ -n "$session" ]; then sed "s/04fdfd03-327c-4f04-8a7c-b1d5df6a3357/$session/g" "$1"; else cat "$1"; fi
 }
 case "$last" in
+  home-change:*) : > "$CLAUDE_CONFIG_DIR/CLAUDE.md"; replay "${fixture("claude-headless.stream.jsonl")}" ;;
   replay:*) replay "$arg" ;;
   dump:*) printf '%s\\n' "$@" > "$arg/argv"; printf '%s\\0' "$@" > "$arg/argv0"; env > "$arg/env"; replay "${fixture("claude-headless.stream.jsonl")}" ;;
   started:*) : > "$arg"; replay "${fixture("claude-headless.stream.jsonl")}" ;;
