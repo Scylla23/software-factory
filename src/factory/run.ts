@@ -391,7 +391,7 @@ export async function run(url: string, observe: Observer = (event, id) => consol
     store.requireSlot(issue);
     const base = await git.ref(pilotBase(number));
     if (!base) throw new Error("missing base branch");
-    if (number === headingPilot.issue && base !== headingPilot.seed) throw new Error("heading pilot seed moved");
+    if (pilotBase(number) === headingPilot.base && base !== headingPilot.seed) throw new Error("heading pilot seed moved");
     const task = store.intake(issue, base);
     if (task.issue.revision !== issue.revision) throw new Error("issue changed since intake, owner respec required");
     return await runStages(store, task, { git, stateRoot: project.stateRoot, dispatch: dispatchWorker, observe,

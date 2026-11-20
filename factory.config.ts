@@ -53,19 +53,19 @@ export const config = {
 } as const;
 
 export const headingPilot = {
-  issue: 6,
+  issues: [6, 7],
   base: "factory/pilot-4b-heading-base",
   seed: "9739f1f7912605144c17693602080e93ca6f3247",
   heading: { before: "Price", after: "Stock count" },
 } as const;
 
 export function pilotBase(issue: number) {
-  return issue === headingPilot.issue ? headingPilot.base : config.pilot.base;
+  return headingPilot.issues.some(n => n === issue) ? headingPilot.base : config.pilot.base;
 }
 
 export function inventoryFixture(issue: number) {
   const inventory = config.pilot.fixtures.inventory;
-  return issue === headingPilot.issue
+  return pilotBase(issue) === headingPilot.base
     ? { ...inventory, issue, heading: headingPilot.heading, rows: inventory.rows.map(row => ({ ...row, before: row.after })) }
     : { ...inventory, heading: undefined };
 }

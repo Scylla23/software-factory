@@ -281,7 +281,7 @@ test("the pilot stops before an unpriced or unaffordable Claude session includin
   const store = new Store(":memory:");
   const root = mkdtempSync(join(tmpdir(), "factory-pilot-limit-"));
   try {
-    const t = store.intake({ ...issue, number: headingPilot.issue }, old);
+    const t = store.intake({ ...issue, number: headingPilot.issues[0] }, old);
     const prior = store.plan(t, "dispatch-spec", {});
     const dir = join(root, "jobs", prior.id);
     mkdirSync(dir, { recursive: true });
@@ -296,7 +296,8 @@ test("the pilot stops before an unpriced or unaffordable Claude session includin
     capture(1.25);
     expect(pilotSessionLimits(store, t, next, "reviewer", false, root)?.maxUsd).toBe(0.75);
     capture(1.250001);
-    expect(() => pilotSessionLimits(store, t, next, "reviewer", false, root)).toThrow("cap");
+    const replacement = store.intake({ ...issue, issueId: issue.issueId + 1, number: headingPilot.issues[1] }, old);
+    expect(() => pilotSessionLimits(store, replacement, next, "reviewer", false, root)).toThrow("cap");
     expect(() => pilotSessionLimits(store, t, next, "spec", true, root)).toThrow("cap");
   } finally {
     store.db.close();

@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { userInfo } from "node:os";
-import { config, headingPilot } from "../../factory.config";
+import { config, headingPilot, pilotBase } from "../../factory.config";
 import { loadDispatchConfig, runAgent, type RunResult } from "../dispatch";
 import { assertPrivateDir } from "../dispatch/config";
 import { isDiscoveryPath } from "../dispatch/discovery";
@@ -195,11 +195,13 @@ function launchSupervisor(dir: string, id: string, stateRoot: string) {
 
 export class WorkerLoginError extends Error {}
 export function pilotSessionLimits(store: Store, task: Task, id: string, role: Role, team: boolean, stateRoot: string) {
-  if (task.issue.number !== headingPilot.issue || config.agents[role].harness !== "claude") return undefined;
+  if (pilotBase(task.issue.number) !== headingPilot.base || config.agents[role].harness !== "claude") return undefined;
   // Reservations are serialized by the controller lock. An unmetered prior paid job blocks a new one.
-  const prior = store.db.query<{ id: string; capture: string | null }, [number, string]>(
-    "SELECT a.id,u.capture FROM attempts a LEFT JOIN usage_captures u ON u.attempt=a.id WHERE a.task=? AND a.id<>?",
-  ).all(task.id, id);
+  const prior = store.db.query<{ id: string; capture: string | null }, [number, string, string]>(
+    `SELECT a.id,u.capture FROM attempts a JOIN tasks t ON t.id=a.task
+     LEFT JOIN usage_captures u ON u.attempt=a.id
+     WHERE t.repo_id=? AND json_extract(t.issue,'$.number') IN (SELECT value FROM json_each(?)) AND a.id<>?`,
+  ).all(task.issue.repoId, JSON.stringify(headingPilot.issues), id);
   let remaining = 2_000_000;
   for (const attempt of prior) {
     const path = join(jobDir(attempt.id, stateRoot), "job.json");
