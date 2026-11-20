@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, realpathSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { config } from "../factory.config";
 import { createAttempt } from "../src/dispatch/attempt";
 import { requireSkillProofs } from "../src/dispatch/skill-launch";
 import { runGit } from "../src/dispatch/git";
@@ -48,7 +49,8 @@ function prepare(role: WorkerRole) {
 }
 test("triage joins schema-valid areas, task revision and kind to the immutable snapshot", () => {
   const { input, dirs } = prepare("triage");
-  expect(input.brief.routing.L.codeReviewer).toBe("GPT-6.2-Astra");
+  for (const tier of ["S", "M", "L"] as const)
+    expect(input.brief.routing[tier]).toEqual({ builder: config.agents.builder.model, codeReviewer: config.agents.reviewer.model });
   const triage = fixture("taskdirs/sort/triage.json");
   triage.taskId = input.brief.taskId;
   const check = (doc: unknown) => validateSkillOutput(input, dirs, new Map([["triage.json", Buffer.from(JSON.stringify(doc))]]), [], "/usr/bin/git", false);
