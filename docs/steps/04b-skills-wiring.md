@@ -692,3 +692,12 @@ The seed already contains the prior issue's `repro.test.ts`.
 Commits `0a9d46a` and `12a6918` require new issues to use a dedicated file for one asserted AC-1 case, from the spec brief through independent base and head checks.
 The new task targets the original seed, reserves `repro-issue-9.test.ts`, and shares its $2.00 Claude ceiling with the two escalated tasks.
 The combined spend before its start is $0.5541241. [Pilot issue #9](https://github.com/Scylla23/factory-pilot/issues/9)
+
+Issue #9 passed triage ($0.0318743) and spec acceptance ($0.3815900).
+The owner approved spec commit `b32712a98d6336dc731af00b525463cf5044a769` in PR #10 comment 7034831745.
+The factory installed the registered dependencies, and the builder confirmed the expected base SHA and found the Biome and TypeScript executables.
+Its Git status check reported `AGENTS.md: Operation not permitted` under the protected discovery-file policy.
+The builder stopped before editing and submitted a `BLOCKED:` result, which the controller summarized as `missing authenticated skill output build-report.json`.
+The task escalated at the spec head before gate 2.
+Combined Claude spend for issues #6, #7 and #9 was $0.9675884 at escalation, leaving $1.0324116.
+The #9 Codex builder cost $0.1783396 separately. [Pilot PR #10](https://github.com/Scylla23/factory-pilot/pull/10)
