@@ -9,6 +9,9 @@ import { skillInputs, specFileSet, stageInputs, type WorkerRole } from "../src/f
 import { archiveCollection } from "../src/factory/skill-store";
 import { InvalidSkillOutput, validateSkillOutput } from "../src/factory/skill-validation";
 import { Store, type Task } from "../src/factory/store";
+import { skillEffect } from "../src/factory/run";
+import { briefPrompt, runBrief } from "../src/dispatch/brief";
+import { composeInstructions } from "../src/dispatch/bundle";
 import { makeSandbox, type Sandbox } from "./helpers";
 import mutations from "../skills/_shared/evals/mutations.json";
 
@@ -56,6 +59,47 @@ test("triage joins schema-valid areas, task revision and kind to the immutable s
   expect(() => check({...triage, taskId: "different"})).toThrow("task");
   expect(() => check({...triage, confidence: "invented"})).toThrow("invalid triage.json");
   expect(() => skillInputs(store, task, "spec", "{}")).toThrow("missing validated");
+});
+
+test("a rejected triage signal receives the validator observation in its fresh retry prompt", async () => {
+  const { dirs } = prepare("triage");
+  const doc = fixture("taskdirs/sort/triage.json");
+  doc.taskId = String(task.id);
+  const invalid = "single area, no schema or API change";
+  doc.tierReasons[0].signal = invalid;
+  const seen: string[] = [];
+  const result = await skillEffect(store, task, "dispatch-triage", {}, async attempt => {
+    const input = skillInputs(store, task, "triage", "{}", attempt.validationFeedback);
+    const prompt = briefPrompt(runBrief(dirs, input.brief));
+    seen.push(attempt.id);
+    if (seen.length === 1) expect(prompt).not.toContain("validationFeedback");
+    else {
+      const brief = JSON.parse(prompt.split("\n")[1]!);
+      const feedback = JSON.parse(brief.validationFeedback.slice(brief.validationFeedback.indexOf("[{")));
+      expect(feedback).toHaveLength(1);
+      const corrected = feedback[0].expected.allowedValues[0];
+      expect(feedback[0]).toMatchObject({ pointer: "/tierReasons/0/signal",
+        expected: { rule: "enum", allowedValues: expect.arrayContaining(["single area"]) }, actual: JSON.stringify(invalid) });
+      doc.tierReasons[0].signal = corrected;
+    }
+    validateSkillOutput(input, dirs, new Map([["triage.json", Buffer.from(JSON.stringify(doc))]]), [], "/usr/bin/git", false);
+    return doc.tier;
+  });
+  expect(result).toBe("S");
+  expect(new Set(seen).size).toBe(2);
+});
+
+test("the pinned triage prompt contains every schema enum literal", () => {
+  const instructions = composeInstructions(skills, "triage", null);
+  const schema = JSON.parse(readFileSync(join(skills, "triage/triage.schema.json"), "utf8"));
+  function check(node: unknown) {
+    if (!node || typeof node !== "object") return;
+    if ("enum" in node && Array.isArray(node.enum)) {
+      for (const value of node.enum) expect(instructions).toContain("`" + value + "`");
+    }
+    Object.values(node).forEach(check);
+  }
+  check(schema);
 });
 function predecessors() {
   const triage = fixture("taskdirs/sort/triage.json");

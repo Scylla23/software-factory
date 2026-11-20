@@ -171,6 +171,7 @@ export function workerFailure(error: unknown) {
   return {
     error: error instanceof OutputIntegrityError ? "skill output integrity escalation: " + error.message : String(error),
     invalid: error instanceof InvalidSkillOutput,
+    ...(error instanceof InvalidSkillOutput ? { validationFeedback: error.feedback } : {}),
     escalated: error instanceof Uncertain || error instanceof SkillProofMissing || error instanceof OutputIntegrityError,
   };
 }
@@ -246,7 +247,7 @@ export async function dispatchWorker(
     mkdirSync(dir, { mode: 0o700, recursive: true });
     const path = join(dir, "job.json");
     const commit = runGit("/usr/bin/git", factoryRepo, ["rev-parse", "HEAD"]).toString().trim();
-    const input = skillInputs(store, task, role, prompt);
+    const input = skillInputs(store, task, role, prompt, attempt.validationFeedback);
     const check = store.db.query<{result: string}, [number]>(
       "SELECT result FROM attempts WHERE task=? AND action='head-checks' AND result IS NOT NULL ORDER BY visit DESC LIMIT 1",
     ).get(task.id);
@@ -292,9 +293,9 @@ export async function dispatchWorker(
     }
     await Bun.sleep(150);
   }
-  const reply: { output?: WorkerOutput; error?: string; invalid?: boolean; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+  const reply: { output?: WorkerOutput; error?: string; invalid?: boolean; validationFeedback?: string; escalated?: boolean } = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
   if (reply.invalid || reply.escalated || !reply.output) await recordInterruption();
-  if (reply.invalid) throw new InvalidSkillOutput(reply.error ?? "invalid skill output");
+  if (reply.invalid) throw new InvalidSkillOutput(reply.error ?? "invalid skill output", reply.validationFeedback);
   if (reply.escalated) throw new Uncertain(reply.error ?? "worker requires inspection");
   if (!reply.output) throw new AgentFailed(reply.error ?? "missing worker result");
   const { result } = reply.output;

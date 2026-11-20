@@ -44,6 +44,7 @@ export interface Task {
 }
 export type Update = Partial<Pick<Task, "base" | "head" | "spec" | "pr" | "reason" | "repairCount">>;
 export interface Attempt {
+  validationFeedback?: string;
   id: string;
   action: string;
   result: string | null;

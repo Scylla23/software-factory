@@ -38,10 +38,16 @@ function submittedText(output: WorkerOutput, path: string) {
   return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(file.base64, "base64"));
 }
 
-async function skillEffect<T>(store: Store, task: Task, action: string, intent: unknown, execute: (a: Attempt) => Promise<T>) {
+export async function skillEffect<T>(store: Store, task: Task, action: string, intent: unknown, execute: (a: Attempt) => Promise<T>) {
+  let feedback: string;
   try { return await effect(store, task, action, intent, execute); }
-  catch (error) { if (!(error instanceof InvalidSkillOutput)) throw error; }
-  try { return await effect(store, task, action + "-validation-retry", intent, execute); }
+  catch (error) {
+    if (!(error instanceof InvalidSkillOutput)) throw error;
+    feedback = error.feedback;
+  }
+  try {
+    return await effect(store, task, action + "-validation-retry", intent, a => execute({ ...a, validationFeedback: feedback }));
+  }
   catch (error) {
     if (!(error instanceof InvalidSkillOutput)) throw error;
     throw new Uncertain("skill output failed validation twice: " + error.message);

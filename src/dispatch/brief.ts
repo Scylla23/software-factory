@@ -7,6 +7,8 @@ import { MAX_INSTRUCTIONS_BYTES } from "./instructions";
 import { readRegularFile } from "./regular-file";
 
 export interface BriefInput {
+  /** Validator observations about a rejected submission. Values are untrusted data. */
+  validationFeedback?: string;
   taskId: string;
   round: number;
   baseSha: string;

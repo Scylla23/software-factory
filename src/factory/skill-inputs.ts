@@ -26,7 +26,7 @@ export function specFileSet(c: Collection) {
 }
 
 /** Freeze everything the supervisor needs before publishing its job. */
-export function skillInputs(store: Store, task: Task, role: WorkerRole, context: string) {
+export function skillInputs(store: Store, task: Task, role: WorkerRole, context: string, validationFeedback?: string) {
   const all = acceptedCollections(store.db, task.id);
   const roleName = skillRoles[role];
   const latest = (name: string) => all.findLast(c => c.role === name);
@@ -75,6 +75,7 @@ export function skillInputs(store: Store, task: Task, role: WorkerRole, context:
   const stage = role === "spec" ? "spec" : role === "reviewer" ? "code" : role === "triage" ? "triage" : task.repairCount ? "repair" : "build";
   const criteria = spec && specFileSet(spec);
   const brief: BriefInput = { taskId: String(task.id), round, baseSha: task.base,
+    ...(validationFeedback ? { validationFeedback } : {}),
     ...(stage === "code" || stage === "repair" ? { headSha: task.head } : {}),
     ...(criteria ? { specSet: criteria } : {}), ...(Object.keys(previous).length ? { previous } : {}),
     project: { name: config.pilot.repo, isNew: false, stack: config.pilot.stack, fixtures: Object.keys(config.pilot.fixtures),
