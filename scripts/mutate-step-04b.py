@@ -8,7 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
     ("../../scripts/eval-verifier-checks", "eval-verifier-checks", "!!ac5.manual.instruction?.trim()", "true"),
     ("../../scripts/eval-dollar-budget", "eval-dollar-budget", "total.committed + limit > ceiling", "false"),
-    ("../../scripts/eval-dollar-budget", "eval-dollar-budget", "if (total.pending)", "if (false)"),
+    ("../../scripts/eval-dollar-budget", "eval-dollar-budget",
+     'if (total.pending) throw new Error("unsettled batch two session");\n      const prior',
+     'const prior'),
     ("../../scripts/eval-dollar-budget", "eval-dollar-budget", "Math.max(prior ?? 0, Math.ceil(estimate * million))", "Math.ceil(estimate * million)"),
     ("../../scripts/eval-measurements", "eval-dollar-budget", "ids.has(e.uuid)", "false"),
     ("home-proof", "home-proof", "raw.nativeDenied === true", "true"),
