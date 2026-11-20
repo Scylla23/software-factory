@@ -54,9 +54,10 @@ export function verifierPilot(git: string, factory: string, pin: string, root: s
         .replace("<!--load-->", '<script>console.error("Task list layout update failed")</script>'),
     );
     const head = commit();
-    writeFileSync(manifest, JSON.stringify({ base, head }), { flag: "wx", mode: 0o600 });
+    writeFileSync(manifest, JSON.stringify({ pin, base, head }), { flag: "wx", mode: 0o600 });
   }
-  const refs = JSON.parse(readFileSync(manifest, "utf8")) as { base: string; head: string };
+  const refs = JSON.parse(readFileSync(manifest, "utf8")) as { pin: string; base: string; head: string };
+  if (refs.pin !== pin) throw new Error("verifier fixture belongs to a different pin");
   checkoutSnapshot(git, source, refs.head, project);
   return refs;
 }

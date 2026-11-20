@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { planChecks } from "../scripts/eval-verifier-checks";
 
 const skills = join(import.meta.dir, "../skills");
-export function capturePlan(refs: { base: string; head: string }) {
+function capturePlan(refs: { base: string; head: string }) {
   const p = JSON.parse(readFileSync(join(skills, "verifier/evals/fixtures/sort-plan.json"), "utf8"));
   Object.assign(p, { baseSha: refs.base, headSha: refs.head });
   p.criteria.push(
