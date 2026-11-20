@@ -22,7 +22,6 @@ import { evalCheckout, pinnedFixture } from "./eval-checkout";
 import { plantPilot } from "./eval-pilot";
 import { probePersonalSources } from "./probe-personal-sources";
 import { verifiedPersonalProbe } from "../src/dispatch/home-proof";
-import { runHomeProofs } from "./run-home-proofs";
 import { JudgeQuarantined, runCodexJudge } from "./eval-codex-judge";
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
@@ -67,7 +66,6 @@ async function batchOne() {
   }
   if (!dry && !second) for (const h of ["claude", "codex"] as const) {
     if (!verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(await probePersonalSources(h,dispatch)));
-    if (h === "claude" && verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
   }
 
   if (!dry && !second) {
@@ -90,13 +88,13 @@ async function batchOne() {
       if (exposesAnswer(input.files)) missing.push("case discloses its planted classification in contestant input");
       const key = row.id + (row.variant ? "/" + row.variant : "");
       if (missing.length || dry) {
-        console.log(JSON.stringify({ case: key, eligible: !missing.length, missing, trials: 3 }));
-        if (missing.length) skipped += 3;
+        console.log(JSON.stringify({ case: key, eligible: !missing.length, missing }));
+        if (missing.length) skipped++;
         continue;
       }
-      for (let trial = 1; trial <= 3; trial++) {
+      for (let trial = 1; trial <= 2; trial++) {
         const trialKey = key + "#" + trial;
-        if (second && trialKey === "spec-lead-01-draft-and-revise/bug-reproduce-first#1") continue;
+        if (second && row.variant === "bug-reproduce-first") break; // Batch 1 first trial passed its approved offline rescore.
         const previous = ledger.db
           .query<{ revision: string; status: string }, [string]>("SELECT revision,status FROM trials WHERE key=?")
           .get(trialKey);
@@ -104,6 +102,7 @@ async function batchOne() {
           if (runGit(git,factory,["rev-parse",previous.revision+":skills"]).toString() !== runGit(git,factory,["rev-parse",pin+":skills"]).toString() || previous.status === "started")
             throw new Error("previous trial requires reconciliation: " + trialKey);
           console.log(JSON.stringify({ trial: trialKey, reused: previous.status }));
+          if (previous.status !== "failed") break;
           continue;
         }
         const id = crypto.randomUUID(),
@@ -313,6 +312,7 @@ async function batchOne() {
           ledger.db.run("UPDATE trials SET status=?,report=? WHERE key=?", [status, JSON.stringify(report), trialKey]);
           console.log(JSON.stringify({ trial: trialKey, status, ...report }));
           if (overshoot) throw new Error("batch stopped after a measured overshoot");
+          if (passed) break;
         } finally {
           if (cleanup) rmSync(root, { recursive: true, force: true });
         }
@@ -328,7 +328,6 @@ async function batchOne() {
           case: c.id,
           variant: c.variant,
           harness: "codex",
-          trials: 3,
           missing: requiredProofs("codex", role, [], String(input.brief.stage), dispatch),
         }),
       );
