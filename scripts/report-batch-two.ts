@@ -22,12 +22,16 @@ const bad = (checks: Record<string, boolean> = {}) =>
     .join(", ");
 const afterJudges = new Map<string, { passed: boolean; checks: Record<string, boolean>; judge: string }>();
 const judgeDir = new Map<string, string>();
-for (const n of readdirSync(root).filter((s) => s.startsWith("judge-"))) {
+const judgeHistory = new Map<string, { passed: boolean; checks: Record<string, boolean> }>();
+for (const n of readdirSync(root).filter(s => s.startsWith("judge-") || s.startsWith("rubric-")).sort()) {
   const path = join(root, n);
   const f = ["result-v2.json", "result.json"].find((f) => existsSync(join(path, f)));
   if (f) {
     const grade = read(join(path, f));
+    if (n.startsWith("rubric-") && afterJudges.get(grade.contestant)?.judge !== grade.oldJudge)
+      throw new Error("unjoined prior judge for rubric correction");
     afterJudges.set(grade.contestant, grade);
+    judgeHistory.set(grade.judge, grade);
     judgeDir.set(grade.judge, path);
   }
 }
@@ -65,7 +69,7 @@ for (const row of db
       });
   let status: string;
   if (row.kind === "judge") {
-    const j = [...afterJudges.values()].find((g) => g.judge === row.id);
+    const j = judgeHistory.get(row.id);
     if (!j) throw new Error("missing grade for " + row.id);
     status = j.passed ? "pass" : "fail - " + bad(j.checks);
   } else if (!contestant) throw new Error("unjoined contestant");
