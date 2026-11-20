@@ -4,6 +4,7 @@ Status: agreed on 2026-11-18 after a design session and two independent reviews 
 Owner: solo builder.
 Scope: a personal factory that turns requests into reviewed, verified pull requests.
 Build order lives in [v1-plan.md](v1-plan.md).
+Tier routing, promotion, and tier-to-model mappings are deferred to the [v1 plan backlog](v1-plan.md#backlog-add-when-real-use-needs-it).
 
 ## Goals
 
@@ -79,6 +80,7 @@ Side states: `escalated`, `cancelled`, `failed`, `throttled`.
 `throttled` reads the reset time from the provider's rate-limit event and restarts the stage after it.
 Every stage has a timeout and a token budget from config; exceeding either escalates.
 v1 runs one active task at a time, and a task parked at a human gate releases its slot.
+Expanded owner feedback edges and `throttled` handling are deferred to the [v1 plan backlog](v1-plan.md#backlog-add-when-real-use-needs-it).
 
 ### Crash safety
 
@@ -92,6 +94,7 @@ Crash recovery is tested with a fake dispatcher that kills the process at every 
 Every verdict, check result, and verification result records the base and head SHAs it covers.
 After any repair or rebase, the factory recomputes the diff, re-selects auditors, re-reviews the delta, and reruns checks and verification.
 The factory checks the base branch for drift before verification, rebases once if needed, and escalates a conflict.
+Automatic rebase is deferred to the [v1 plan backlog](v1-plan.md#backlog-add-when-real-use-needs-it).
 
 ## The team
 
@@ -117,7 +120,8 @@ The specialist team runs inside the spec lead as harness-native subagents, each 
 The factory dispatches only the spec lead.
 The cross-vendor rules for code review and verification are enforced in code, not in prompts.
 Each run records requested and observed model separately; a mismatch or unknown observed model is flagged in the audit.
-Whether the subagent team beats a single spec lead is measured on the pilot (see v1-plan step 7).
+Whether the subagent team beats a single spec lead is measured on the pilot.
+The spec-lead subagent team and its comparison experiment, expanded model enforcement, and auditor triggers beyond fixed path globs are deferred to the [v1 plan backlog](v1-plan.md#backlog-add-when-real-use-needs-it).
 
 ## Spec stage
 
@@ -236,6 +240,7 @@ A launchd-managed Bun daemon polls GitHub every 2 minutes for issues labeled `fa
 The `factory` CLI supports `run <issue-url | "text">`, `status`, and `cost`.
 Orca automations are not used for polling, because each run starts an agent.
 The owner is notified through GitHub review requests and mentions on escalation, and through Orca workspace status.
+The daemon and two-minute polling are deferred to the [v1 plan backlog](v1-plan.md#backlog-add-when-real-use-needs-it).
 
 ## Audit and cost
 
@@ -254,6 +259,7 @@ Signals for later improvement are recorded from day one: owner review comments, 
 - Linear adapter, then WhatsApp and Teams through a small webhook inbox on the owner's VPS that verifies signatures, queues messages, and is pulled by the laptop over an outbound connection.
 - Benchmarks replaying frozen past tasks with hidden future history and held-out acceptance checks; model swaps land via PR.
 - Retrospective improvement PRs once benchmark replay exists; until then, changes are driven by observed failures.
+- Judge calibration with planted defects is deferred to the [v1 plan backlog](v1-plan.md#backlog-add-when-real-use-needs-it).
 
 ## Security
 
