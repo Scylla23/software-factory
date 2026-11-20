@@ -14,12 +14,12 @@ import { requiredProofs } from "../src/dispatch/skill-launch";
 import { flattenCases, judgeGrades } from "./batch-one-cases";
 import { DollarBudget } from "./eval-dollar-budget";
 import { runCodexJudge } from "./eval-codex-judge";
-import { pinnedFixture } from "./eval-checkout";
+import { evalCheckout, pinnedFixture } from "./eval-checkout";
 import { caseInput, inspectBlindStream, stageBlindInputs } from "./eval-inputs";
 import { specialistProject } from "./eval-pilot";
 import { specialistChecks } from "./eval-specialist-checks";
-import { verifierChecks } from "./eval-verifier-checks";
-import { evalCheckout } from "./eval-checkout";
+import { planChecks, uiChecks, verifierChecks } from "./eval-verifier-checks";
+import { stageUiEvidence, verifierPilot } from "./eval-verifier-pilot";
 import Ajv2020 from "ajv/dist/2020";
 
 const d = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] }),
@@ -44,14 +44,17 @@ async function run() {
     for (const row of flattenCases(catalog.cases)) {
       const input = caseInput(git, factory, pin, role, row.id, row.variant);
       const caseKey = row.id + (row.variant ? "/" + row.variant : "");
-      if (verifier && !input.fixture) {
-        console.log(
-          JSON.stringify({
-            case: caseKey,
-            trials: 3,
-            refused: "the referenced AC-tagged task-list worked example is absent from spec-format.md",
-          }),
-        );
+      const planning = row.id === "verifier-01-plan-by-tag",
+        ui = row.id === "verifier-03-judge-ui-capture";
+      const accepted = ui
+        ? ledger.db
+            .query<{ id: string }, []>(
+              "SELECT id FROM trials WHERE key LIKE 'verifier-01-plan-by-tag#%' AND status='passed' ORDER BY key LIMIT 1",
+            )
+            .get()
+        : null;
+      if (ui && !accepted) {
+        console.log(JSON.stringify({ case: caseKey, trials: 3, refused: "no accepted verifier-01 plan" }));
         continue;
       }
       for (let trial = 1; trial <= 3; trial++) {
@@ -68,12 +71,15 @@ async function run() {
         const local = mkdtempSync(join(d.accountHome, ".factory-trial-")),
           repo = make(join(local, "source")),
           logs = make(join(root, id));
-        const refs = verifier
-          ? evalCheckout(git, factory, pin, repo, logs, input.patch)
-          : specialistProject(git, factory, pin, repo, role, !proj.isNew);
+        const refs =
+          ui || planning
+            ? verifierPilot(git, factory, pin, root, repo)
+            : verifier
+              ? evalCheckout(git, factory, pin, repo, logs, input.patch)
+              : specialistProject(git, factory, pin, repo, role, !proj.isNew);
         const dirs = createAttempt({
           role: verifier ? "verifier" : "spec-lead",
-          stage: verifier ? "judge" : "spec",
+          stage: verifier ? String(input.brief.stage) : "spec",
           project: repo,
           runRoot: join(local, "runs"),
           stateRoot: d.stateRoot,
@@ -82,6 +88,10 @@ async function run() {
         });
         checkoutSnapshot(git, repo, verifier ? refs.head : refs.base, dirs.worktree);
         const staged = stageBlindInputs(git, factory, pin, role, input, dirs.taskDir, refs);
+        if (ui && accepted) {
+          const output = JSON.parse(readFileSync(join(root, accepted.id, "submission.json"), "utf8"));
+          await stageUiEvidence(d, root, dirs.taskDir, refs, Buffer.from(output["verification/plan.json"]), factory, repo);
+        }
         let retried = false;
         if (verifier && row.variant === "sound-evidence") {
           const first = createAttempt({
@@ -112,7 +122,9 @@ async function run() {
         checkoutSnapshot(git, factory, pin, source);
         const canary = crypto.randomUUID();
         writeFileSync(join(source, "skills/_shared/evals", canary + ".txt"), canary, { flag: "wx", mode: 0o400 });
-        const taskId = String(input.brief.taskId ?? "task-" + id);
+        const taskId = String(
+          input.brief.taskId ?? (verifier ? JSON.parse(readFileSync(join(dirs.taskDir, "spec-lead.json"), "utf8")).taskId : "task-" + id),
+        );
         const brief = {
           taskId,
           round: 1,
@@ -121,7 +133,9 @@ async function run() {
             ? {
                 headSha: refs.head,
                 specSet: staged.specSet,
-                captureAttemptId: JSON.parse(readFileSync(join(dirs.taskDir, "verification/evidence/index.json"), "utf8")).attemptId,
+                ...(!planning
+                  ? { captureAttemptId: JSON.parse(readFileSync(join(dirs.taskDir, "verification/evidence/index.json"), "utf8")).attemptId }
+                  : {}),
               }
             : {}),
           project: { name: "project", stack: "bun", commands: {}, fixtures: [], securityGlobs: [], migrationGlobs: [], ...proj },
@@ -170,13 +184,15 @@ async function run() {
           )
             throw new Error("incomplete specialist: " + result.diagnostics.join(", "));
           await inspectBlindStream(result.stdoutPath, canary, dirs.worktree);
-          const name = verifier
-            ? "verification/results.json"
-            : role === "threat-modeler"
-              ? "threat-model.md"
-              : role === "architect"
-                ? "architecture.md"
-                : role + ".md";
+          const name = planning
+            ? "verification/plan.json"
+            : verifier
+              ? "verification/results.json"
+              : role === "threat-modeler"
+                ? "threat-model.md"
+                : role === "architect"
+                  ? "architecture.md"
+                  : role + ".md";
           const paths = [...new Bun.Glob("projects/*/" + id + ".jsonl").scanSync(d.harnessHomes.claude)];
           let system = false;
           if (!verifier && paths.length === 1)
@@ -215,26 +231,35 @@ async function run() {
               )
                 noCommands = false;
             }
-          const checks = verifier
-            ? verifierChecks(
-                row.variant!,
-                row.checks,
-                files,
-                result.resultText ?? "",
-                dirs.taskDir,
-                dirs.skillsDir,
-                id,
-                refs.head,
-                noCommands,
-                retried,
-              )
-            : specialistChecks(role, files.get(name)!.toString(), row.checks, dirs.skillsDir, new Set(tracked), intact);
+          const tree = new Map(
+            tracked.filter((p) => !p.endsWith(".lock")).map((p) => [p, runGit(git, repo, ["show", refs.head + ":" + p]).toString()]),
+          );
+          const checks = planning
+            ? planChecks(files, dirs.taskDir, dirs.skillsDir, refs, intact, tree)
+            : ui
+              ? uiChecks(files, dirs.taskDir, dirs.skillsDir, await observedImageHashes(d.harnessHomes.claude, id, dirs.taskDir))
+              : verifier
+                ? verifierChecks(
+                    row.variant!,
+                    row.checks,
+                    files,
+                    result.resultText ?? "",
+                    dirs.taskDir,
+                    dirs.skillsDir,
+                    id,
+                    refs.head,
+                    noCommands,
+                    retried,
+                  )
+                : specialistChecks(role, files.get(name)!.toString(), row.checks, dirs.skillsDir, new Set(tracked), intact);
           if (!intact) throw new Error("staged inputs, snapshot or scratch changed");
           const fixtures = {
-            task: Object.fromEntries(Object.keys(input.files).map((path) => [path, readFileSync(join(dirs.taskDir, path), "utf8")])),
-            source: Object.fromEntries(
-              tracked.filter((p) => !p.endsWith(".lock")).map((p) => [p, runGit(git, repo, ["show", refs.head + ":" + p]).toString()]),
+            task: Object.fromEntries(
+              [
+                ...new Set([...Object.keys(input.files), ...(ui ? ["verification/plan.json", "verification/evidence/index.json"] : [])]),
+              ].map((path) => [path, readFileSync(join(dirs.taskDir, path), "utf8")]),
             ),
+            source: Object.fromEntries(tree),
           };
           if (row.variant === "stale-evidence") files.set("final-message.txt", Buffer.from(result.resultText ?? ""));
           const output = Object.fromEntries([...files].map(([k, v]) => [k, v.toString()]));
@@ -259,6 +284,34 @@ async function run() {
 }
 function pinnedFixtureSchema() {
   return runGit(git, factory, ["show", pin + ":skills/verifier/results.schema.json"]).toString();
+}
+async function observedImageHashes(home: string, id: string, task: string) {
+  const paths = [...new Bun.Glob("projects/*/" + id + ".jsonl").scanSync(home)];
+  if (paths.length !== 1) throw new Error("missing verifier transcript");
+  const hashes = new Set<string>();
+  for await (const line of readJsonl(join(home, paths[0]!))) {
+    if (line.kind !== "record") throw new Error("invalid verifier transcript");
+    const e = line.value;
+    if (e.sessionId !== id) continue;
+    if (
+      e.type === "assistant" &&
+      isRecord(e.message) &&
+      Array.isArray(e.message.content) &&
+      e.message.content.some((c) => isRecord(c) && c.type === "tool_use" && c.name === "Write")
+    )
+      break;
+    const r = e.toolUseResult;
+    if (
+      e.type === "user" &&
+      isRecord(r) &&
+      r.type === "image" &&
+      typeof r.filePath === "string" &&
+      r.filePath.startsWith(join(task, "verification/evidence") + "/") &&
+      typeof r.sha256 === "string"
+    )
+      hashes.add(r.sha256);
+  }
+  return hashes;
 }
 try {
   await run();

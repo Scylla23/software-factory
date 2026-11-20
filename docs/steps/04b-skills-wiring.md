@@ -120,7 +120,12 @@ All nine Codex role and stage profiles passed the pinned CLI shell write matrix 
 The deterministic bundle exclusion and collector tests cover parts of D5 and R3.
 The native file-tool matrix uses inert files in throwaway directories and checks their final contents on the host.
 Codex completed create, rename and delete controls for triage, builder, both security audit stages, spec lead and verifier.
-The code reviewer, database auditor and spec reviewer probes returned a model refusal before attempting any native call.
+The original code reviewer, database auditor and spec reviewer probes returned a model refusal before attempting any native call.
+The coordinator separated this role behavior from the write-policy mechanism and approved a neutral marker request with each exact generated role policy.
+The pinned Codex Luna low mechanism controls passed for spec reviewer in `01a1f784-16af-7f20-b6be-3b415be82dc2`, code reviewer in `01a1f782-f28c-7012-9188-58a00865ec6d` and database auditor in `01a1f783-5318-7720-be42-457efcd51d95`.
+The neutral spec reviewer also had one inconclusive attempt with no native call before its passing repeat.
+These role-bound receipts qualify all nine native Codex policy profiles.
+R3 remains a separate requirement for code review.
 Claude completed native Write and Edit controls for all nine role and stage profiles.
 Triage `2a595adb-7d0c-4295-a9cb-1f4fea7615d6` and database auditor `038f954a-677f-434c-900a-18572c2363c4` confirmed that an external Read refusal can also prevent Edit from resolving its target.
 The harness exposes no native rename or delete operation with Bash removed.
@@ -228,6 +233,12 @@ Verifier case 01 described a task list but referred to the expense-report exampl
 The coordinator approved an independent five-criterion task-list fixture for verifier cases 01 and 03.
 It stages the existing three named sort tests, visibility of the three seeded dates at both viewports and the owner's production-data check.
 Both cases share the spec, machine-readable criteria and build report.
+All three corrected spec-reviewer revision submissions passed their deterministic checks.
+In an offline setup control, the verifier executor used the embedded Orca browser to capture the pinned route on base and head at 1440x900 and 390x844.
+The page text contains the three ordered dates on head, the 390-pixel image clips the Due column, and only the head captures contain the console error.
+The runner checks each PNG digest and validates the evidence index before staging it.
+The JUnit report records an assertion failure for each named head test on base and a pass for each on head.
+The judge case consumes the frozen plan bytes of a passing verifier-01 contestant before collecting its own evidence.
 
 `python3 scripts/mutate-step-04b.py` killed 59 of 59 implementation mutants, including the broker operation allowlist, orphaned command marker, credential bootstrap, child receipt joins, blind plan digest, isolated home receipts, both budget dimensions, judge quotations, discovery write denials, lazy reads and specialist model selection.
 The three development suites passed with 331, 342 and 355 tests.
@@ -241,6 +252,8 @@ The factory typecheck passed and all nine Codex shell role profiles passed their
 On the rebased branch the full suite passed 451 tests across 42 files with 6,755 assertions.
 The typecheck and the 221 validator controls passed.
 The mutation scripts killed all 71 step 4b mutants and all 48 step 8 mutants.
+The batch 2 suite passed 461 tests with 6,846 assertions in 111.76 seconds, and the mutation runs killed 79/79 step 4b mutants and 48/48 step 8 mutants.
+After the fixture repairs, the validator passed 226 controls and all 44 variants staged.
 The staged revision preflight also passed its focused regression, including the corrected-digest control.
 The 20 consecutive final runs await completed evals at the coordinator's request.
 

@@ -37,7 +37,7 @@ async function verifyBlind(path: string, canary: string) {
 }
 
 // Preserve the checked-out worktree until independent deterministic checks and cross-vendor grading finish.
-export async function collectCodexTrials(batchTwo = false) {
+export async function collectCodexTrials(batchTwo = false, selected?: string) {
   const batch = join(dispatch.stateRoot, "evaluations", batchTwo ? "v1-step-4b-batch-2" : "v1-step-4b-batch-1", "codex");
   mkdirSync(batch, { recursive: true, mode: 0o700 });
   assertPrivateDir(batch, dispatch.stateRoot);
@@ -48,6 +48,7 @@ export async function collectCodexTrials(batchTwo = false) {
       const stage = String(input.brief.stage);
       const missing = requiredProofs("codex", role, [], stage, dispatch);
       const key = row.id + (row.variant ? "/" + row.variant : "");
+      if (selected && key !== selected) continue;
       if (batchTwo && (role === "builder" || row.variant === "lead-dropped-a-mitigation")) continue;
       if (missing.length) {
         console.log(JSON.stringify({ key, missing, trials: 3 }));
@@ -55,7 +56,9 @@ export async function collectCodexTrials(batchTwo = false) {
       }
       if (!input.fixture) throw new Error("Codex case requires an explicit fixture");
       for (let trial = 1; trial <= 3; trial++) {
-        const trialDir = join(batch, key.replace("/", "_") + "-" + trial);
+        let trialDir = join(batch, key.replace("/", "_") + "-" + trial);
+        const preflight = join(trialDir, "preflight.json");
+        if (existsSync(preflight) && JSON.parse(readFileSync(preflight, "utf8")).pin !== pin) trialDir += "-" + pin.slice(0, 12);
         if (existsSync(trialDir)) {
           const refusal = join(trialDir, "preflight.json");
           const previous = JSON.parse(readFileSync(existsSync(refusal) ? refusal : join(trialDir, "contestant.json"), "utf8"));
@@ -200,4 +203,4 @@ export async function collectCodexTrials(batchTwo = false) {
     }
   }
 }
-if (import.meta.main) await collectCodexTrials(process.argv[2] === "--batch-two");
+if (import.meta.main) await collectCodexTrials(process.argv[2] === "--batch-two", process.argv[3]);

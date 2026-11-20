@@ -56,7 +56,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
         skill.namedLeadEvaluation || skill.members.length || !Object.hasOwn(factoryConfig.specTeam,skill.evaluationMember) ||
         spec.model !== factoryConfig.specTeam[skill.evaluationMember].model || spec.effort !== factoryConfig.specTeam[skill.evaluationMember].effort))
       throw new Error("invalid standalone specialist evaluation");
-    requireSkillProofs(spec.harness, skill.dirs.role, skill.members, skill.dirs.stage, config);
+    requireSkillProofs(spec.harness, skill.dirs.role, skill.evaluationMember ? [skill.evaluationMember] : skill.members, skill.dirs.stage, config);
   }
   const ctx: PolicyContext = { accountHome: config.accountHome, stateRoot: config.stateRoot, harnessHomes: Object.values(config.harnessHomes) };
   const denyRead = effectiveDenyRead(ctx, spec.extraDenyRead);
