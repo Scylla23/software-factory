@@ -29,7 +29,7 @@ export function runHomeProofs(harness: Harness, config: DispatchConfig, team = f
   const arms: unknown[] = [],
     failures: string[] = [];
   for (const source of team ? ["D3-distinct"] : homeSources) {
-    const proof = Bun.spawnSync([process.execPath, script, source], {
+    const proof = Bun.spawnSync([process.execPath, script, source, ...(team ? ["--factory-login"] : [])], {
       cwd: import.meta.dir,
       // The inner supervisors bound each arm and own its credential teardown.
       stdout: "pipe",

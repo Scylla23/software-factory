@@ -6,6 +6,7 @@ import { claudeArgs, parseClaudeStream } from "./claude";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "./codex";
 import { assertPrivateDir, assertSafeDir, assertStateRootIsolated, type DispatchConfig, isUnder, managedSettingsProblems, planRunFiles, reserveRunFiles, tempRoots, trustedAgentPath } from "./config";
 import { prepareBroker } from "./broker";
+import { beforeHomeLaunch, afterHomeLaunch } from "./home-session";
 import { briefPrompt, claudeDefinitions, runBrief } from "./brief";
 import { bundleDigest, composeInstructions, materializeBundle } from "./bundle";
 import { requireSkillProofs, type SkillLaunch } from "./skill-launch";
@@ -46,6 +47,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     if (problems.length > 0) throw new Error(`refusing Claude dispatch, managed settings would apply:\n${problems.join("\n")}`);
   }
   const skill = spec.skill;
+  if (spec.toolFreeJudge && (skill || spec.harness !== "claude" || !spec.readOnlyWorktree || !spec.evaluationLimits)) throw new Error("invalid tool-free judge launch");
   if (skill) {
     if (skill.dirs.worktree !== worktree || basename(skill.dirs.root) !== spec.runId) throw new Error("skill attempt or worktree mismatch");
     if (skill.namedLeadEvaluation && (spec.harness !== "claude" || skill.dirs.role !== "spec-lead")) throw new Error("named lead evaluation requires a Claude spec lead");
@@ -56,9 +58,11 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   const binaryRoots = spec.harness === "codex" && realExecutable ? codexReadable(realExecutable, denyRead) : [];
   const policy: SandboxPolicy = skill ? skillPolicy(skill.dirs, denyRead, skill.toolDirs, binaryRoots, config.executables.git) : {
     denyRead,
+    ...(spec.toolFreeJudge ? {writable: []} : {}),
     readable: binaryRoots,
     denyWrite: [...gitWriteProtectedPaths(config.executables.git, worktree), ...(spec.readOnlyWorktree ? [worktree] : [])],
   };
+  policy.denyWrite = [...new Set([...policy.denyWrite, ...ctx.harnessHomes])];
   assertPolicySound(policy, ctx);
   if (skill ? skill.dirs.role === "builder" : !spec.readOnlyWorktree) assertWorktreeWritable(policy, worktree);
   const agentWritable = policy.writable ?? [worktree, ...tempRoots()];
@@ -83,10 +87,11 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
   if (team) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
   const args =
     spec.harness === "claude"
-      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, evaluationLimits:spec.evaluationLimits, instructionsFile: team ? null : instructionsPath, team, fileToolsOnly, brokerFile:broker?.mcpPath, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
+      ? claudeArgs({ prompt, model: spec.model, effort: spec.effort, sessionId: spec.runId, policy, evaluationLimits:spec.evaluationLimits, toolFreeJudge:spec.toolFreeJudge, instructionsFile: team ? null : instructionsPath, team, fileToolsOnly, brokerFile:broker?.mcpPath, directories: skill && [skill.dirs.taskDir, skill.dirs.skillsDir, skill.dirs.outDir, skill.dirs.scratchDir] })
       : codexArgs({ prompt, model: spec.model, effort: spec.effort, worktreePath: worktree, policy, instructions });
 
   // Reserve private log files before starting the harness.
+  const homeInventory = beforeHomeLaunch(spec.harness, home, args, broker?.mcpPath, realExecutable ?? undefined);
   const logs = reserveRunFiles(files, instructions);
   let proc: AgentProcess;
   try {
@@ -122,8 +127,16 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
     try { if (bundleDigest(skill.dirs.skillsDir) !== bundleHash) throw new Error("digest mismatch"); }
     catch { quarantineReasons.push("pinned skill bundle changed during the run"); }
   }
+  const codexStream = spec.harness === "codex" ? await parseCodexEvents(readJsonl(logs.stdoutPath)) : null;
+  let audited = true;
+  try {
+    await afterHomeLaunch(spec.harness, home, homeInventory, logs.stdoutPath, spec.harness === "claude" ? spec.runId : codexStream?.threadId ?? null, {broker: !!broker});
+  } catch (error) {
+    audited = false;
+    quarantineReasons.push("home source audit: " + (error as Error).message);
+  }
   diagnostics.push(...quarantineReasons.map((r) => `quarantine: ${r}`));
-  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (status?.code === 0 && succeeded ? "completed" : "failed");
+  const outcome = (succeeded: boolean): RunOutcome => stopped ?? (audited && status?.code === 0 && succeeded ? "completed" : "failed");
   const base = {
     harness: spec.harness,
     promptRevision,
@@ -154,7 +167,7 @@ export async function runAgent(spec: RunSpec, config: DispatchConfig): Promise<R
       diagnostics: [...diagnostics, ...s.diagnostics],
     };
   }
-  const s = await parseCodexEvents(readJsonl(logs.stdoutPath));
+  const s = codexStream!;
   diagnostics.push(...s.diagnostics);
   return {
     ...base,

@@ -1,6 +1,6 @@
 import type { AttemptDirectories } from "./attempt";
 import type { BriefInput, requiredMembers } from "./brief";
-import { verifiedHomeProof, verifiedTeamModelProof } from "./home-proof";
+import { verifiedPersonalProbe, verifiedTeamModelProof } from "./home-proof";
 import type { DispatchConfig } from "./config";
 import type { Harness } from "./types";
 
@@ -21,15 +21,10 @@ export function requiredProofs(harness: Harness, role: AttemptDirectories["role"
   if (members.length && role !== "spec-lead") return ["only the spec lead may request members"];
   if (members.length && harness === "codex") return ["Codex cannot restrict a lead to its team before dispatch"];
 
-  // S1 covers implicit reads by the harness before any task tool is called.
-  // Removing the spawn tool therefore cannot discharge this common control.
-  // All skill profiles deny discovery writes, and Claude exposes no direct Bash.
-  // Code-stage Claude reviewers run their registered checks through the separate broker.
-  const missing = ["S3 system skill discovery"];
-  if (!dispatch || !verifiedHomeProof(harness,dispatch.stateRoot,dispatch.executables[harness])) missing.unshift("S1 home skill discovery");
+  const missing: string[] = [];
+  if (!dispatch || !verifiedPersonalProbe(harness,dispatch.stateRoot,dispatch.executables[harness])) missing.push("factory personal-source probe");
   if (harness === "claude") {
     if (members.length) {
-      missing.push("S8 home agent discovery");
       if (!dispatch || !verifiedTeamModelProof(dispatch.stateRoot,dispatch.executables.claude)) missing.push("D3 distinct specialist model and effort");
     }
     if (role === "builder") missing.push("builder command execution with closed reads");

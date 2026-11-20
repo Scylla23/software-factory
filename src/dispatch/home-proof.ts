@@ -60,7 +60,8 @@ export function qualifiesTeamModelProof(raw: unknown) {
       rows.length !== 1 ||
       !a ||
       a.test !== "D3-distinct" ||
-      a.factoryLogin !== false ||
+      a.homeAudit !== true ||
+      a.factoryLogin !== true ||
       a.passed !== true ||
       typeof a.id !== "string" ||
       !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(a.id) ||
@@ -93,6 +94,13 @@ export function qualifiesTeamModelProof(raw: unknown) {
   });
 }
 
+export function verifiedPersonalProbe(harness: Harness, state: string, executable: string) {
+  return verifiedReceipt(harness, state, executable, "personal-negative", r => isRecord(r) &&
+    r.test === "personal-negative" && r.harness === harness && r.version === pinnedVersions[harness] &&
+    r.model === (harness === "claude" ? "claude-haiku-5-5" : "gpt-6-luna") && r.effort === "low" &&
+    typeof r.candidates === "number" && r.candidates > 0 && r.scope === "installed-sources" && typeof r.session === "string" && r.passed === true &&
+    Array.isArray(r.failures) && r.failures.length === 0);
+}
 export function verifiedHomeProof(harness: Harness, state: string, executable: string) {
   return verifiedReceipt(harness, state, executable, "s1", (r) => qualifiesHomeProof(harness, r));
 }

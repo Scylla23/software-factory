@@ -1,6 +1,7 @@
 // The judge has a neutral Git directory and receives only source fixtures, output and check text.
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
+import { beforeHomeLaunch, afterHomeLaunch } from "../src/dispatch/home-session";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "../src/dispatch/codex";
 import { assertPrivateDir, type DispatchConfig } from "../src/dispatch/config";
 import { runGit } from "../src/dispatch/git";
@@ -40,6 +41,7 @@ export async function runCodexJudge(
     accountHome: config.accountHome,
     trustedPath: "/usr/bin:/bin",
   });
+  const inventory = beforeHomeLaunch("codex",home,args,undefined,exe);
   const stdout = join(logDir, "judge.jsonl"),
     out = openSync(stdout, "wx", 0o600),
     err = openSync(join(logDir, "judge.stderr"), "wx", 0o600);
@@ -53,6 +55,8 @@ export async function runCodexJudge(
   })();
   const run = await superviseRun(proc, { timeoutMs: 180000, psPath: config.executables.ps });
   const sweep = await sweepWorktree(cwd, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
+  const result = await parseCodexEvents(readJsonl(stdout));
+  await afterHomeLaunch("codex",home,inventory,stdout,result.threadId);
   if (run.stopped || run.status?.code !== 0 || assessCleanup(run.unverified, sweep).quarantineReasons.length)
     throw new Error("unclean judge exit");
   for await (const line of readJsonl(stdout)) {
@@ -63,7 +67,6 @@ export async function runCodexJudge(
         throw new Error("judge used an external tool");
     }
   }
-  const result = await parseCodexEvents(readJsonl(stdout));
   const session = result.threadId && (await findCodexSessionFile(join(home, "sessions"), result.threadId));
   if (!result.succeeded || !session || (await codexSessionModel(session)) !== model) throw new Error("unverified judge session");
   let grades: unknown = [];

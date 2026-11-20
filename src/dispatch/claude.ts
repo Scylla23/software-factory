@@ -1,4 +1,5 @@
 import { count, money } from "./validation";
+import { claudeHomeSettings } from "./home-settings";
 import { discoveryGlobs } from "./discovery";
 import { BROKER_TOOL } from "./broker";
 import { describeInvalid, DiagnosticSample, isRecord, type JsonlItem, str } from "./jsonl";
@@ -19,6 +20,7 @@ export function claudeSettings(policy: SandboxPolicy, team = false, fileToolsOnl
   const denyWrite = [...new Set([...policy.denyWrite, ...(policy.writable ? policy.readable.filter(p => !policy.writable!.includes(p)) : [])])];
   const rules = (tool: string, p: string) => [`${tool}(${rulePath(p)})`, `${tool}(${rulePath(p)}/**)`];
   return {
+    ...claudeHomeSettings,
     permissions: {
       allow: policy.writable
         ? ["Read", "Glob", "Grep", ...(fileToolsOnly ? [] : ["Bash"]), ...(broker ? [BROKER_TOOL] : []), ...policy.writable.flatMap(p => [...rules("Write", p), ...rules("Edit", p)])]
@@ -66,6 +68,7 @@ export interface ClaudeCommandInput {
   instructionsFile?: string | null;
   /** Factory-selected attempt directories, excluding the definitions and the run root. */
   directories?: readonly string[];
+  toolFreeJudge?: true;
   evaluationLimits?: { maxTurns: number; maxUsd: number };
   fileToolsOnly?: boolean;
   brokerFile?: string;
@@ -86,7 +89,7 @@ export function claudeArgs(input: ClaudeCommandInput): string[] {
     "--effort", input.effort,
     "--session-id", input.sessionId,
     "--restricted",
-    "--tools", [...CLAUDE_BUILDER_TOOLS.filter(tool => !filesOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
+    "--tools", input.toolFreeJudge ? "" : [...CLAUDE_BUILDER_TOOLS.filter(tool => !filesOnly || tool !== "Bash"), ...(input.team?.members.length ? ["Agent"] : [])].join(","),
     ...(input.team ? ["--agents", input.team.file, "--agent", "spec-lead"] : []),
     "--strict-mcp-config",
     ...(input.brokerFile ? ["--mcp-config", input.brokerFile] : []),

@@ -1,5 +1,41 @@
 # Step 4b skills wiring
 
+## Factory-home decision and observations
+
+The owner replaced disposable-login S1, system-source S3, S7 and S8 with a factory-home preflight and a negative-only personal-source probe.
+Those four claims remain unproven.
+Issue #44 tracks the paired disposable-login controls.
+The historical preflight table below describes the earlier decision.
+
+The original inventory refused both factory homes because the pinned CLIs had installed account-synced Claude skills and plugin manifests, and bundled Codex skills and cached remote plugins.
+The coordinator approved retaining those sources at known disabled locations.
+No cached source was removed and no personal configuration was changed.
+Neither factory home had a settings file before this change.
+In the factory Claude home, `settings.json` disables skill and plugin sync, Claude.ai connectors, auto memory and the four built-in plugins seen in earlier restricted init records.
+The pre-plugin version of that settings file was backed up in private factory state.
+The same settings travel in the launch arguments under restricted mode.
+In the factory Codex home, `config.toml` disables skill instructions, bundled skills, plugins, remote plugins, apps and hooks.
+The effective launch repeats the settings because Codex ignores the user config.
+The S3 enabled controls listed debug, simplify and claude-api on Claude and skill-creator, skill-installer and openai-docs on Codex.
+The clean-home probes listed none of these.
+The configuration keys are documented in [Claude Code settings](https://code.claude.com/docs/en/settings) and verified against the installed binaries.
+
+The inventory checks file types, account settings, source class and location before launch and again after exit.
+The approved Claude sync bucket belongs to the factory account and organization.
+The factory accepts updates to existing cached documents without pinning their content.
+New locations, extra settings, linked inputs and unknown discovery classes refuse dispatch.
+During concurrent Codex sessions the pinned binary creates a per-thread lock and an arg0 directory with two aliases for the pinned executable.
+Only those exact aliases targeting the trusted executable qualify.
+The postflight checks the session identity, model-visible instructions and Claude init or Codex rollout listing.
+A missing transcript, a loaded source or a new source location quarantines the attempt and preserves its usage.
+
+The personal probe enumerated 177 installed skill and agent names without reading their files.
+Claude Haiku low session `fa2e95a6-e4b2-42a9-9204-e07684742faf` and Codex Luna low thread `01a1f755-95d8-7283-bcab-1ca823071c83` both passed.
+These are negative-only observations without a personal-home positive control.
+The discriminating D3 arms on the factory login passed with Haiku low as parent, Sonnet medium as the defined child, and no child start when its definition was absent.
+Production and evaluation continue to require the applicable native controls and R3.
+
+
 Status is incomplete on branch `Scylla23/factory-step4b-wiring`, based on `5e0cc6d`.
 
 ## Implemented

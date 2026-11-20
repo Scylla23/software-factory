@@ -40,7 +40,8 @@ test("D3 requires the joined child and actual distinct model and effort on both 
     test: "D3-distinct",
     observedModel: "claude-haiku-5-5",
     parentEffort: "low",
-    factoryLogin: false,
+    homeAudit: true,
+    factoryLogin: true,
     passed: true,
     types: ["probe-member"],
   };

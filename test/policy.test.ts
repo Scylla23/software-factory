@@ -278,11 +278,12 @@ describe("git dir writes", () => {
     const base = { worktreePath: wt, prompt: `dump:${wt}`, model: "m", effort: "low", logDir: sb.logDir, timeoutMs: 30_000, instructions: null };
     await runAgent({ ...base, harness: "claude", runId: crypto.randomUUID() }, sb.config);
     const settings = JSON.parse(argvOf()[argvOf().indexOf("--settings") + 1]!);
-    expect(settings.sandbox.filesystem.denyWrite).toEqual([common, admin, join(wt, ".git")]);
+    expect(settings.sandbox.filesystem.denyWrite).toEqual([common, admin, join(wt, ".git"), ...Object.values(sb.config.harnessHomes)]);
     expect(settings.permissions.deny).toEqual(expect.arrayContaining([`Write(/${common}/**)`, `Edit(/${admin}/**)`]));
     await runAgent({ ...base, harness: "codex", runId: crypto.randomUUID() }, sb.config);
     const codexArgv = argvOf();
     const profile = codexArgv.findIndex((a) => a.startsWith("permissions="));
     expect(codexEntries(codexArgv.slice(profile - 1), "read")).toEqual(expect.arrayContaining([common, admin, join(wt, ".git")]));
+    expect(codexDenied(codexArgv.slice(profile - 1))).toEqual(expect.arrayContaining(Object.values(sb.config.harnessHomes)));
   });
 });

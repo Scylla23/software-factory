@@ -18,6 +18,8 @@ export interface RunSpec {
   timeoutMs: number;
   signal?: AbortSignal;
   /** Approved evaluation stop rule backstops for one Claude session. */
+  /** A Claude evaluation judge receives its entire submission in the prompt. */
+  toolFreeJudge?: true;
   evaluationLimits?: { maxTurns: number; maxUsd: number };
   /**
    * The project's instruction files (usually AGENTS.md and CLAUDE.md), passed to the harness explicitly and

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, cpSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent, type RunSpec } from "../src/dispatch";
 import { expandHome, MANDATORY_DENY_READ } from "../src/dispatch/policy";
@@ -13,6 +13,12 @@ const saved = { HOME: process.env.HOME };
 beforeEach(() => {
   sb = makeSandbox();
   cpSync(join(FIXTURES, "codex-sessions"), join(sb.codexHome, "sessions"), { recursive: true });
+  const rollout = [...new Bun.Glob("sessions/*/*/*/*.jsonl").scanSync(sb.codexHome)][0]!;
+  const file = join(sb.codexHome,rollout);
+  const records = readFileSync(file,"utf8").trimEnd().split("\n").map(line=>JSON.parse(line));
+  records[0].payload.base_instructions = {text: "Test instructions"};
+  writeFileSync(file, records.map(row=>JSON.stringify(row)).join("\n")+"\n");
+  appendFileSync(file,JSON.stringify({type:"response_item",payload:{type:"message",role:"developer",content:[{type:"input_text",text:"Test instructions"}]}}) + "\n");
   process.env.HOME = sb.home; // the factory's inherited HOME; the agent's comes from config.accountHome
 });
 afterEach(() => {
@@ -173,7 +179,7 @@ describe("runAgent", () => {
     ac.abort();
     const r = await pending;
     expect(r.outcome).toBe("cancelled");
-    expect(r.sessionId).toBe("s");
+    expect(r.sessionId).toBe(r.runId);
     expect(r.cleanup).toEqual({ survivors: [], errors: [] });
     expect(await gone(child)).toBe(true);
   });
@@ -213,30 +219,30 @@ describe("runAgent", () => {
     expect(r.usage).toBeNull();
   });
 
-  test("a malformed thread id keeps the outcome and usage; only the observed model is unknown", async () => {
+  test("a malformed thread id quarantines the attempt and retains usage", async () => {
     const lines = readFileSync(fixture("codex-headless.jsonl"), "utf8").trimEnd().split("\n");
     lines[0] = JSON.stringify({ type: "thread.started", thread_id: "../../etc/*" });
     const r = await runAgent(spec("codex", `replay:${writeLines(sb.worktree, "events.jsonl", lines)}`), sb.config);
-    expect(r).toMatchObject({ outcome: "completed", observedModel: null, usage: { inputTokens: 19356 } });
-    expect(r.diagnostics).toEqual([expect.stringContaining("not a Codex thread id")]);
+    expect(r).toMatchObject({ outcome: "failed", quarantineWorktree: true, observedModel: null, usage: { inputTokens: 19356 } });
+    expect(r.diagnostics).toContainEqual(expect.stringContaining("not a Codex thread id"));
   });
 
-  test("a missing or unreadable rollout keeps the outcome and usage; only the observed model is unknown", async () => {
+  test("a missing or unreadable rollout quarantines the attempt and retains usage", async () => {
     const day = join(sb.codexHome, "sessions", "2026", "11", "18");
     const rollout = join(day, "rollout-2026-11-18T22-52-33-01a1efae-7fd6-7ba1-a645-e89ed21cfbdb.jsonl");
     chmodSync(rollout, 0o000);
     try {
       const r = await runAgent(spec("codex", `replay:${fixture("codex-headless.jsonl")}`), sb.config);
-      expect(r).toMatchObject({ outcome: "completed", observedModel: null, usage: { inputTokens: 19356 } });
-      expect(r.diagnostics).toEqual([expect.stringContaining("observed model unknown")]);
+      expect(r).toMatchObject({ outcome: "failed", quarantineWorktree: true, observedModel: null, usage: { inputTokens: 19356 } });
+      expect(r.diagnostics).toContainEqual(expect.stringContaining("observed model unknown"));
     } finally {
       chmodSync(rollout, 0o644);
     }
     const lines = readFileSync(fixture("codex-headless.jsonl"), "utf8").trimEnd().split("\n");
     lines[0] = JSON.stringify({ type: "thread.started", thread_id: "00000000-0000-4000-8000-000000000000" });
     const r = await runAgent(spec("codex", `replay:${writeLines(sb.worktree, "events2.jsonl", lines)}`), sb.config);
-    expect(r).toMatchObject({ outcome: "completed", observedModel: null });
-    expect(r.diagnostics).toEqual([expect.stringContaining("no rollout for thread")]);
+    expect(r).toMatchObject({ outcome: "failed", quarantineWorktree: true, observedModel: null });
+    expect(r.diagnostics).toContainEqual(expect.stringContaining("no rollout for thread"));
   });
 
   test("present, unaccepted managed settings refuse a Claude dispatch before it starts", async () => {

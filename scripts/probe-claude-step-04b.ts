@@ -6,6 +6,7 @@ import { createAttempt, checkoutSnapshot } from "../src/dispatch/attempt";
 import { claudeChildStarts, claudeWrites } from "../src/dispatch/claude-writes";
 import { outputDigest } from "../src/dispatch/output";
 import { prepareBroker, BROKER_TOOL } from "../src/dispatch/broker";
+import { afterHomeLaunch, beforeHomeLaunch } from "../src/dispatch/home-session";
 import { claudeArgs } from "../src/dispatch/claude";
 import { loadDispatchConfig, managedSettingsProblems } from "../src/dispatch/config";
 import { runGit } from "../src/dispatch/git";
@@ -19,7 +20,7 @@ import { nativeRole, nativeRootPlan, claudeNativePrompt, checkNativeFiles } from
 
 const distinct = process.argv[2] === "D3-distinct";
 const selected = distinct ? "D3" : process.argv[2];
-if (distinct && process.argv[3]) throw new Error("distinct D3 requires a disposable home");
+if (distinct && process.argv[3] !== "--factory-login") throw new Error("distinct D3 requires the audited factory login");
 const profile = nativeRole(selected ?? "");
 const sourceProbe = /^(S1-(config|home-claude|home-agents)|S2-project-(claude|agents)|S8-(config|home-claude)|S4-(skills|task|out|scratch)-(skill|command|agent))$/.test(selected ?? "");
 if (!selected || !profile && !sourceProbe && !["D1", "D2", "write", "A1", "A2", "A3", "R1-Read", "R1-Bash", "R2", "R2-broker", "S3-bundled", "D3", "D4", "D5", "D6", "S5"].includes(selected)) throw new Error("unknown Claude proof");
@@ -31,6 +32,7 @@ if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "2.1.325 (Cla
 
 async function arm(control: boolean) {
   const root = mkdtempSync(join(dispatch.accountHome, ".factory-proof-"));
+  let quarantine = false;
   try {
     const make = (name: string) => { const p = join(root, name); mkdirSync(p, { mode: 0o700 }); return p; };
     const state = make("state");
@@ -124,12 +126,18 @@ async function arm(control: boolean) {
     let result: { status: number | null; stdout: string };
     if (shared) {
       const env = agentEnv(process.env, { harness: "claude", harnessHome, accountHome: home, trustedPath: "/usr/bin:/bin" });
-      env.CLAUDE_CODE_SUBAGENT_MODEL = "haiku";
-      env.CLAUDE_CODE_EFFORT_LEVEL = "low";
+      if (!distinct) { env.CLAUDE_CODE_SUBAGENT_MODEL = "haiku"; env.CLAUDE_CODE_EFFORT_LEVEL = "low"; }
+      const inventory = beforeHomeLaunch("claude",harnessHome,args,broker?.mcpPath);
       if (!(selected === "A3" && control)) env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
       const child = spawnSync(exe, args, { env, cwd: dirs.worktree, stdio: ["ignore", "pipe", "ignore"], timeout: 120_000,
         maxBuffer: 8 * 1024 * 1024, killSignal: "SIGKILL" });
       result = { status: child.status, stdout: child.stdout?.toString("utf8") ?? "" };
+      const logs = join(dispatch.stateRoot,"skill-proofs",id);
+      mkdirSync(logs,{mode:0o700,recursive:true});
+      const stream = join(logs,"stdout.jsonl");
+      writeFileSync(stream,result.stdout,{mode:0o600,flag:"wx"});
+      try { await afterHomeLaunch("claude",harnessHome,inventory,stream,id,{broker:!!broker}); }
+      catch (err) { quarantine = true; throw err; }
     } else {
       result = runClaudeProof(exe, args, dirs.worktree, home, harnessHome, "/usr/bin/security", !(selected === "A3" && control), distinct);
     }
@@ -248,10 +256,10 @@ async function arm(control: boolean) {
     });
     const nativePassed = native && !tools.includes("Bash") && observations?.every(r => r.write && r.edit) && checkNativeFiles(native,"claude");
     const passed = Boolean(result.status === 0 && init && /haiku/i.test(init.model) && final && (native ? nativePassed : sourceCanary ? sourcePass : checks[selected as keyof typeof checks]));
-    console.log(JSON.stringify({ test: distinct ? "D3-distinct" : selected, parentEffort:effort(parent), control, factoryLogin: shared, id, status: result.status, observedModel: init?.model,
+    console.log(JSON.stringify({ test: distinct ? "D3-distinct" : selected, parentEffort:effort(parent), control, factoryLogin: shared, homeAudit: shared, id, status: result.status, observedModel: init?.model,
       observations, nativeFiles:native && checkNativeFiles(native,"claude"), brokerChecks, bundledNames, sourceListed, sourceLoaded, sourceStarted, listed, memberOutput, incompleteReceipt, intendedPathOnly, sampleAttempted: !!sampleResult, samplePassed, commandsPassed, toolAgent: agentTool, exposedTools: tools, types, children, starts, childTools, delivered: String(final?.result).includes(marker), observedRead: Boolean(readResult), digestMatched, written: Boolean(written), passed }));
     return passed;
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { if (!quarantine) rmSync(root, { recursive: true, force: true }); }
 }
 try {
   let passed = true;
