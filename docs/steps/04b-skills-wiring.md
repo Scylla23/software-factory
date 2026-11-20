@@ -583,7 +583,8 @@ Of 44 case variants, 26 passed, four failed on both the first trial and retry, o
 The result column uses the first valid trial and one retry after failure.
 The spend columns include every recorded contestant and judge session, including historical extra trials, native team members and invalid fixtures.
 The costs are in API-equivalent USD and sum the displayed five-decimal session charges, so rounding can affect the last digits.
-The corrected solo lead, spec-reviewer creation target and revision fixtures use their previously recorded results.
+The corrected solo lead and revision fixtures use their previously recorded results.
+The creation-target row uses the later passing trial at `152729db65b5`, recorded in the batch two addendum, and includes spend on its three earlier failures.
 
 | Case or variant | First trial / failure retry | Claude USD | Codex USD |
 | --- | --- | ---: | ---: |

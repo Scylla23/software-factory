@@ -191,3 +191,10 @@ These native per-model figures are already included in the parent session totals
 | spec-reviewer-02-clean-spec-approves/bug-spec | 1.18321 | 0.00000 | 1.18321 |
 | spec-reviewer-02-clean-spec-approves/plan-creates-a-file | 1.38067 | 0.00000 | 1.38067 |
 | spec-reviewer-03-revision-breaks-something-else | 1.33761 | 0.00000 | 1.33761 |
+
+## Creation-target fixture correction
+
+The three original `plan-creates-a-file` trials above failed.
+Trial 1 on the corrected fixture at `152729db65b503355f1f85274390cbf5e0d5297e` passed all seven deterministic checks, including `accepted` and `new-path`.
+The private contestant receipt identifies GPT-6.2-Astra session `01a1f7da-fb1b-7890-b38e-a3d7ad2d69e4` and attempt `bc17bc3c-850d-4749-b049-7c159f048632`.
+The grade required no model judge and the final table includes this trial's Codex spend.
