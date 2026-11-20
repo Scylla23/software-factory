@@ -145,7 +145,7 @@ export interface CommandResult {
 }
 
 export class PreviewError extends Error {
-  constructor(message: string, readonly teardown: TeardownReport | null, readonly logTail: string, readonly retryableStart = false) {
+  constructor(message: string, readonly teardown: TeardownReport | null, readonly logTail: string, readonly startFailure: "infrastructure" | "project" | "unknown" = "unknown") {
     super(message);
   }
 }
@@ -432,9 +432,9 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
     return report;
   };
 
-  const fail = async (message: string, logPath: string | null, retryable = false): Promise<never> => {
+  const fail = async (message: string, logPath: string | null, cause: PreviewError["startFailure"]): Promise<never> => {
     const t = await teardown();
-    throw new PreviewError(message, t, logPath ? tail(logPath) : "", retryable && t.removed && t.noKnownSurvivors);
+    throw new PreviewError(message, t, logPath ? tail(logPath) : "", t.removed && t.noKnownSurvivors ? cause : "unknown");
   };
 
   try {
@@ -511,7 +511,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
           const r = await runCommand(argv, { network: { kind: "proxy", port: proxy.port }, proxy: proxy.url, name: `setup-${i}`, timeoutMs: spec.setupTimeoutMs });
           if (r.stopped || r.exitCode !== 0 || r.quarantineReasons.length > 0) {
             const why = r.stopped ?? `exit ${r.exitCode ?? "by signal"}`;
-            return await fail(`setup command ${i} (${argv[0]}) did not succeed: ${why}${r.quarantineReasons.length ? `; ${r.quarantineReasons.join("; ")}` : ""}`, r.logPath, r.stopped === "timed_out" && !r.quarantineReasons.length);
+            return await fail(`setup command ${i} (${argv[0]}) did not succeed: ${why}${r.quarantineReasons.length ? `; ${r.quarantineReasons.join("; ")}` : ""}`, r.logPath, r.stopped === "timed_out" && !r.quarantineReasons.length ? "infrastructure" : "unknown");
           }
         }
       } finally {
@@ -540,6 +540,7 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       readyMs = Date.now() - started;
       if (owned.ok) break;
       const failed = preview;
+      const exitedBeforeTeardown = failed.proc.exitedAt() !== null;
       failed.abort.abort();
       retired.push(...(await failed.supervised).unverified);
       await closeOutput(failed);
@@ -549,7 +550,8 @@ export async function startPreview(spec: PreviewSpec, config: VerifyConfig): Pro
       lease = null;
       if (!lost || round >= PORT_ROUNDS) {
         const what = ready.ok ? `port ${port} is not served by the preview: ${owned.reason}` : `preview not ready: ${owned.reason}`;
-        return await fail(`${what}${lost ? ` (another process holds port ${port}; ${round} ports tried)` : ""}`, logPath, !ready.ok);
+        const cause = lost ? "infrastructure" : ready.ok ? "unknown" : exitedBeforeTeardown ? "project" : "infrastructure";
+        return await fail(`${what}${lost ? ` (another process holds port ${port}; ${round} ports tried)` : ""}`, logPath, cause);
       }
     }
     // From here the server ending, by itself or at the maximum lifetime, ends the preview: worktree and home go with it.

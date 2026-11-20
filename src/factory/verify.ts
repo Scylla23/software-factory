@@ -32,6 +32,14 @@ export function inventoryMatches(
   });
 }
 
+export function verificationErrorCheck(error: unknown): Check {
+  if (error instanceof PreviewError && error.startFailure === "project")
+    return check("preview starts", false, String(error));
+  const retryable = error instanceof CaptureInfrastructureError || error instanceof OrcaError ||
+    (error instanceof PreviewError && error.startFailure === "infrastructure");
+  return check(retryable ? "verification infrastructure" : "complete browser verification", false, String(error));
+}
+
 export async function verifyPilot(
   task: Task,
   attempt: Attempt,
@@ -131,9 +139,7 @@ export async function verifyPilot(
     );
   } catch (e) {
     if (e instanceof PreviewError && e.teardown) checks.push(teardownCheck("preview start teardown", e.teardown));
-    const retryable = e instanceof CaptureInfrastructureError || e instanceof OrcaError ||
-      (e instanceof PreviewError && e.retryableStart);
-    checks.push(check(retryable ? "verification infrastructure" : "complete browser verification", false, String(e)));
+    checks.push(verificationErrorCheck(e));
   }
   const result = {
     pr: task.pr,
