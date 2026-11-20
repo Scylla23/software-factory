@@ -6,6 +6,13 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
+    ("home-session", "home-inventory", '!["functions", "clock"].includes(String(ns.name))', "false"),
+    ("../../scripts/eval-budget", "eval-budget", 'this.db.query("SELECT id FROM batch_stop").get()', 'false'),
+
+    ("../../scripts/eval-codex-checks", "eval-codex-checks", 'p.item.type === "CommandExecution"', 'p.item.type === "unknown"'),
+    ("../../scripts/eval-codex-checks", "eval-codex-checks", "commandRecord.exit_code !== 0", "true"),
+    ("home-inventory", "home-inventory", "readlinkSync(full) === executable", "true"),
+
     ("home-inventory", "home-inventory", "stat.nlink !== 1", "false"),
     ("home-inventory", "home-inventory", "Object.keys(value).every((k) => accountKeys.has(k))", "true"),
     ("home-inventory", "home-inventory", "!table[dirname(normalized)]?.includes", "false && !table[dirname(normalized)]?.includes"),

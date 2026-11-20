@@ -18,6 +18,9 @@ beforeEach(() => {
   const records = readFileSync(file,"utf8").trimEnd().split("\n").map(line=>JSON.parse(line));
   records[0].payload.base_instructions = {text: "Test instructions"};
   writeFileSync(file, records.map(row=>JSON.stringify(row)).join("\n")+"\n");
+  appendFileSync(file,JSON.stringify({type:"response_item",payload:{type:"additional_tools",role:"developer",tools:[
+    {type:"namespace",name:"functions",tools:[{name:"exec",description:"### `exec_command`"}]},
+  ]}})+"\n");
   appendFileSync(file,JSON.stringify({type:"response_item",payload:{type:"message",role:"developer",content:[{type:"input_text",text:"Test instructions"}]}}) + "\n");
   process.env.HOME = sb.home; // the factory's inherited HOME; the agent's comes from config.accountHome
 });

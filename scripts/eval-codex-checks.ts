@@ -44,7 +44,7 @@ export function redBeforeFix(events: readonly { productionEdit?: boolean; red?: 
   return first >= 0 && events[first]?.productionEdit === true && events.slice(0, first).some((e) => e.red);
 }
 
-async function editHistory(rollout: string, name: string, cwd: string) {
+export async function editHistory(rollout: string, name: string, cwd: string) {
   const events: { productionEdit?: boolean; red?: boolean; unclassifiedWrite?: boolean }[] = [];
   let reset = false;
   for await (const row of readJsonl(rollout)) {

@@ -98,8 +98,10 @@ export async function gradeCodexTrials(noClaude = false) {
       const dir = join(codex, entry);
       if (!existsSync(join(dir, "contestant.json"))) continue;
       assertPrivateDir(dir, dispatch.stateRoot);
-      if (existsSync(join(dir, "grade-v2.json"))) continue;
       const contestant = json(join(dir, "contestant.json"));
+      const alreadyGraded = existsSync(join(dir, "grade-v2.json"));
+      const packetPath = join(dir, "judge-input.json");
+      if (alreadyGraded && (contestant.error || existsSync(packetPath))) continue;
       const setup: TrialSetup = json(join(dir, "start.json"));
       if (contestant.id !== setup.id || contestant.pin !== setup.pin) throw new Error("mismatched contestant record");
       const cat = JSON.parse(
@@ -122,9 +124,19 @@ export async function gradeCodexTrials(noClaude = false) {
       const deterministic = Object.fromEntries(expect.map((c) => [c.id, grade[c.id] === true]));
       if (row.id.startsWith("builder-01") && redBeforeFix([{ productionEdit: true }, { red: true }]))
         throw new Error("fix-first control passed the event check");
-      const fixtures = Object.fromEntries(
-        Object.keys(input.files).map((p) => [p, readRegularFile(join(setup.task, p), 1024 * 1024).toString()]),
-      );
+      const project = join(dir, "project");
+      const tracked = runGit(dispatch.executables.git, project, ["ls-tree", "-r", "-z", "--name-only", setup.refs.head])
+        .toString()
+        .split("\0")
+        .filter(Boolean);
+      const fixtures = {
+        task: Object.fromEntries(Object.keys(input.files).map((p) => [p, readRegularFile(join(setup.task, p), 1024 * 1024).toString()])),
+        source: Object.fromEntries(
+          tracked.map((p) => [p, runGit(dispatch.executables.git, project, ["show", setup.refs.head + ":" + p]).toString()]),
+        ),
+      };
+      if (!existsSync(packetPath)) record(packetPath, { checks, candidate, fixtures });
+      if (alreadyGraded) continue;
       const decision = noClaude ? { status: "stopped" as const } : await judge(ledger, setup, dir, checks, candidate, fixtures);
       const judgments =
         decision.status === "graded"

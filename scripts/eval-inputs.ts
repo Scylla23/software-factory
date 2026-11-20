@@ -2,10 +2,20 @@ import { mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
 import { isRecord } from "../src/dispatch/jsonl";
 import { outputDigest } from "../src/dispatch/output";
+import { readRegularFile } from "../src/dispatch/regular-file";
 import { assertRepoPath } from "../src/github/commit";
 import { pinnedFixture } from "./eval-checkout";
 
 const members = ["architecture.md", "frontend.md", "infra.md", "spec-lead.json", "spec.md", "team-brief.md", "threat-model.md"];
+
+export function revisionFixtureError(key: string, task: string, current: string | undefined): string | null {
+  if (key !== "security-auditor-03-spec-stage/revision-edits-only-the-threat-model") return null;
+  const path = join(task, "archive/spec/round-1/verdicts/security-auditor.json");
+  const prior = JSON.parse(readRegularFile(path, 1024 * 1024).toString()).covers?.specSetSha256;
+  if (![prior, current].every(digest => typeof digest === "string" && /^[a-f0-9]{64}$/.test(digest)))
+    throw new Error("missing spec-set identity in staged revision fixture");
+  return prior === current ? "identity requires distinct prior and current spec-set digests" : null;
+}
 
 /** Only the selected input is returned. Expectations, controls and judges stay in the factory checkout. */
 export function caseInput(git: string, factory: string, commit: string, role: string, id: string, variant?: string) {

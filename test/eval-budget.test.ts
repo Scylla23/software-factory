@@ -1,3 +1,6 @@
+import {mkdtempSync, rmSync} from "node:fs";
+import {join,dirname} from "node:path";
+import {tmpdir} from "node:os";
 import { expect, test } from "bun:test";
 import { EvalBudget } from "../scripts/eval-budget";
 import type { ClaudeUsage } from "../src/dispatch/types";
@@ -98,4 +101,18 @@ test("a declined reservation leaves no trial and a duplicate trial rolls back it
   } finally {
     b.db.close();
   }
+});
+
+test("a stopped batch also bars a cheaper judge after the database is reopened", () => {
+  const path = join(mkdtempSync(join(tmpdir(),"factory-eval-stop-")),"usage.sqlite");
+  let batch = new EvalBudget(path);
+  try {
+    batch.reserve("first","case#1","case","triage","claude-sonnet-5-5");
+    batch.settle("first",usage(765000,20000),"completed");
+    expect(()=>batch.reserve("second","case#2","case","triage","claude-sonnet-5-5")).toThrow("stop rule");
+    batch.db.close();
+    batch=new EvalBudget(path);
+    expect(()=>batch.reserve("judge","case#1","judge","judge","claude-sonnet-5-5")).toThrow("stop rule");
+    expect(batch.totals().pending).toBe(0);
+  } finally {batch.db.close();rmSync(dirname(path),{recursive:true,force:true});}
 });

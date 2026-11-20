@@ -1,5 +1,5 @@
 // The judge has a neutral Git directory and receives only source fixtures, output and check text.
-import { closeSync, openSync } from "node:fs";
+import { closeSync, openSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeHomeLaunch, afterHomeLaunch } from "../src/dispatch/home-session";
 import { codexArgs, codexReadable, codexSessionModel, findCodexSessionFile, parseCodexEvents } from "../src/dispatch/codex";
@@ -9,14 +9,9 @@ import { isRecord, readJsonl } from "../src/dispatch/jsonl";
 import { agentEnv, assertPolicySound, effectiveDenyRead } from "../src/dispatch/policy";
 import { assessCleanup, spawnAgentProcess, superviseRun, sweepWorktree } from "../src/dispatch/process";
 
-export async function runCodexJudge(
-  config: DispatchConfig,
-  cwd: string,
-  logDir: string,
-  fixtures: object,
-  output: object,
-  checks: object,
-) {
+export class JudgeQuarantined extends Error {}
+
+export async function runCodexJudge(config: DispatchConfig, cwd: string, logDir: string, fixtures: object, output: object, checks: object) {
   const home = assertPrivateDir(config.harnessHomes.codex, config.stateRoot);
   const exe = config.executables.codex;
   if (Bun.spawnSync([exe, "--version"]).stdout.toString().trim() !== "codex-cli 0.169.0") throw new Error("unexpected judge binary");
@@ -41,7 +36,7 @@ export async function runCodexJudge(
     accountHome: config.accountHome,
     trustedPath: "/usr/bin:/bin",
   });
-  const inventory = beforeHomeLaunch("codex",home,args,undefined,exe);
+  const inventory = beforeHomeLaunch("codex", home, args, undefined, exe);
   const stdout = join(logDir, "judge.jsonl"),
     out = openSync(stdout, "wx", 0o600),
     err = openSync(join(logDir, "judge.stderr"), "wx", 0o600);
@@ -56,9 +51,18 @@ export async function runCodexJudge(
   const run = await superviseRun(proc, { timeoutMs: 180000, psPath: config.executables.ps });
   const sweep = await sweepWorktree(cwd, { psPath: config.executables.ps, lsofPath: config.executables.lsof });
   const result = await parseCodexEvents(readJsonl(stdout));
-  await afterHomeLaunch("codex",home,inventory,stdout,result.threadId);
-  if (run.stopped || run.status?.code !== 0 || assessCleanup(run.unverified, sweep).quarantineReasons.length)
-    throw new Error("unclean judge exit");
+  try {
+    await afterHomeLaunch("codex", home, inventory, stdout, result.threadId);
+    if (run.stopped || run.status?.code !== 0 || assessCleanup(run.unverified, sweep).quarantineReasons.length)
+      throw new Error("unclean judge exit");
+  } catch (error) {
+    const reason = (error as Error).message;
+    writeFileSync(join(logDir, "judge-quarantine.json"), JSON.stringify({ cwd, session: result.threadId, reason }), {
+      flag: "wx",
+      mode: 0o600,
+    });
+    throw new JudgeQuarantined(reason);
+  }
   for await (const line of readJsonl(stdout)) {
     if (line.kind !== "record") throw new Error("invalid judge evidence");
     const event = line.value;

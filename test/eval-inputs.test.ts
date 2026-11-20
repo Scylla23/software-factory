@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGit } from "../src/dispatch/git";
 import { outputDigest } from "../src/dispatch/output";
-import { caseInput, stageBlindInputs } from "../scripts/eval-inputs";
+import { caseInput, revisionFixtureError, stageBlindInputs } from "../scripts/eval-inputs";
 
 test("blind staging exposes only declared files, binds the plan and current spec set, and keeps planted stale hashes", () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(),"stage-case-")));
   try {
     const factory = join(root,"factory"), git = "/usr/bin/git";
-    for (const name of ["verifier/evals","_shared/evals/tasklist"]) {
+    for (const name of ["verifier/evals","security-auditor/evals","_shared/evals/tasklist"]) {
       const dest = join(factory,"skills",name);
       mkdirSync(dest,{recursive:true});
       cpSync(join(import.meta.dir,"../skills",name),dest,{recursive:true});
@@ -36,5 +36,13 @@ test("blind staging exposes only declared files, binds the plan and current spec
       expect(files.length).toBe(Object.keys(input.files).length);
       expect(() => stageBlindInputs(git,factory,commit,"verifier",input,dir,refs)).toThrow("destination");
     }
+    const role = "security-auditor", id = "security-auditor-03-spec-stage", variant = "revision-edits-only-the-threat-model";
+    const input = caseInput(git,factory,commit,role,id,variant);
+    const dir = join(root,"revision"); mkdirSync(dir,{mode:0o700});
+    const staged = stageBlindInputs(git,factory,commit,role,input,dir,{base:"a".repeat(40),head:"b".repeat(40)});
+    expect(revisionFixtureError(id + "/" + variant,dir,staged.specSet?.sha256)).toContain("distinct");
+    expect(revisionFixtureError(id + "/" + variant,dir,"c".repeat(64))).toBeNull();
+    expect(() => revisionFixtureError(id + "/" + variant,dir,undefined)).toThrow("missing spec-set");
+    expect(revisionFixtureError(id + "/lead-dropped-a-mitigation",dir,staged.specSet?.sha256)).toBeNull();
   } finally { rmSync(root,{recursive:true,force:true}); }
 });

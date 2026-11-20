@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { linkSync, mkdirSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { claudeArgs } from "../src/dispatch/claude";
 import { codexArgs } from "../src/dispatch/codex";
@@ -91,7 +91,21 @@ test("a Codex catalog in a private rollout quarantines an otherwise clean sessio
   });
   jsonl(path, [meta, record("### Available skills\n- example: data")]);
   await expect(afterHomeLaunch("codex", h, before, stdout, id)).rejects.toThrow("skill catalog");
-  jsonl(path, [meta, record("normal context")]);
+  const catalog = {
+    type: "response_item",
+    payload: {
+      type: "additional_tools",
+      role: "developer",
+      tools: [{ type: "namespace", name: "functions", tools: [{ name: "exec", description: "### `exec_command`" }] }],
+    },
+  };
+  jsonl(path, [
+    meta,
+    record("normal context"),
+    { ...catalog, payload: { ...catalog.payload, tools: [...catalog.payload.tools, { type: "namespace", name: "personal", tools: [] }] } },
+  ]);
+  await expect(afterHomeLaunch("codex", h, before, stdout, id)).rejects.toThrow("tool namespace");
+  jsonl(path, [meta, record("normal context"), catalog]);
   await afterHomeLaunch("codex", h, before, stdout, id);
   write(join(h, "skills/.system/skill-creator/SKILL.md"));
   await expect(afterHomeLaunch("codex", h, before, stdout, id)).rejects.toThrow("appeared");
@@ -100,4 +114,15 @@ test("personal discovery enumerates names in installed roots and shared entries 
   write(join(box.home, ".claude/plugins/cache/example/skills/invoice/SKILL.md"), "name: secret-content");
   write(join(box.home, ".codex/agents/audit.toml"), "secret-content");
   expect([...personalSourceNames(box.home)].sort()).toEqual(["audit", "invoice"]);
+});
+
+test("temporary Codex command aliases must target exactly the pinned executable", () => {
+  const path = join(box.codexHome, "tmp/arg0-macos/codex-arg0abcdef/apply_patch");
+  mkdirSync(dirname(path), { recursive: true });
+  const pinned = join(box.bin, "fake-cli");
+  symlinkSync(pinned, path);
+  expect(() => inspectHarnessHome("codex", box.codexHome, pinned)).not.toThrow();
+  unlinkSync(path);
+  symlinkSync(join(box.bin, "fake-orca"), path);
+  expect(() => inspectHarnessHome("codex", box.codexHome, pinned)).toThrow("link");
 });

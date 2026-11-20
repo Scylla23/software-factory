@@ -21,7 +21,7 @@ import { plantPilot } from "./eval-pilot";
 import { probePersonalSources } from "./probe-personal-sources";
 import { verifiedPersonalProbe } from "../src/dispatch/home-proof";
 import { runHomeProofs } from "./run-home-proofs";
-import { runCodexJudge } from "./eval-codex-judge";
+import { JudgeQuarantined, runCodexJudge } from "./eval-codex-judge";
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
 const git = dispatch.executables.git,
@@ -69,7 +69,7 @@ async function inspectBlindStream(stdoutPath: string, canary: string, worktree: 
 }
 
 async function batchOne() {
-  if (codexOnly) {
+  if (codexOnly || (!dry && ledger.db.query("SELECT id FROM batch_stop").get())) {
     const {collectCodexTrials} = await import("./eval-codex-trials");
     const {gradeCodexTrials} = await import("./grade-codex-trials");
     await collectCodexTrials();
@@ -79,6 +79,13 @@ async function batchOne() {
   if (!dry) for (const h of ["claude", "codex"] as const) {
     if (!verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(await probePersonalSources(h,dispatch)));
     if (h === "claude" && verifiedPersonalProbe(h,dispatch.stateRoot,dispatch.executables[h])) console.log(JSON.stringify(runHomeProofs("claude",dispatch,true)));
+  }
+
+  if (!dry) {
+    const {collectCodexTrials}=await import("./eval-codex-trials");
+    const {gradeCodexTrials}=await import("./grade-codex-trials");
+    await collectCodexTrials();
+    await gradeCodexTrials();
   }
 
   let skipped = 0;
@@ -306,6 +313,7 @@ async function batchOne() {
             passed = Object.keys(graded).length === row.checks.length && Object.values(graded).every(Boolean);
             report = { actual, result: result.outcome, checks: graded, judge, session: id };
           } catch (error) {
+            if (error instanceof JudgeQuarantined) cleanup=false;
             report = { actual, session: id, error: (error as Error).message };
           }
           const status = passed ? "passed" : "failed";

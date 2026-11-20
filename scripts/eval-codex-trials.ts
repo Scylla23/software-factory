@@ -14,7 +14,7 @@ import { collectOutputs } from "../src/dispatch/output";
 import { requiredProofs } from "../src/dispatch/skill-launch";
 import { isRecord, readJsonl } from "../src/dispatch/jsonl";
 import { flattenCases } from "./batch-one-cases";
-import { caseInput, stageBlindInputs } from "./eval-inputs";
+import { caseInput, revisionFixtureError, stageBlindInputs } from "./eval-inputs";
 import { evalCheckout, pinnedFixture } from "./eval-checkout";
 
 const dispatch = loadDispatchConfig({ agentWriteRoots: [config.workspaceRoot] });
@@ -56,13 +56,14 @@ export async function collectCodexTrials() {
       for (let trial = 1; trial <= 3; trial++) {
         const trialDir = join(batch, key.replace("/", "_") + "-" + trial);
         if (existsSync(trialDir)) {
-          const previous = JSON.parse(readFileSync(join(trialDir, "contestant.json"), "utf8"));
+          const refusal = join(trialDir, "preflight.json");
+          const previous = JSON.parse(readFileSync(existsSync(refusal) ? refusal : join(trialDir, "contestant.json"), "utf8"));
           if (
             runGit(git, factory, ["rev-parse", previous.pin + ":skills"]).toString() !==
             runGit(git, factory, ["rev-parse", pin + ":skills"]).toString()
           )
             throw new Error("previous trial skill tree differs");
-          console.log(JSON.stringify({ key, trial, reused: previous.id }));
+          console.log(JSON.stringify(existsSync(refusal) ? previous : { key, trial, reused: previous.id }));
           continue;
         }
         mkdir(trialDir);
@@ -83,6 +84,13 @@ export async function collectCodexTrials() {
         if (dirs.scratchRepo) checkoutSnapshot(git, repo, refs.head, dirs.scratchRepo);
         const staged = stageBlindInputs(git, factory, pin, role, input, dirs.taskDir, refs);
         const fields = staged as unknown as BriefInput;
+        const refused = revisionFixtureError(key, dirs.taskDir, fields.specSet?.sha256);
+        if (refused) {
+          const receipt = { key, trial, pin, refused };
+          store(join(trialDir, "preflight.json"), receipt);
+          console.log(JSON.stringify(receipt));
+          continue;
+        }
         const brief: BriefInput = {
           ...fields,
           project: {

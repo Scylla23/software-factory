@@ -93,6 +93,42 @@ async function checkClaude(home: string, id: string, stdout: string, forbidden: 
   }
 }
 
+const nativeFunctions = new Set(["exec", "wait", "request_user_input", "request_user_input_async", "send_message_to_user_async"]);
+const nestedTools = new Set([
+  "apply_patch",
+  "create_goal",
+  "exec_command",
+  "get_goal",
+  "list_mcp_resource_templates",
+  "list_mcp_resources",
+  "read_mcp_resource",
+  "update_goal",
+  "view_image",
+  "write_stdin",
+  "clock",
+  "clock__curr_time",
+]);
+
+function checkCodexToolCatalog(tools: unknown) {
+  if (!Array.isArray(tools)) throw new Error("missing Codex tool listing");
+  let observedExec = false;
+  for (const ns of tools) {
+    if (!isRecord(ns) || ns.type !== "namespace" || !["functions", "clock"].includes(String(ns.name)) || !Array.isArray(ns.tools))
+      throw new Error("unexpected Codex tool namespace");
+    for (const tool of ns.tools) {
+      if (!isRecord(tool) || (ns.name === "clock" ? tool.name !== "sleep" : !nativeFunctions.has(String(tool.name))))
+        throw new Error("unexpected Codex tool source");
+      if (tool.name !== "exec") continue;
+      if (typeof tool.description !== "string") throw new Error("missing Codex nested tool listing");
+      const names = [...tool.description.matchAll(/^#{2,3} `?([\w.-]+)`?\s*$/gm)].map((m) => m[1]!);
+      if (!names.includes("exec_command") || names.some((n) => !nestedTools.has(n)))
+        throw new Error("unexpected Codex nested tool listing");
+      observedExec = true;
+    }
+  }
+  if (!observedExec) throw new Error("missing Codex command tool catalog");
+}
+
 async function checkCodex(home: string, id: string, stdout: string, forbidden: Set<string>) {
   let starts = 0;
   for await (const line of readJsonl(stdout)) {
@@ -105,6 +141,7 @@ async function checkCodex(home: string, id: string, stdout: string, forbidden: S
   if (starts !== 1) throw new Error("ambiguous Codex session identity");
   const file = await findCodexSessionFile(join(home, "sessions"), id);
   if (!file || realpathSync(file) !== file || lstatSync(file).nlink !== 1) throw new Error("missing or unsafe Codex source transcript");
+  let toolCatalogs = 0;
   let sessions = 0,
     developer = 0;
   for await (const line of readJsonl(file)) {
@@ -116,12 +153,17 @@ async function checkCodex(home: string, id: string, stdout: string, forbidden: S
       checkParts(payload.base_instructions.text, forbidden);
       sessions++;
     }
+    if (type === "response_item" && payload.type === "additional_tools") {
+      if (payload.role !== "developer") throw new Error("unbound Codex tool listing");
+      checkCodexToolCatalog(payload.tools);
+      toolCatalogs++;
+    }
     if (type === "response_item" && payload.type === "message" && ["developer", "user"].includes(String(payload.role))) {
       checkParts(payload.content, forbidden);
       if (payload.role === "developer") developer++;
     }
   }
-  if (sessions !== 1 || !developer) throw new Error("missing Codex model instructions");
+  if (sessions !== 1 || !developer || !toolCatalogs) throw new Error("missing Codex model instructions");
 }
 
 export function beforeHomeLaunch(harness: Harness, home: string, args: readonly string[], broker?: string, executable?: string) {
