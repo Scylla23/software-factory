@@ -199,7 +199,7 @@ async function verify(store: Store, task: Task, services: Services) {
   if (retryableVerification(evidence.checks)) {
     // An uncleared preview leaves the failed receipt available for an owner-authorized retry after cleanup.
     try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }
-    catch { return afterVerification(store, task, evidence); }
+    catch (error) { throw new Uncertain("factory infrastructure failed during preview cleanup: " + String(error)); }
     evidence = await capture("verify-infra-retry");
   }
   return afterVerification(store, task, evidence);
@@ -278,7 +278,8 @@ async function resolveVerification(store: Store, git: StagePublisher, task: Task
   return store.db.transaction(() => {
     const resolution = pendingReverification(store, task, comments, id, pull.headSha);
     if (!resolution) return null;
-    checkAbandonedPreviews(stateRoot, failed.attemptId);
+    try { checkAbandonedPreviews(stateRoot, failed.attemptId); }
+    catch { return null; }
     return store.move(task, "verifying", { reason: "owner requested fresh evidence" }, resolution);
   })();
 }

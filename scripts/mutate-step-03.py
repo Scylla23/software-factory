@@ -76,7 +76,7 @@ group("factory/store", "reverification authority", [
 ])
 group("factory/run", "verification retries infrastructure once", [
     ('    try { checkAbandonedPreviews(services.stateRoot, evidence.attemptId); }', '    try { }'),
-    ('    checkAbandonedPreviews(stateRoot, failed.attemptId);', ''),
+    ('try { checkAbandonedPreviews(stateRoot, failed.attemptId); }', 'try { }'),
 ], "factory-crash")
 group("factory/run", "a failed AC capture", [
     ("if (retryableVerification(evidence.checks))", "if (!verdict(evidence.checks).pass)"),

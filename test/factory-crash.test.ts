@@ -212,10 +212,12 @@ test("verification retries infrastructure once, checks leases, and uses the late
     const root = mkdtempSync(join(tmpdir(), "factory-infra-test-"));
     try {
       if (scenario === "capture-lease") {
-        await expect(invoke(root, scenario)).rejects.toThrow("still needs teardown");
+        expect(await invoke(root, scenario)).toBe(true);
         const saved = new Store(join(root, "state.sqlite"));
         try {
           expect(saved.task(1).state).toBe("escalated");
+          expect(saved.task(1).reason).toContain("preview lease fixture.lease still needs teardown");
+          expect(saved.db.query("SELECT id FROM approvals WHERE reason='owner requested re-verification'").all()).toHaveLength(0);
           expect(saved.db.query("SELECT id FROM attempts WHERE action='verify-infra-retry'").all()).toHaveLength(0);
         } finally { saved.db.close(); }
         rmSync(join(root, "ports", "fixture.lease"));
