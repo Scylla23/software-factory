@@ -14,11 +14,11 @@ import { openEvidenceStore } from "../src/verify/store";
  */
 let dir: string;
 let orca: string;
-let shots: string;
+let shotPath: string;
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const ORIGIN = "http://127.0.0.1:4100";
 
-const FAKE = (d: string, shotDir: string) => `#!${process.execPath}
+const FAKE = (d: string, screenshotPath: string) => `#!${process.execPath}
 const fs = require("fs");
 const dir = ${JSON.stringify(d)};
 const args = process.argv.slice(2).filter((a) => a !== "--json");
@@ -40,7 +40,7 @@ const HANDLERS = {
   "goto": () => { const t = st.tabs.find((t) => t.browserPageId === opt("page")); const redirects = read("redirects.json", {}); t.url = redirects[opt("url")] ?? opt("url"); t.title = "Page"; return {}; },
   "set device": () => ({ device: opt("name"), width: 390, height: 844, deviceScaleFactor: 3, mobile: true }),
   "viewport": () => ({ width: Number(opt("width")), height: Number(opt("height")), deviceScaleFactor: Number(opt("scale")), mobile: args.includes("--mobile") }),
-  "screenshot": () => { const p = ${JSON.stringify(shotDir)} + "/" + crypto.randomUUID() + "-screenshot.png"; fs.copyFileSync(dir + "/shot.png", p); return { path: p }; },
+  "screenshot": () => { const path = ${JSON.stringify(screenshotPath)}; fs.copyFileSync(dir + "/shot.png", path); return { path }; },
   "console": () => ({ entries: [{ level: "log", text: "hello" }, { level: "error", text: "boom" }], truncated: false }),
   "network": () => ({ entries: [{ url: "${ORIGIN}/ok", method: "GET", status: 200 }, { url: "${ORIGIN}/missing?token=x", method: "GET", status: 404 }, { url: "https://cdn.example/a.js", method: "GET", status: 200 }, { url: "http://evil.example:8080/x", method: "POST" }], truncated: true }),
   "exec": () => ({ content: "# Title\\n\\nBody", truncated: false }),
@@ -65,15 +65,19 @@ console.log(JSON.stringify({ ok: true, result }));
 
 beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), "verify-browser-")));
-  shots = join(realpathSync(tmpdir()), "orca-browser-screenshots");
+  const shots = join(realpathSync(tmpdir()), "orca-browser-screenshots");
   mkdirSync(shots, { recursive: true, mode: 0o700 });
+  shotPath = join(shots, `${crypto.randomUUID()}-screenshot.png`);
   orca = join(dir, "fake-orca");
-  writeFileSync(orca, FAKE(dir, shots));
+  writeFileSync(orca, FAKE(dir, shotPath));
   chmodSync(orca, 0o755);
   writeFileSync(join(dir, "shot.png"), PNG);
   mkdirSync(join(dir, "state-root"), { mode: 0o700 });
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => {
+  rmSync(shotPath, { force: true });
+  rmSync(dir, { recursive: true, force: true });
+});
 
 const calls = (): string[][] => (existsSync(join(dir, "calls.jsonl")) ? readFileSync(join(dir, "calls.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []);
 const state = () => JSON.parse(readFileSync(join(dir, "state.json"), "utf8")) as { profiles: { id: string; label: string }[]; tabs: { browserPageId: string }[] };
@@ -188,9 +192,9 @@ describe("capture", () => {
   });
 
   test("Orca's temp screenshot is removed once it is in the store", async () => {
-    const before = new Set(require("node:fs").readdirSync(shots));
-    await capture();
-    expect(require("node:fs").readdirSync(shots).filter((n: string) => !before.has(n))).toEqual([]);
+    const result = await capture();
+    expect(readFileSync(result.screenshotPath)).toEqual(PNG);
+    expect(existsSync(shotPath)).toBe(false);
   });
 
   test("mobile sets the device preset, with its user agent, on the blank tab before the load and again after it", async () => {
