@@ -44,6 +44,29 @@ test("frontend and threat tables must link their own named rows", () => {
   });
 });
 
+test("frontend grades accept cataloged drag-and-drop and reject dropped entries and legacy packages", () => {
+  const decision = [
+    "## Dependencies to add",
+    "| Catalog id | Packages | Install |",
+    "| --- | --- | --- |",
+    "| `dnd-kit` | `@dnd-kit/react`, `@dnd-kit/helpers` | npm |",
+    "## Curated entries used",
+    "- `dnd-kit`: keyboard drag-and-drop.",
+    "## Catalog gaps",
+    "None.",
+  ].join("\n");
+
+  expect(grade("frontend", decision, "deps-valid", "no-dropped", "resolved-in-catalog-or-gap")).toEqual({
+    "deps-valid": true,
+    "no-dropped": true,
+    "resolved-in-catalog-or-gap": true,
+  });
+  expect(grade("frontend", decision.replace("@dnd-kit/react", "@dnd-kit/core"), "deps-valid")["deps-valid"]).toBe(false);
+  expect(grade("frontend", decision + "\nUse Lapa Ninja.", "no-dropped")["no-dropped"]).toBe(false);
+  const withoutChoice = decision.replace("- `dnd-kit`: keyboard drag-and-drop.", "None.");
+  expect(grade("frontend", withoutChoice, "resolved-in-catalog-or-gap")["resolved-in-catalog-or-gap"]).toBe(false);
+});
+
 test("architect citations distinguish code paths from qualified identifiers", () => {
   const doc = "Use `tasks.assignee` and `db.exec`. Read `src/view.ts` and create `src/new.ts`.";
   expect(grade("architect", doc, "cites-code")["cites-code"]).toBe(true);

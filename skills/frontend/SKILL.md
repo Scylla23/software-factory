@@ -75,12 +75,13 @@ The catalog has three kinds of thing, and they are not interchangeable.
 - **Libraries** are installable dependencies; these, plus what the project already has, are the only frontend dependencies the spec may add.
 
 Respect each entry's `avoidWhen`; most of them say "use the simpler thing".
-`cmdk` is `flagged`: use it for a command palette, and repeat its `flagReason` in your Rationale.
+Repeat the `flagReason` in your Rationale for every `flagged` entry you choose.
+Use `cmdk` for a command palette when the project has no equivalent.
 For AI-native surfaces (chat, streaming output, thinking states, approvals), start from `beautiful-ui`, whose components are copied into the project rather than installed.
 The factory cannot fetch copied or generated source (`install` of `copy-paste` or `cli`): say whether that source is already in the repository, with its path, or that the owner must add it first, as `_shared/decision-file.md` describes.
 For `npm` libraries, give package names and no versions; the factory installs the version the catalog verified.
 
-When the task needs something the catalog lacks (a map, a rich text editor, drag and drop), record it under Catalog gaps with the need stated precisely, and design the rest.
+When the task needs something the catalog lacks (a navigable map or a rich text editor), record it under Catalog gaps with the need stated precisely, and design the rest.
 Do not substitute a near miss from the catalog to avoid reporting a gap.
 
 ## Output

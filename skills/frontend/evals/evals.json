@@ -23,7 +23,7 @@
         { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in frontend/catalog.json" },
         { "id": "deps-valid", "kind": "deterministic", "check": "every row of Dependencies to add names an entries id of kind library, and its Packages cell lists only names from that entry's packages" },
         { "id": "fonts", "kind": "deterministic", "check": "at most 2 distinct entries with category font appear under Curated entries used" },
-        { "id": "no-dropped", "kind": "deterministic", "check": "frontend.md contains none of: vaul, next-themes, dnd-kit, dnd kit, godly, lapa, siteinspire" },
+        { "id": "no-dropped", "kind": "deterministic", "check": "frontend.md mentions no id from the dropped list in frontend/catalog.json" },
         { "id": "inspiration-as-pointer", "kind": "judge", "check": "Is every inspiration entry cited only as a pointer to a class of pattern, with no claim about what a specific site currently shows and no instruction to copy from it?" },
         { "id": "mobile", "kind": "judge", "check": "Does the layout say concretely how the link list and the save form change at 390x844, rather than only saying they are responsive?" }
       ],
@@ -55,7 +55,7 @@
     },
     {
       "id": "frontend-03-gap-not-substitute",
-      "purpose": "A need with no approved entry is reported as a gap. The trap is that a well-known library for it sits in the catalog's dropped list.",
+      "purpose": "A drag-and-drop need uses a suitable catalog entry or is reported as a gap. A flagged choice carries its catalog caveat.",
       "pilot": "self-contained",
       "input": {
         "brief": { "role": "frontend", "round": 1, "project": { "isNew": true } },
@@ -69,9 +69,9 @@
       "expect": [
         { "id": "one-file", "kind": "deterministic", "check": "frontend.md exists in outDir and no other file was created or changed anywhere" },
         { "id": "curated-valid", "kind": "deterministic", "check": "every backticked id at the start of a line under Curated entries used is an entries id in frontend/catalog.json" },
-        { "id": "deps-valid", "kind": "deterministic", "check": "every row of Dependencies to add names an entries id of kind library" },
-        { "id": "resolved-in-catalog-or-gap", "kind": "deterministic", "check": "either `react-aria-components` appears under Curated entries used, or the Catalog gaps section is not \"None.\"" },
-        { "id": "dropped-not-used", "kind": "judge", "check": "Is the decision free of dnd kit (or any other out-of-catalog drag library) as a chosen dependency, mentioning such a library at most as an unapproved candidate under Catalog gaps?" },
+        { "id": "deps-valid", "kind": "deterministic", "check": "every row of Dependencies to add names an entries id of kind library, and its Packages cell lists only names from that entry's packages" },
+        { "id": "resolved-in-catalog-or-gap", "kind": "deterministic", "check": "Curated entries used includes react-aria-components or an entry in the drag-and-drop category, or Catalog gaps describes the unmet need" },
+        { "id": "dropped-not-used", "kind": "judge", "check": "Does the decision choose only cataloged drag-and-drop dependencies and explain the pre-1.0 API and legacy migration caveat in the Rationale if it chooses dnd kit?" },
         { "id": "keyboard", "kind": "judge", "check": "Does the Accessibility section say how the move is made by keyboard and announced, as AC-2 requires?" }
       ],
       "pass": "All checks pass."

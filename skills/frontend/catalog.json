@@ -844,6 +844,60 @@
       }
     },
     {
+      "id": "astryx",
+      "name": "Astryx",
+      "kind": "library",
+      "category": "components",
+      "url": "https://astryx.atmeta.com/",
+      "tags": [
+        "components",
+        "design-system",
+        "react",
+        "stylex",
+        "theming"
+      ],
+      "whenToUse": "A new React 19+ app that needs a themed component system with prebuilt styles, design tokens, and dark mode.",
+      "avoidWhen": "The project already has a component system, uses React below 19, or requires a stable component API. Astryx is in beta.",
+      "packages": [
+        "@astryxdesign/core",
+        "@astryxdesign/theme-neutral",
+        "@stylexjs/stylex"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@astryxdesign/core",
+            "latestVersion": "0.7.17",
+            "latestReleaseAt": "2026-11-20",
+            "license": "MIT"
+          },
+          {
+            "package": "@astryxdesign/theme-neutral",
+            "latestVersion": "0.7.17",
+            "latestReleaseAt": "2026-11-20",
+            "license": "MIT"
+          },
+          {
+            "package": "@stylexjs/stylex",
+            "latestVersion": "0.19.2",
+            "latestReleaseAt": "2026-11-12",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "meta/astryx",
+          "archived": false,
+          "lastCommitAt": "2026-11-23",
+          "latestReleaseAt": "2026-11-20"
+        },
+        "note": "Core requires react and react-dom >=19.0.0 and @stylexjs/stylex ^0.19.0. The Neutral theme requires the matching core version. This entry covers runtime packages. The official setup guide at https://astryx.atmeta.com/docs/getting-started also documents the development CLI."
+      }
+    },
+    {
       "id": "radix-ui",
       "name": "Radix Primitives",
       "kind": "library",
@@ -1452,6 +1506,593 @@
           "latestReleaseAt": "2026-11-17"
         }
       }
+    },
+    {
+      "id": "base-ui",
+      "name": "Base UI",
+      "kind": "library",
+      "category": "primitives",
+      "url": "https://base-ui.com/",
+      "tags": [
+        "react",
+        "accessibility",
+        "unstyled",
+        "primitives"
+      ],
+      "whenToUse": "Building a React design system with unstyled, accessible dialogs, menus, popovers, and comboboxes.",
+      "avoidWhen": "The project's existing component system or primitives already cover the interaction.",
+      "packages": [
+        "@base-ui/react"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@base-ui/react",
+            "latestVersion": "1.9.0",
+            "latestReleaseAt": "2026-10-09",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "mui/base-ui",
+          "archived": false,
+          "lastCommitAt": "2026-11-20",
+          "latestReleaseAt": "2026-10-09"
+        }
+      }
+    },
+    {
+      "id": "vaul",
+      "name": "Vaul",
+      "kind": "library",
+      "category": "drawer",
+      "url": "https://vaul.emilkowal.ski/",
+      "tags": [
+        "react",
+        "drawer",
+        "bottom-sheet",
+        "gestures"
+      ],
+      "whenToUse": "A React drawer or mobile bottom sheet with drag gestures and snap points.",
+      "avoidWhen": "An existing drawer meets the interaction requirements, or the project requires active upstream maintenance.",
+      "packages": [
+        "vaul"
+      ],
+      "install": "npm",
+      "status": "flagged",
+      "flagReason": "The maintainer explicitly marks Vaul unmaintained. The latest release was 2024-12-14 and the latest default-branch commit was 2025-10-03. Check compatibility before adopting it.",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "vaul",
+            "latestVersion": "1.1.2",
+            "latestReleaseAt": "2024-12-14",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "emilkowalski/vaul",
+          "archived": false,
+          "lastCommitAt": "2025-10-03",
+          "latestReleaseAt": "2024-12-14"
+        }
+      }
+    },
+    {
+      "id": "input-otp",
+      "name": "input-otp",
+      "kind": "library",
+      "category": "forms",
+      "url": "https://input-otp.rodz.dev/",
+      "tags": [
+        "react",
+        "accessibility",
+        "one-time-code",
+        "input"
+      ],
+      "whenToUse": "A segmented React verification-code field that supports keyboard entry, paste, and autofill.",
+      "avoidWhen": "The project already has an OTP field or a single standard input meets the requirements.",
+      "packages": [
+        "input-otp"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "input-otp",
+            "latestVersion": "1.5.0",
+            "latestReleaseAt": "2026-08-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "guilhermerodz/input-otp",
+          "archived": false,
+          "lastCommitAt": "2026-09-10",
+          "latestReleaseAt": "2026-08-18"
+        }
+      }
+    },
+    {
+      "id": "leva",
+      "name": "Leva",
+      "kind": "library",
+      "category": "control-panel",
+      "url": "https://github.com/pmndrs/leva",
+      "tags": [
+        "react",
+        "control-panel",
+        "debugging",
+        "prototyping"
+      ],
+      "whenToUse": "An interactive React control panel for tuning animation values, visuals, or scene parameters.",
+      "avoidWhen": "A production settings form needs the project's standard fields and validation.",
+      "packages": [
+        "leva"
+      ],
+      "install": "npm",
+      "status": "flagged",
+      "flagReason": "Fails the 12-month maintenance rule. The latest release was 2025-10-31 and the latest default-branch commit was 2025-11-08. Verify compatibility with the project's React version.",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "leva",
+            "latestVersion": "0.10.1",
+            "latestReleaseAt": "2025-10-31",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "pmndrs/leva",
+          "archived": false,
+          "lastCommitAt": "2025-11-08",
+          "latestReleaseAt": "2025-10-31"
+        },
+        "note": "Repository and README verified through the GitHub API."
+      }
+    },
+    {
+      "id": "number-flow",
+      "name": "NumberFlow",
+      "kind": "library",
+      "category": "animation",
+      "url": "https://number-flow.barvian.me/",
+      "tags": [
+        "react",
+        "animation",
+        "numbers",
+        "formatting"
+      ],
+      "whenToUse": "Digit transitions for changing counters, prices, or statistics that need locale-aware number formatting.",
+      "avoidWhen": "A static value or an immediate numeric update meets the requirements.",
+      "packages": [
+        "@number-flow/react"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@number-flow/react",
+            "latestVersion": "0.6.2",
+            "latestReleaseAt": "2026-07-18",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "barvian/number-flow",
+          "archived": false,
+          "lastCommitAt": "2026-09-20",
+          "latestReleaseAt": "2026-07-18"
+        }
+      }
+    },
+    {
+      "id": "torph",
+      "name": "Torph",
+      "kind": "library",
+      "category": "animation",
+      "url": "https://torph.lochie.me/",
+      "tags": [
+        "animation",
+        "text",
+        "morphing",
+        "reduced-motion"
+      ],
+      "whenToUse": "Morphing between short changing text labels while preserving the letters that stay the same.",
+      "avoidWhen": "An immediate update or a simple fade is sufficient, or the text contains essential feedback that must stay immediately readable.",
+      "packages": [
+        "torph"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "torph",
+            "latestVersion": "0.1.4",
+            "latestReleaseAt": "2026-11-13",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "lochie/torph",
+          "archived": false,
+          "lastCommitAt": "2026-11-17"
+        }
+      }
+    },
+    {
+      "id": "cobe",
+      "name": "COBE",
+      "kind": "library",
+      "category": "globe",
+      "url": "https://cobe.vercel.app/",
+      "tags": [
+        "webgl",
+        "globe",
+        "geography",
+        "visualization"
+      ],
+      "whenToUse": "An interactive WebGL globe with location markers or arcs between locations.",
+      "avoidWhen": "A static illustration or list conveys the same information, or the app needs a navigable geographic map.",
+      "packages": [
+        "cobe"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "cobe",
+            "latestVersion": "2.0.1",
+            "latestReleaseAt": "2026-03-19",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "shuding/cobe",
+          "archived": false,
+          "lastCommitAt": "2026-09-22",
+          "latestReleaseAt": "2026-03-19"
+        }
+      }
+    },
+    {
+      "id": "satori",
+      "name": "Satori",
+      "kind": "library",
+      "category": "image-generation",
+      "url": "https://github.com/vercel/satori",
+      "tags": [
+        "svg",
+        "open-graph",
+        "image-generation",
+        "server-rendering"
+      ],
+      "whenToUse": "Generating dynamic Open Graph cards or share images from JSX and supported CSS, with SVG as the rendering output.",
+      "avoidWhen": "A static image or the framework's existing image generator suffices, or the layout needs full browser CSS support.",
+      "packages": [
+        "satori"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "satori",
+            "latestVersion": "0.63.2",
+            "latestReleaseAt": "2026-10-20",
+            "license": "MPL-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "vercel/satori",
+          "archived": false,
+          "lastCommitAt": "2026-10-20",
+          "latestReleaseAt": "2026-10-20"
+        },
+        "note": "Repository and README verified through the GitHub API. Rendering PNG requires an additional SVG rasterizer or a framework image generator."
+      }
+    },
+    {
+      "id": "shiki",
+      "name": "Shiki",
+      "kind": "library",
+      "category": "syntax-highlighting",
+      "url": "https://shiki.style/",
+      "tags": [
+        "syntax-highlighting",
+        "code",
+        "documentation",
+        "textmate"
+      ],
+      "whenToUse": "Syntax highlighting for rendered code blocks in docs, Markdown, or an app, preferably at build time or on the server.",
+      "avoidWhen": "The documentation framework already provides highlighting or the project only needs plain monospace code.",
+      "packages": [
+        "shiki"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "shiki",
+            "latestVersion": "4.6.0",
+            "latestReleaseAt": "2026-11-02",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "shikijs/shiki",
+          "archived": false,
+          "lastCommitAt": "2026-11-02",
+          "latestReleaseAt": "2026-11-02"
+        }
+      }
+    },
+    {
+      "id": "liveline",
+      "name": "Liveline",
+      "kind": "library",
+      "category": "charts",
+      "url": "https://github.com/benjitaylor/liveline",
+      "tags": [
+        "react",
+        "charts",
+        "streaming",
+        "canvas"
+      ],
+      "whenToUse": "A scrolling React chart where new time-series points arrive continuously and need smooth live updates.",
+      "avoidWhen": "A chart shows historical data or refreshes occasionally. Use the project's general-purpose chart library.",
+      "packages": [
+        "liveline"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "liveline",
+            "latestVersion": "0.0.7",
+            "latestReleaseAt": "2026-03-12",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "benjitaylor/liveline",
+          "archived": false,
+          "lastCommitAt": "2026-06-07"
+        },
+        "note": "Repository and README verified through the GitHub API."
+      }
+    },
+    {
+      "id": "dnd-kit",
+      "name": "dnd kit",
+      "kind": "library",
+      "category": "drag-and-drop",
+      "url": "https://dndkit.com/",
+      "tags": [
+        "react",
+        "drag-and-drop",
+        "sorting",
+        "keyboard"
+      ],
+      "whenToUse": "React drag-and-drop across lists or drop targets, with keyboard interaction and configurable sensors.",
+      "avoidWhen": "The project's existing drag-and-drop system covers the case, or simple move controls meet the interaction requirements.",
+      "packages": [
+        "@dnd-kit/react",
+        "@dnd-kit/helpers"
+      ],
+      "install": "npm",
+      "status": "flagged",
+      "flagReason": "The current React API is pre-1.0 and differs from the legacy packages. Check API stability against the project requirements and consult the migration guide when extending a legacy integration.",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "@dnd-kit/react",
+            "latestVersion": "0.5.3",
+            "latestReleaseAt": "2026-10-31",
+            "license": "MIT"
+          },
+          {
+            "package": "@dnd-kit/helpers",
+            "latestVersion": "0.5.3",
+            "latestReleaseAt": "2026-10-31",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "clauderic/dnd-kit",
+          "archived": false,
+          "lastCommitAt": "2026-10-31",
+          "latestReleaseAt": "2026-10-31"
+        },
+        "note": "The React quickstart uses @dnd-kit/react. Add @dnd-kit/helpers when the implementation uses utilities such as move for sortable lists."
+      }
+    },
+    {
+      "id": "virtuoso",
+      "name": "React Virtuoso",
+      "kind": "library",
+      "category": "virtualization",
+      "url": "https://virtuoso.dev/",
+      "tags": [
+        "react",
+        "virtualization",
+        "lists",
+        "tables"
+      ],
+      "whenToUse": "Rendering long React lists, grids, or tables when mounting every item makes scrolling or interaction slow.",
+      "avoidWhen": "The list is short or the project already uses a suitable virtualizer.",
+      "packages": [
+        "react-virtuoso"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "react-virtuoso",
+            "latestVersion": "4.18.24",
+            "latestReleaseAt": "2026-11-20",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "petyosi/react-virtuoso",
+          "archived": false,
+          "lastCommitAt": "2026-11-22",
+          "latestReleaseAt": "2026-11-20"
+        },
+        "note": "This entry covers the MIT react-virtuoso package. The commercial Message List is a separate product."
+      }
+    },
+    {
+      "id": "clsx",
+      "name": "clsx",
+      "kind": "library",
+      "category": "styling",
+      "url": "https://github.com/lukeed/clsx",
+      "tags": [
+        "styling",
+        "class-names",
+        "conditional-classes"
+      ],
+      "whenToUse": "Combining conditional CSS class names from several booleans, objects, or arrays.",
+      "avoidWhen": "A single conditional or an existing class-name utility is enough.",
+      "packages": [
+        "clsx"
+      ],
+      "install": "npm",
+      "status": "flagged",
+      "flagReason": "Fails the 12-month maintenance rule. The latest release and default-branch commit were on 2024-04-23.",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "clsx",
+            "latestVersion": "2.1.1",
+            "latestReleaseAt": "2024-04-23",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "lukeed/clsx",
+          "archived": false,
+          "lastCommitAt": "2024-04-23",
+          "latestReleaseAt": "2024-04-23"
+        },
+        "note": "Repository and README verified through the GitHub API."
+      }
+    },
+    {
+      "id": "cva",
+      "name": "Class Variance Authority",
+      "kind": "library",
+      "category": "styling",
+      "url": "https://cva.style/",
+      "tags": [
+        "styling",
+        "component-variants",
+        "tailwind",
+        "typescript"
+      ],
+      "whenToUse": "Defining typed class variants for reusable components with several dimensions such as size, intent, and state.",
+      "avoidWhen": "A component has only a simple conditional class or already uses the project's variant utility.",
+      "packages": [
+        "class-variance-authority"
+      ],
+      "install": "npm",
+      "status": "approved",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "class-variance-authority",
+            "latestVersion": "0.7.1",
+            "latestReleaseAt": "2024-11-26",
+            "license": "Apache-2.0"
+          }
+        ],
+        "repository": {
+          "repo": "joe-bell/cva",
+          "archived": false,
+          "lastCommitAt": "2026-11-19",
+          "latestReleaseAt": "2024-11-26"
+        },
+        "note": "This entry uses the stable class-variance-authority package. The separately named cva package distributes the v1 beta under its beta tag."
+      }
+    },
+    {
+      "id": "next-themes",
+      "name": "next-themes",
+      "kind": "library",
+      "category": "theming",
+      "url": "https://github.com/pacocoursey/next-themes",
+      "tags": [
+        "react",
+        "nextjs",
+        "theming",
+        "dark-mode"
+      ],
+      "whenToUse": "Persisting a React user's theme choice, following the system preference, and applying the chosen theme before paint in a Next.js app.",
+      "avoidWhen": "The app already has a theme provider or only needs a CSS system-preference media query.",
+      "packages": [
+        "next-themes"
+      ],
+      "install": "npm",
+      "status": "flagged",
+      "flagReason": "Fails the 12-month maintenance rule. The latest release was 2025-03-11 and the latest default-branch commit was 2025-05-31. Verify hydration and theme switching against the project's React and Next.js versions.",
+      "verifiedAt": "2026-11-23",
+      "evidence": {
+        "httpStatus": 200,
+        "npm": [
+          {
+            "package": "next-themes",
+            "latestVersion": "0.4.6",
+            "latestReleaseAt": "2025-03-11",
+            "license": "MIT"
+          }
+        ],
+        "repository": {
+          "repo": "pacocoursey/next-themes",
+          "archived": false,
+          "lastCommitAt": "2025-05-31",
+          "latestReleaseAt": "2025-03-11"
+        },
+        "note": "Repository and README verified through the GitHub API."
+      }
     }
   ],
   "dropped": [
@@ -1484,80 +2125,6 @@
       "checkedAt": "2026-11-19",
       "evidence": {
         "httpStatus": 429
-      }
-    },
-    {
-      "id": "vaul",
-      "name": "Vaul",
-      "url": "https://vaul.emilkowal.ski/",
-      "reason": "Abandoned: the repository README states 'This repo is unmaintained'; latest release 2024-12-14.",
-      "checkedAt": "2026-11-19",
-      "evidence": {
-        "httpStatus": 200,
-        "npm": [
-          {
-            "package": "vaul",
-            "latestVersion": "1.1.2",
-            "latestReleaseAt": "2024-12-14"
-          }
-        ],
-        "repository": {
-          "repo": "emilkowalski/vaul",
-          "archived": false,
-          "lastCommitAt": "2025-10-03",
-          "latestReleaseAt": "2024-12-14"
-        }
-      }
-    },
-    {
-      "id": "next-themes",
-      "name": "next-themes",
-      "url": "https://github.com/pacocoursey/next-themes",
-      "reason": "Fails the maintenance rule: latest release 2025-03-11 and last commit 2025-05-31.",
-      "checkedAt": "2026-11-19",
-      "evidence": {
-        "httpStatus": 200,
-        "npm": [
-          {
-            "package": "next-themes",
-            "latestVersion": "0.4.6",
-            "latestReleaseAt": "2025-03-11"
-          }
-        ],
-        "repository": {
-          "repo": "pacocoursey/next-themes",
-          "archived": false,
-          "lastCommitAt": "2025-05-31",
-          "latestReleaseAt": "2025-03-11"
-        }
-      }
-    },
-    {
-      "id": "dnd-kit",
-      "name": "dnd kit",
-      "url": "https://dndkit.com/",
-      "reason": "The stable package @dnd-kit/core last released 2024-12-05, and its successor @dnd-kit/react is still 0.x; no stable maintained package to approve.",
-      "checkedAt": "2026-11-19",
-      "evidence": {
-        "httpStatus": 200,
-        "npm": [
-          {
-            "package": "@dnd-kit/core",
-            "latestVersion": "6.3.1",
-            "latestReleaseAt": "2024-12-05"
-          },
-          {
-            "package": "@dnd-kit/react",
-            "latestVersion": "0.5.3",
-            "latestReleaseAt": "2026-10-31"
-          }
-        ],
-        "repository": {
-          "repo": "clauderic/dnd-kit",
-          "archived": false,
-          "lastCommitAt": "2026-10-31",
-          "latestReleaseAt": "2026-10-31"
-        }
       }
     }
   ]

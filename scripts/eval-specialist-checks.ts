@@ -17,6 +17,7 @@ const headings: Record<string, string[]> = {
   ],
 };
 type Entry = { id: string; kind: string; category: string; packages?: string[] };
+type Catalog = { entries: Entry[]; dropped: { id: string }[] };
 const tokens = (s: string) => [...s.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!);
 const strip = (s: string) => s.replaceAll("`", "").trim();
 function table(text: string) {
@@ -41,8 +42,9 @@ export function specialistChecks(
   tracked: ReadonlySet<string>,
   intact: boolean,
 ) {
-  const catalog = (name: string): Entry[] => JSON.parse(readFileSync(join(skills, name, "catalog.json"), "utf8")).entries;
-  const entries = role === "threat-modeler" ? [] : catalog(role);
+  const catalog = (name: string): Catalog => JSON.parse(readFileSync(join(skills, name, "catalog.json"), "utf8"));
+  const roleCatalog = role === "threat-modeler" ? undefined : catalog(role);
+  const entries = roleCatalog?.entries ?? [];
   const matches = [...markdown.matchAll(/^## ([^\n]+)$/gm)];
   const section = (name: string) => {
     const i = matches.findIndex((m) => m[1]!.trim() === name);
@@ -85,7 +87,7 @@ export function specialistChecks(
       case "no-vendors":
         return (
           !/\b(Vercel|Cloudflare|Railway|Neon|Turso|Resend|Postmark|Clerk|Tailwind)\b/i.test(markdown) &&
-          ![...catalog("infra"), ...catalog("frontend")].some((e) => new RegExp("(?<![\\w-])" + e.id + "(?![\\w-])", "i").test(markdown))
+          ![...catalog("infra").entries, ...catalog("frontend").entries].some((e) => new RegExp("(?<![\\w-])" + e.id + "(?![\\w-])", "i").test(markdown))
         );
       case "anti-pattern-cited":
         return /`(?:microservices-first|speculative-generality)`/.test(markdown);
@@ -169,7 +171,6 @@ export function specialistChecks(
           deps.every((r) => {
             const e = entries.find((e) => e.id === strip(r["catalog id"] ?? "") && e.kind === "library");
             if (!e) return false;
-            if (!checks.some((c) => c.id === "fonts")) return true;
             return (r.packages ?? "")
               .split(/[\s,]+/)
               .map(strip)
@@ -180,7 +181,7 @@ export function specialistChecks(
       case "fonts":
         return new Set(ids.filter((id) => entries.some((e) => e.id === id && e.category === "font"))).size <= 2;
       case "no-dropped":
-        return !/\b(?:vaul|next-themes|dnd-kit|dnd kit|godly|lapa|siteinspire)\b/i.test(markdown);
+        return !roleCatalog?.dropped.some(({ id }) => new RegExp("\\b" + id.replaceAll("-", "[- ]") + "\\b", "i").test(markdown));
       case "cmdk":
         return ids.includes("cmdk") && tokens(section("Components")).includes("cmdk");
       case "beautiful-ui":
@@ -190,7 +191,10 @@ export function specialistChecks(
           .filter((r) => strip(r["catalog id"] ?? "") === "beautiful-ui")
           .every((r) => strip(r.install ?? "") === "copy-paste" && /^(?:none|n\/a|-|)$/.test(strip(r.packages ?? "").toLowerCase()));
       case "resolved-in-catalog-or-gap":
-        return ids.includes("react-aria-components") || (!!gaps && !/^none\.?$/i.test(gaps));
+        return (
+          entries.some((e) => ids.includes(e.id) && (e.id === "react-aria-components" || e.category === "drag-and-drop")) ||
+          (!!gaps && !/^none\.?$/i.test(gaps))
+        );
       case "ids":
         return (
           threats.length > 0 &&

@@ -2,8 +2,8 @@
 
 Seeded defaults for the owner to edit.
 Inspiration entries are reference only; fonts and libraries are installable.
-Verified on 2026-11-19; method and results are in [catalog-verification.md](../_shared/catalog-verification.md).
-This index is for people; agents and the factory read [catalog.json](catalog.json), which is the source of truth.
+The seed catalog was verified on 2026-11-19 using the [catalog verification procedure](../_shared/catalog-verification.md).
+Agents and the factory read [catalog.json](catalog.json), which records each entry's verification date.
 
 ## Inspiration
 
@@ -51,12 +51,14 @@ Self-hosted through the listed package; every package declares the SIL Open Font
 ## Libraries
 
 The only frontend dependencies a spec may add without asking the owner.
+The library list includes the picks from [Emil Kowalski's pick-ui-library skill](https://github.com/emilkowalski/skills/blob/main/skills/pick-ui-library/SKILL.md).
 
 | id | Name | Category | When to use | Avoid when |
 |---|---|---|---|---|
 | `cmdk` (flagged) | [cmdk](https://github.com/dip/cmdk) | command-palette | A command palette or keyboard-first searchable menu in a React app. | A plain select or autocomplete over a short fixed list; use the project's select or combobox. |
 | `beautiful-ui` | [Beautiful UI](https://www.beautifului.dev/) | ai-interface | AI-native surfaces: chat prompt bar, streaming text, thinking traces, tool chips, human approval cards, task rows. | Interfaces with no agent or chat behavior, or a project whose design system already has these parts. |
 | `shadcn-ui` | [shadcn/ui](https://ui.shadcn.com/) | components | Default component set for a new React and Tailwind project: buttons, dialogs, forms, tables, menus. | An existing project with its own component library; its components win. |
+| `astryx` | [Astryx](https://astryx.atmeta.com/) | components | A new React 19+ app that needs a themed component system with prebuilt styles, design tokens, and dark mode. | The project already has a component system, uses React below 19, or requires a stable component API. Astryx is in beta. |
 | `radix-ui` | [Radix Primitives](https://www.radix-ui.com/primitives) | primitives | An accessible unstyled primitive (dialog, popover, menu, tabs) that shadcn/ui does not already wrap. | The shadcn/ui component exists; add that instead of the raw primitive. |
 | `react-aria-components` | [React Aria Components](https://react-aria.adobe.com/) | primitives | Complex accessible widgets Radix does not cover well: date and time pickers, drag and drop lists, grid lists, internationalized inputs. | Simple overlays and menus already covered by shadcn/ui or Radix; do not mix two primitive systems for the same widget. |
 | `tailwindcss` | [Tailwind CSS](https://tailwindcss.com/) | styling | Default styling for a new web project. | An existing project styled another way; follow its convention. |
@@ -73,6 +75,21 @@ The only frontend dependencies a spec may add without asking the owner.
 | `zustand` | [Zustand](https://zustand.docs.pmnd.rs/) | state | Client state shared across distant components that is not server state and not URL state. | State one component tree can own with useState or context; server data (use TanStack Query). |
 | `ai-sdk` | [AI SDK](https://ai-sdk.dev/) | ai-interface | Streaming model output and chat state from a TypeScript backend to a React client. | A feature that makes one non-streaming model call on the server; call the provider SDK directly. |
 | `streamdown` | [Streamdown](https://streamdown.ai/) | ai-interface | Rendering model output as Markdown while it streams, including incomplete blocks. | Static Markdown content known at build time. |
+| `base-ui` | [Base UI](https://base-ui.com/) | primitives | Building a React design system with unstyled, accessible dialogs, menus, popovers, and comboboxes. | The project's existing component system or primitives already cover the interaction. |
+| `vaul` (flagged) | [Vaul](https://vaul.emilkowal.ski/) | drawer | A React drawer or mobile bottom sheet with drag gestures and snap points. | An existing drawer meets the interaction requirements, or the project requires active upstream maintenance. |
+| `input-otp` | [input-otp](https://input-otp.rodz.dev/) | forms | A segmented React verification-code field that supports keyboard entry, paste, and autofill. | The project already has an OTP field or a single standard input meets the requirements. |
+| `leva` (flagged) | [Leva](https://github.com/pmndrs/leva) | control-panel | An interactive React control panel for tuning animation values, visuals, or scene parameters. | A production settings form needs the project's standard fields and validation. |
+| `number-flow` | [NumberFlow](https://number-flow.barvian.me/) | animation | Digit transitions for changing counters, prices, or statistics that need locale-aware number formatting. | A static value or an immediate numeric update meets the requirements. |
+| `torph` | [Torph](https://torph.lochie.me/) | animation | Morphing between short changing text labels while preserving the letters that stay the same. | An immediate update or a simple fade is sufficient, or the text contains essential feedback that must stay immediately readable. |
+| `cobe` | [COBE](https://cobe.vercel.app/) | globe | An interactive WebGL globe with location markers or arcs between locations. | A static illustration or list conveys the same information, or the app needs a navigable geographic map. |
+| `satori` | [Satori](https://github.com/vercel/satori) | image-generation | Generating dynamic Open Graph cards or share images from JSX and supported CSS, with SVG as the rendering output. | A static image or the framework's existing image generator suffices, or the layout needs full browser CSS support. |
+| `shiki` | [Shiki](https://shiki.style/) | syntax-highlighting | Syntax highlighting for rendered code blocks in docs, Markdown, or an app, preferably at build time or on the server. | The documentation framework already provides highlighting or the project only needs plain monospace code. |
+| `liveline` | [Liveline](https://github.com/benjitaylor/liveline) | charts | A scrolling React chart where new time-series points arrive continuously and need smooth live updates. | A chart shows historical data or refreshes occasionally. Use the project's general-purpose chart library. |
+| `dnd-kit` (flagged) | [dnd kit](https://dndkit.com/) | drag-and-drop | React drag-and-drop across lists or drop targets, with keyboard interaction and configurable sensors. | The project's existing drag-and-drop system covers the case, or simple move controls meet the interaction requirements. |
+| `virtuoso` | [React Virtuoso](https://virtuoso.dev/) | virtualization | Rendering long React lists, grids, or tables when mounting every item makes scrolling or interaction slow. | The list is short or the project already uses a suitable virtualizer. |
+| `clsx` (flagged) | [clsx](https://github.com/lukeed/clsx) | styling | Combining conditional CSS class names from several booleans, objects, or arrays. | A single conditional or an existing class-name utility is enough. |
+| `cva` | [Class Variance Authority](https://cva.style/) | styling | Defining typed class variants for reusable components with several dimensions such as size, intent, and state. | A component has only a simple conditional class or already uses the project's variant utility. |
+| `next-themes` (flagged) | [next-themes](https://github.com/pacocoursey/next-themes) | theming | Persisting a React user's theme choice, following the system preference, and applying the chosen theme before paint in a Next.js app. | The app already has a theme provider or only needs a CSS system-preference media query. |
 
 ## Dropped
 
@@ -83,6 +100,3 @@ Failed verification; not available to agents.
 | `godly` | The URL now redirects to a different site (recent.design), so the entry as named no longer exists. |
 | `lapa-ninja` | Could not be verified: 403 to curl and the page did not finish loading in the Orca browser. |
 | `siteinspire` | Could not be verified: 429 security checkpoint to curl and the page did not finish loading in the Orca browser. |
-| `vaul` | Abandoned: the repository README states 'This repo is unmaintained'; latest release 2024-12-14. |
-| `next-themes` | Fails the maintenance rule: latest release 2025-03-11 and last commit 2025-05-31. |
-| `dnd-kit` | The stable package @dnd-kit/core last released 2024-12-05, and its successor @dnd-kit/react is still 0.x; no stable maintained package to approve. |
