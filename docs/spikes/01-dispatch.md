@@ -202,7 +202,7 @@ Codex's shell tool returns to the model after about 30 seconds while the command
 Direct run, checked while Claude's tool `sleep` was running in the spike worktree:
 
 ```
-$ orca agent list --json      -> agents: bravent (codex chat), docs/design-v1 (claude chat), factory-step1-dispatch (claude chat)
+$ orca agent list --json      -> interactive Codex and Claude chats
 $ orca worktree ps --json     -> spike-dispatch-1: "agents": []
 $ orca terminal list --worktree path:<spike> --json -> only the worktree's default shell
 ```
@@ -434,7 +434,7 @@ The observed Codex model is now read from `$CODEX_HOME/sessions`.
 Factory transcripts land in the dedicated homes (`claude-home/projects/...`, `codex-home/sessions/...`), not in the owner's.
 
 A dedicated home alone did not make Codex hermetic.
-A run with only `CODEX_HOME` set listed the owner's skills from `~/.agents/skills` (`gh-axi`, `orca-cli`, `bravent-caveman`, and others), which Codex reads from `$HOME`, plus the account's remote plugins (Figma, Linear, and others), and offered the hosted `web__run` tool.
+A run with only `CODEX_HOME` set listed skills from the owner's `$HOME/.agents/skills` and plugins from the account, and offered the hosted `web__run` tool.
 `web__run` runs on the provider's side, so the sandbox's network block does not stop it; the dispatch before this round exposed it too.
 Each flag was checked against the session rollout, counting mentions of skill and tool names:
 
